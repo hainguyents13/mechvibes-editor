@@ -14,8 +14,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
+    "jszip": "^3.10.2",
+    "lucide-react": "^0.542.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.3.1",
+    "vorbis-encoder-js": "file:vendor\\vorbis-encoder-js",
+    "wavesurfer.js": "^7.12.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
