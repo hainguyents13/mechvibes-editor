@@ -21,11 +21,20 @@ import {
 } from '@/components/editor/keyboardLayouts';
 import { TimeSegmentControls } from '@/components/editor/TimeSegmentControls';
 import { WaveformEditor } from '@/components/editor/WaveformEditor';
-import { siteIdentity } from '@/config/siteIdentity';
+import { canOpenPack, MyPacksModal } from '@/components/MyPacksModal';
+import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import { useAudioFile } from '@/hooks/useAudioFile';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
+import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
-import { exportSoundPack } from '@/utils/soundPackExport';
+import {
+  downloadPackZip,
+  type LibraryPackSummary,
+  signInUrl,
+  updatePackZip,
+  WebsiteApiError,
+} from '@/lib/websiteApi';
+import { buildSoundPackZip, exportSoundPack } from '@/utils/soundPackExport';
 import {
   type ImportedSoundPack,
   parseSoundPackZip,
@@ -120,6 +129,67 @@ function createDefaultPackInfo() {
   };
 }
 
+/** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
+type Notice = {
+  tone: 'error' | 'success';
+  message: string;
+  details?: string[];
+  link?: { href: string; label: string };
+};
+
+/** The library pack open in the editor; Update publishes to it. */
+type OpenLibraryPack = Pick<
+  LibraryPackSummary,
+  'id' | 'name' | 'slug' | 'revision'
+>;
+
+const NEW_PACK_URL = `${websiteUrl}/profile/sound-packs/new`;
+
+/** Turns a failed library call into a notice. 400 and 409 are handled by Update itself. */
+function libraryErrorNotice(error: unknown, fallback: string): Notice {
+  if (!(error instanceof WebsiteApiError)) {
+    return {
+      tone: 'error',
+      message: error instanceof Error ? error.message : fallback,
+    };
+  }
+  switch (error.status) {
+    case 401:
+      return {
+        tone: 'error',
+        message:
+          'You are signed out of the website. Sign in again, then try once more. Your work here is kept.',
+        link: { href: signInUrl(window.location.href), label: 'Sign in' },
+      };
+    case 404:
+      return {
+        tone: 'error',
+        message: 'This pack is no longer in your account.',
+      };
+    case 411:
+      return {
+        tone: 'error',
+        message: 'The upload did not declare its size. Try again.',
+      };
+    case 429:
+      return {
+        tone: 'error',
+        message: error.retryAfter
+          ? `Too many uploads. Try again in ${error.retryAfter} seconds.`
+          : 'Too many uploads. Wait a moment and try again.',
+      };
+    case 503:
+      return {
+        tone: 'error',
+        message:
+          'The library storage is not available right now. Try again later.',
+      };
+    default:
+      // Network failures (status 0) and removed packs (403) carry a readable message.
+      return { tone: 'error', message: error.message || fallback };
+  }
+}
+
 export function EditorPage() {
   // Basic state
   const [keyboardSize, setKeyboardSize] = useState<
@@ -139,10 +209,15 @@ export function EditorPage() {
     new Set(),
   );
   const [confirmDiscardAction, setConfirmDiscardAction] = useState<
-    null | 'new' | 'import'
+    null | 'new' | 'import' | { pack: LibraryPackSummary }
   >(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const { session, refresh: refreshSession } = useLibrarySession();
+  const [libraryPack, setLibraryPack] = useState<OpenLibraryPack | null>(null);
+  const [showMyPacks, setShowMyPacks] = useState(false);
+  const [openingPackId, setOpeningPackId] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Waveform state
@@ -344,9 +419,12 @@ export function EditorPage() {
     setSelectedKeys(new Set());
     setPackInfo(createDefaultPackInfo());
     setLoadedPackId(null);
+    // New and Import from disk leave the library pack, so Update cannot
+    // publish unrelated work to it.
+    setLibraryPack(null);
     clearAudioFile();
     setWaveformSelection({ start: 0, end: 0 });
-    setActionError(null);
+    setNotice(null);
   }, [clearAudioFile, siteIdentity.productName]);
 
   // New pack: warn if there are unsaved modifications
@@ -374,6 +452,8 @@ export function EditorPage() {
       resetPack();
     } else if (action === 'import') {
       importInputRef.current?.click();
+    } else if (action) {
+      openLibraryPack(action.pack);
     }
   };
 
@@ -403,16 +483,112 @@ export function EditorPage() {
     try {
       await applyImportedPack(await parseSoundPackZip(file));
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'Could not import sound pack.',
+      setNotice({
+        tone: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Could not import sound pack.',
+      });
+    }
+  };
+
+  // Open one of the visitor's library packs through the same path as Import.
+  const openLibraryPack = async (pack: LibraryPackSummary) => {
+    setOpeningPackId(pack.id);
+    setNotice(null);
+    try {
+      const zip = await downloadPackZip(pack.id);
+      const imported = await parseSoundPackZip(
+        new File([zip], `${pack.slug}.zip`, { type: 'application/zip' }),
       );
+      await applyImportedPack(imported);
+      setLibraryPack({
+        id: pack.id,
+        name: pack.name,
+        slug: pack.slug,
+        revision: pack.revision,
+      });
+      setShowMyPacks(false);
+    } catch (error) {
+      setShowMyPacks(false);
+      setNotice(libraryErrorNotice(error, 'Could not open this pack.'));
+      if (error instanceof WebsiteApiError && error.status === 401) {
+        refreshSession();
+      }
+    } finally {
+      setOpeningPackId(null);
+    }
+  };
+
+  const handleOpenLibraryPack = (pack: LibraryPackSummary) => {
+    if (!canOpenPack(pack)) return;
+    if (modifiedKeys.size > 0) {
+      setShowMyPacks(false);
+      setConfirmDiscardAction({ pack });
+    } else {
+      openLibraryPack(pack);
+    }
+  };
+
+  // Publish the current work as the next revision of the open library pack.
+  const handleUpdate = async () => {
+    if (!libraryPack || isUpdating) return;
+    setIsUpdating(true);
+    setNotice(null);
+    try {
+      const zip = await buildSoundPackZip({
+        id: libraryPack.id,
+        name: packInfo.name,
+        author: packInfo.author,
+        description: packInfo.description,
+        audioFile,
+        modifiedKeys,
+      });
+      const pack = await updatePackZip(
+        libraryPack.id,
+        zip,
+        libraryPack.revision,
+      );
+      setLibraryPack((current) =>
+        current ? { ...current, revision: pack.revision } : current,
+      );
+      setNotice({
+        tone: 'success',
+        message: `Published revision ${pack.revision} of ${libraryPack.name}.`,
+        link: {
+          href: `${websiteUrl}/sound-packs/${libraryPack.slug}`,
+          label: 'View it in the library',
+        },
+      });
+      refreshSession();
+    } catch (error) {
+      if (error instanceof WebsiteApiError && error.status === 400) {
+        setNotice({
+          tone: 'error',
+          message: 'The library refused this zip:',
+          details: error.reasons.length > 0 ? error.reasons : [error.message],
+        });
+      } else if (error instanceof WebsiteApiError && error.status === 409) {
+        setNotice({
+          tone: 'error',
+          message: `${libraryPack.name} changed on the website since you opened it${error.revision ? ` (it is now at revision ${error.revision})` : ''}. Reopening it loses the changes made here, so export a copy first, then reopen the pack from My packs.`,
+        });
+      } else {
+        setNotice(libraryErrorNotice(error, 'Could not update the pack.'));
+        if (error instanceof WebsiteApiError && error.status === 401) {
+          refreshSession();
+        }
+      }
+    } finally {
+      setIsUpdating(false);
     }
   };
 
   // Export current settings as a sound pack zip
   const handleExport = async () => {
     setIsExporting(true);
-    setActionError(null);
+    setNotice(null);
     try {
       await exportSoundPack({
         id: loadedPackId ?? undefined,
@@ -422,10 +598,22 @@ export function EditorPage() {
         audioFile,
         modifiedKeys,
       });
+      if (!libraryPack) {
+        setNotice({
+          tone: 'success',
+          message:
+            'Exported. To share it in the library, create a pack from this zip on the website.',
+          link: { href: NEW_PACK_URL, label: 'Create a pack' },
+        });
+      }
     } catch (error) {
-      setActionError(
-        error instanceof Error ? error.message : 'Could not export sound pack.',
-      );
+      setNotice({
+        tone: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Could not export sound pack.',
+      });
     } finally {
       setIsExporting(false);
     }
@@ -526,6 +714,19 @@ export function EditorPage() {
             isExporting={isExporting}
             onPreview={() => setIsPreview(true)}
             canPreview={!!audioFile && modifiedKeys.size > 0}
+            session={session}
+            signInHref={signInUrl(window.location.href)}
+            signInInNewTab={!!audioFile || modifiedKeys.size > 0}
+            onOpenMyPacks={() => {
+              setShowMyPacks(true);
+              refreshSession();
+            }}
+            onUpdate={
+              libraryPack && session.status === 'signed-in'
+                ? handleUpdate
+                : undefined
+            }
+            isUpdating={isUpdating}
           />
         )}
 
@@ -543,14 +744,34 @@ export function EditorPage() {
           onConfirm={confirmDiscard}
         />
 
-        {isExporting && (
+        {session.status === 'signed-in' && (
+          <MyPacksModal
+            isOpen={showMyPacks}
+            onClose={() => setShowMyPacks(false)}
+            user={session.user}
+            packs={session.packs}
+            openingId={openingPackId}
+            onOpen={handleOpenLibraryPack}
+            newPackUrl={NEW_PACK_URL}
+          />
+        )}
+
+        {(isExporting || isUpdating || (openingPackId && !showMyPacks)) && (
           <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center">
             <div className="bg-base-100 rounded-lg shadow-xl p-8 flex flex-col items-center gap-4">
               <span className="loading loading-spinner loading-lg text-primary"></span>
-              <p className="text-sm font-medium">Exporting sound pack…</p>
-              <p className="text-xs text-base-content/60">
-                Compressing audio — this can take a while for long files.
+              <p className="text-sm font-medium">
+                {isExporting
+                  ? 'Exporting sound pack…'
+                  : isUpdating
+                    ? 'Publishing to the library…'
+                    : 'Opening the pack…'}
               </p>
+              {(isExporting || isUpdating) && (
+                <p className="text-xs text-base-content/60">
+                  Compressing audio — this can take a while for long files.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -567,15 +788,41 @@ export function EditorPage() {
           />
         )}
 
-        {/* Errors sit outside the keyboard column, whose fit-to-height
+        {/* Notices sit outside the keyboard column, whose fit-to-height
             scale only accounts for its own rows. */}
-        {actionError && (
-          <div className="shrink-0 flex items-center justify-center gap-3 border-b border-error/30 bg-error/10 px-4 py-2 text-sm">
-            <span>{actionError}</span>
+        {notice && (
+          <div
+            className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${notice.tone === 'error' ? 'border-error/30 bg-error/10' : 'border-success/30 bg-success/10'}`}
+          >
+            <div className="min-w-0">
+              <p>
+                {notice.message}
+                {notice.link && (
+                  <>
+                    {' '}
+                    <a
+                      href={notice.link.href}
+                      target="_blank"
+                      rel="noopener"
+                      className="link font-medium"
+                    >
+                      {notice.link.label}
+                    </a>
+                  </>
+                )}
+              </p>
+              {notice.details && notice.details.length > 0 && (
+                <ul className="mt-1 list-disc pl-5">
+                  {notice.details.map((detail) => (
+                    <li key={detail}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <button
               type="button"
-              className="btn btn-xs btn-ghost"
-              onClick={() => setActionError(null)}
+              className="btn btn-xs btn-ghost shrink-0"
+              onClick={() => setNotice(null)}
             >
               Dismiss
             </button>
