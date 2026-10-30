@@ -231,23 +231,21 @@ async function compressToOgg(file: File): Promise<Blob | null> {
 }
 
 /**
- * Build a Mechvibes V2 config.json + zip from current editor settings
- * and trigger a download.
+ * Build a Mechvibes V2 config.json + zip from current editor settings.
  *
  * - Video files: audio is extracted, unselected parts are cut out, the
  *   selected segments are concatenated, and the result is encoded to OGG.
  * - Lossless/uncompressed audio (wav, flac, aiff) is compressed to OGG Vorbis.
  * - The audio file is renamed to `audio.<ext>`.
- * - The download filename is `<slug>-<uuid>.zip`.
  */
-export async function exportSoundPack({
+export async function buildSoundPackZip({
   id,
   name,
   author,
   description,
   audioFile,
   modifiedKeys,
-}: ExportSoundPackParams) {
+}: ExportSoundPackParams): Promise<Blob> {
   if (!audioFile) {
     throw new Error('Load an audio file before exporting.');
   }
@@ -304,6 +302,11 @@ export async function exportSoundPack({
       : { compression: 'STORE' },
   );
 
-  const blob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(blob, `${slugify(name)}-${generateUuid()}.zip`);
+  return zip.generateAsync({ type: 'blob' });
+}
+
+/** Build the zip and download it as `<slug>-<uuid>.zip`. */
+export async function exportSoundPack(params: ExportSoundPackParams) {
+  const blob = await buildSoundPackZip(params);
+  downloadBlob(blob, `${slugify(params.name)}-${generateUuid()}.zip`);
 }
