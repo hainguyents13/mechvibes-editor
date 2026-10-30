@@ -1,14 +1,25 @@
 import {
-  ArrowLeft,
   BookOpen,
   Download,
+  House,
   Import,
+  Library,
+  Menu,
+  MonitorDown,
   Pencil,
   Play,
   Plus,
 } from 'lucide-react';
 import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import { Logo } from './Logo';
+
+// Website pages, opened in a new tab so the pack being edited stays open.
+const WEBSITE_LINKS = [
+  { label: 'Home', href: websiteUrl, Icon: House },
+  { label: 'Sound packs', href: `${websiteUrl}/sound-packs`, Icon: Library },
+  { label: 'Download app', href: `${websiteUrl}/download`, Icon: MonitorDown },
+  { label: 'Guide', href: `${websiteUrl}/guides/editor`, Icon: BookOpen },
+];
 
 interface EditorNavbarProps {
   packName: string;
@@ -39,14 +50,44 @@ export function EditorNavbar({
       <div className="flex px-2 sm:px-4 py-2 items-center justify-between gap-2">
         {/* Left Section  */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <a
-            href={websiteUrl}
-            aria-label="Back to the Mechvibes website"
-            className="btn btn-sm btn-ghost btn-circle"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </a>
+          {/* Website links: a menu on narrower screens, inline from xl up */}
+          <div className="dropdown xl:hidden">
+            <button
+              type="button"
+              aria-label="Mechvibes website"
+              className="btn btn-sm btn-ghost btn-circle"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+            <ul className="dropdown-content menu menu-sm z-50 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
+              {WEBSITE_LINKS.map(({ label, href, Icon }) => (
+                <li key={label}>
+                  <a href={href} target="_blank" rel="noopener">
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
           <Logo text={`${siteIdentity.productName} Editor`} />
+          <nav
+            aria-label="Mechvibes website"
+            className="hidden xl:flex items-center gap-1 ml-2"
+          >
+            {WEBSITE_LINKS.map(({ label, href, Icon }) => (
+              <a
+                key={label}
+                href={href}
+                target="_blank"
+                rel="noopener"
+                className="btn btn-sm btn-ghost rounded-box px-3 font-normal"
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </a>
+            ))}
+          </nav>
         </div>
 
         {/* Middle Section - Pack Name & Edit */}
@@ -66,14 +107,6 @@ export function EditorNavbar({
 
         {/* Right Section */}
         <div className="flex items-center gap-1 lg:gap-2 shrink-0">
-          <a
-            href={`${websiteUrl}/guides/editor`}
-            aria-label="Guide"
-            className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
-          >
-            <BookOpen className="h-4 w-4 lg:mr-2" />
-            <span className="hidden lg:inline">Guide</span>
-          </a>
           <button
             type="button"
             onClick={onNewPack}

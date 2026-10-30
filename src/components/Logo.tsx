@@ -9,6 +9,8 @@ export const Logo = ({ text }: LogoProps) => {
     <div className="hidden sm:flex shrink-0 items-center">
       <a
         href={websiteUrl}
+        target="_blank"
+        rel="noopener"
         className="flex items-center space-x-2 whitespace-nowrap"
       >
         <img
