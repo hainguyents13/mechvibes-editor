@@ -1,6 +1,11 @@
 import JSZip from 'jszip';
 
 export type ExportSoundPackParams = {
+  /**
+   * config.id. Set for library packs and for packs loaded with an id; left out
+   * otherwise, so the editor never invents one (the app mints imported-<uuid>).
+   */
+  id?: string;
   name: string;
   author?: string;
   description: string;
@@ -236,6 +241,7 @@ async function compressToOgg(file: File): Promise<Blob | null> {
  * - The download filename is `<slug>-<uuid>.zip`.
  */
 export async function exportSoundPack({
+  id,
   name,
   author,
   description,
@@ -277,7 +283,7 @@ export async function exportSoundPack({
 
   const config = {
     config_version: '2',
-    id: slugify(name),
+    ...(id ? { id } : {}),
     name,
     author: author?.trim() || 'Mechvibes Editor',
     description,
