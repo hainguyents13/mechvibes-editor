@@ -116,12 +116,14 @@ export function EditorNavbar({
             <Plus className="h-3 w-3" />
             <span className="hidden lg:inline">New</span>
           </button>
-          <div className="tooltip tooltip-bottom" data-tip="Coming soon">
+          <div
+            className="tooltip tooltip-bottom"
+            data-tip="Open a sound pack zip to change it"
+          >
             <button
               type="button"
               onClick={onImport}
               aria-label="Import"
-              disabled
               className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
             >
               <Import className="h-4 w-4 lg:mr-2" />

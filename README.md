@@ -27,11 +27,13 @@ docker build -t mechvibes-editor .
 docker run -p 8080:80 mechvibes-editor
 ```
 
-`VITE_LIBRARY_ORIGINS` lists the comma-separated sites the editor may load packs from through `?source=`; the first one is the website it links back to. Vite reads it at build time, so pass it as a build argument (`--build-arg VITE_LIBRARY_ORIGINS=...`), not as a runtime variable. It defaults to `https://mechvibes.com`. See [`.env.example`](./.env.example).
+## Publishing to the library
 
-## Opening a library pack
+1. Build the pack here and export the zip.
+2. On the Mechvibes website, create a pack from that zip. The website fills in the pack details from `config.json`, and from then on it owns them: it writes the pack's id, name, description and author into `config.json` when it publishes.
+3. To change a published pack, import its zip here, edit, export, and upload the new zip on the pack's page.
 
-The Mechvibes website opens the editor with `?pack=<id>&name=<name>&author=<name>`, plus `&source=<download url>` for a fork. A valid `mv-<32 hex>` pack id is written as `id` in the exported `config.json`; otherwise the editor writes no `id` unless the loaded zip had one. Other parameters, such as `utm_*`, are ignored.
+The editor never invents an `id`. It keeps the `id` of an imported zip, so a published pack's zip still matches its pack; otherwise it writes none.
 
 ## Sound pack format
 
