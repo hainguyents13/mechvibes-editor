@@ -12,7 +12,7 @@ export const Logo = ({ text }: LogoProps) => {
         className="flex items-center space-x-2 whitespace-nowrap"
       >
         <img
-          src="/logo.svg"
+          src="/logo.png"
           alt={`${siteIdentity.productName} Logo`}
           width={32}
           height={32}
