@@ -28,24 +28,82 @@ import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { exportSoundPack } from '@/utils/soundPackExport';
 import { parseSoundPackZip } from '@/utils/soundPackImport';
 
-// Sound editing panel on wide (lg) screens. It takes half the viewport, up to
-// the original 524px, and never less than what its controls need with the
-// smallest waveform. The waveform absorbs every pixel the panel gives up, so the
-// keyboard above gets the rest of the screen.
+// Sound editing panel on wide (lg) screens. By default it takes half the
+// viewport, up to the original 524px, and never less than what its controls need
+// with the smallest waveform. Dragging its top edge trades keyboard space for
+// waveform space, and the choice is remembered in this browser. The waveform
+// absorbs every pixel the panel gains or gives up.
 const LG_MIN_WIDTH = 1024;
 const PANEL_MAX_HEIGHT = 524;
 const WAVEFORM_MAX_HEIGHT = 200;
 const WAVEFORM_MIN_HEIGHT = 110;
-const PANEL_MIN_HEIGHT =
-  PANEL_MAX_HEIGHT - (WAVEFORM_MAX_HEIGHT - WAVEFORM_MIN_HEIGHT);
+/** Panel height taken by everything except the waveform. */
+const PANEL_CONTROLS_HEIGHT = PANEL_MAX_HEIGHT - WAVEFORM_MAX_HEIGHT;
+const PANEL_MIN_HEIGHT = PANEL_CONTROLS_HEIGHT + WAVEFORM_MIN_HEIGHT;
+/** Smallest dragged height; below PANEL_MIN_HEIGHT the controls scroll. */
+const PANEL_DRAG_MIN_HEIGHT = 240;
+/** The panel's collapse transition caps it at 48rem (index.css). */
+const PANEL_DRAG_MAX_HEIGHT = 720;
+/** Viewport height kept for the navbar, the footer and a usable keyboard. */
+const PANEL_RESERVED_HEIGHT = 320;
+const PANEL_RESIZE_STEP = 16;
+const PANEL_HEIGHT_STORAGE_KEY = 'mechvibes-editor:panel-height';
 
-/** Panel height in px on lg screens, or null when the panel stacks and sizes to its content. */
-function getPanelHeight(): number | null {
-  if (window.innerWidth < LG_MIN_WIDTH) return null;
-  return Math.min(
-    PANEL_MAX_HEIGHT,
-    Math.max(PANEL_MIN_HEIGHT, Math.round(window.innerHeight / 2)),
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getPanelDragMax(viewportHeight: number) {
+  return clamp(
+    viewportHeight - PANEL_RESERVED_HEIGHT,
+    PANEL_DRAG_MIN_HEIGHT,
+    PANEL_DRAG_MAX_HEIGHT,
   );
+}
+
+/**
+ * Panel height in px on lg screens, or null when the panel stacks and sizes to
+ * its content. `chosen` is the dragged height, or null for the default.
+ */
+function getPanelHeight(
+  viewport: { width: number; height: number },
+  chosen: number | null,
+): number | null {
+  if (viewport.width < LG_MIN_WIDTH) return null;
+  if (chosen === null) {
+    return clamp(
+      Math.round(viewport.height / 2),
+      PANEL_MIN_HEIGHT,
+      PANEL_MAX_HEIGHT,
+    );
+  }
+  return clamp(chosen, PANEL_DRAG_MIN_HEIGHT, getPanelDragMax(viewport.height));
+}
+
+function readStoredPanelHeight(): number | null {
+  try {
+    const value = Number(localStorage.getItem(PANEL_HEIGHT_STORAGE_KEY));
+    return value > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storePanelHeight(height: number | null) {
+  try {
+    if (height === null) {
+      localStorage.removeItem(PANEL_HEIGHT_STORAGE_KEY);
+    } else {
+      localStorage.setItem(PANEL_HEIGHT_STORAGE_KEY, String(height));
+    }
+  } catch {
+    // Storage can be unavailable (private mode, blocked site data); the
+    // dragged height then lasts for this visit only.
+  }
+}
+
+function readViewport() {
+  return { width: window.innerWidth, height: window.innerHeight };
 }
 
 export function EditorPage() {
@@ -115,16 +173,33 @@ export function EditorPage() {
     [keyboardSize],
   );
 
-  const [panelHeight, setPanelHeight] = useState(getPanelHeight);
+  const [viewport, setViewport] = useState(readViewport);
   useEffect(() => {
-    const onResize = () => setPanelHeight(getPanelHeight());
+    const onResize = () => setViewport(readViewport());
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+  const [chosenPanelHeight, setChosenPanelHeight] = useState(
+    readStoredPanelHeight,
+  );
+  useEffect(() => {
+    storePanelHeight(chosenPanelHeight);
+  }, [chosenPanelHeight]);
+  const panelHeight = getPanelHeight(viewport, chosenPanelHeight);
+  const panelDragMax = getPanelDragMax(viewport.height);
   const waveformHeight =
     panelHeight === null
       ? WAVEFORM_MAX_HEIGHT
-      : WAVEFORM_MAX_HEIGHT - (PANEL_MAX_HEIGHT - panelHeight);
+      : Math.max(WAVEFORM_MIN_HEIGHT, panelHeight - PANEL_CONTROLS_HEIGHT);
+
+  const panelDragRef = useRef<{ startY: number; startHeight: number } | null>(
+    null,
+  );
+  const resizePanel = (height: number) => {
+    setChosenPanelHeight(
+      Math.round(clamp(height, PANEL_DRAG_MIN_HEIGHT, panelDragMax)),
+    );
+  };
 
   // Keyboard natural dimensions (used to scale-to-fit and avoid a scrollbar)
   const KEYBOARD_UNIT = 54;
@@ -606,6 +681,54 @@ export function EditorPage() {
           </div>
         </div>
 
+        {/* Drag handle on the panel's top edge (wide screens only) */}
+        {panelHeight !== null && !isPreview && (
+          // biome-ignore lint/a11y/useSemanticElements: a focusable window splitter with a grip; <hr> cannot hold children or take focus
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize the sound editing panel"
+            aria-valuemin={PANEL_DRAG_MIN_HEIGHT}
+            aria-valuemax={panelDragMax}
+            aria-valuenow={panelHeight}
+            tabIndex={0}
+            title="Drag to resize. Double-click to reset."
+            className="group relative z-10 -mb-2 h-3 shrink-0 cursor-row-resize touch-none flex justify-center focus-visible:outline-none"
+            onPointerDown={(event) => {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              panelDragRef.current = {
+                startY: event.clientY,
+                startHeight: panelHeight,
+              };
+            }}
+            onPointerMove={(event) => {
+              const drag = panelDragRef.current;
+              if (!drag) return;
+              resizePanel(drag.startHeight - (event.clientY - drag.startY));
+            }}
+            onPointerUp={() => {
+              panelDragRef.current = null;
+            }}
+            onPointerCancel={() => {
+              panelDragRef.current = null;
+            }}
+            onDoubleClick={() => setChosenPanelHeight(null)}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                resizePanel(
+                  panelHeight +
+                    (event.key === 'ArrowUp'
+                      ? PANEL_RESIZE_STEP
+                      : -PANEL_RESIZE_STEP),
+                );
+              }
+            }}
+          >
+            <div className="mt-1 h-1 w-12 rounded-full bg-base-content/25 transition-colors group-hover:bg-primary group-focus-visible:bg-primary" />
+          </div>
+        )}
+
         {/* Timeline panel — bottom */}
         <div
           className="editor-chrome-vertical shrink-0 editor-panel-surface border-t-2 border-base-content/20"
@@ -635,9 +758,9 @@ export function EditorPage() {
               {/* Right: waveform / mode-specific controls — fills the container height.
                   No horizontal padding here: the waveform runs edge to edge, and the
                   blocks around it carry their own px-4. */}
-              <div className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3">
+              <div className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto">
                 {audioFile ? (
-                  <div className="h-full min-h-0 min-w-0 flex flex-col gap-3">
+                  <div className="min-h-full min-w-0 flex flex-col gap-3">
                     {editMode === 'time' ? (
                       <>
                         {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
