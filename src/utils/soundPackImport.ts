@@ -26,7 +26,7 @@ function getAudioMimeType(fileName: string) {
 
 /**
  * Parse a .zip sound pack in memory and map its contents to editor settings.
- * Supports the MechvibesDX V2 config.json format.
+ * Supports the Mechvibes V2 config.json format.
  */
 export async function parseSoundPackZip(
   file: File,
