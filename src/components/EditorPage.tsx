@@ -33,6 +33,7 @@ import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
+import { hasSeenEditorTour, startEditorTour } from '@/lib/editorTour';
 import {
   downloadPackZip,
   type LibraryPackSummary,
@@ -66,6 +67,8 @@ const MOUSE_BUTTON_CODES = [
 ];
 /** The app plays at most one wheel sound per 120 ms. */
 const WHEEL_SOUND_INTERVAL_MS = 120;
+const TOUR_AUTO_START_MIN_WIDTH = 768;
+const TOUR_AUTO_START_DELAY_MS = 600;
 
 // Sound editing panel on wide (lg) screens. By default it takes half the
 // viewport, up to the original 524px, and never less than what its controls need
@@ -739,6 +742,27 @@ export function EditorPage() {
     setPressedKeyCodes(new Set());
   }, []);
 
+  // Guided tour: it opens by itself on a first visit, and from the navbar at
+  // any time.
+  const tourRef = useRef<ReturnType<typeof startEditorTour> | null>(null);
+  const signedInRef = useRef(false);
+  useEffect(() => {
+    signedInRef.current = session.status === 'signed-in';
+  }, [session.status]);
+  const startTour = useCallback(() => {
+    tourRef.current?.destroy();
+    tourRef.current = startEditorTour({ signedIn: signedInRef.current });
+  }, []);
+  useEffect(() => {
+    // Phones cannot edit packs, so a first visit there does not start it.
+    if (hasSeenEditorTour() || window.innerWidth < TOUR_AUTO_START_MIN_WIDTH)
+      return;
+    // Let the layout and the keyboard scale settle before measuring targets.
+    const timer = window.setTimeout(startTour, TOUR_AUTO_START_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [startTour]);
+  useEffect(() => () => tourRef.current?.destroy(), []);
+
   // The site footer is rendered by the layout, so flag the body for it.
   useEffect(() => {
     document.body.dataset.editorPreview = String(isPreview);
@@ -869,6 +893,7 @@ export function EditorPage() {
                 : undefined
             }
             isUpdating={isUpdating}
+            onStartTour={startTour}
           />
         )}
 
@@ -983,7 +1008,7 @@ export function EditorPage() {
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 {/* soundpack_type: which device the pack is for */}
-                <div className="join">
+                <div className="join" data-tour="pack-type">
                   {(['Keyboard', 'Mouse'] as const).map((packType) => (
                     <button
                       key={packType}
@@ -1060,6 +1085,7 @@ export function EditorPage() {
                 the same values on top of that lags behind the layout. */}
             <div
               className="shrink-0"
+              data-tour="keyboard"
               style={{
                 width: keyboardNaturalWidth * keyboardScale,
                 height: keyboardNaturalHeight * keyboardScale,
@@ -1184,6 +1210,7 @@ export function EditorPage() {
                   to the file card once audio is loaded, and keeps room for the
                   clip when a video is loaded. */}
               <div
+                data-tour="sources"
                 className={`w-full ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
               >
                 <AudioFileSelector
@@ -1200,7 +1227,10 @@ export function EditorPage() {
               {/* Right: waveform / mode-specific controls — fills the container height.
                   No horizontal padding here: the waveform runs edge to edge, and the
                   blocks around it carry their own px-4. */}
-              <div className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto">
+              <div
+                data-tour="sound"
+                className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto"
+              >
                 {audioFile && activeSourceId ? (
                   <div className="min-h-full min-w-0 flex flex-col gap-3">
                     {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
