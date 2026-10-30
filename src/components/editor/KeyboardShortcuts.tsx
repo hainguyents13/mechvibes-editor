@@ -18,7 +18,7 @@ export function KeyboardShortcuts({
       style={maxWidth ? { maxWidth } : undefined}
     >
       <h2 className="sr-only">Selection and shortcuts</h2>
-      <div className="flex items-center justify-between gap-4 text-xs text-base-content/70">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-base-content/70">
         <div className="flex items-center gap-2 shrink-0">
           <span>Selected: {selectedKeys.size} keys</span>
           {selectedKeys.size > 0 && (
@@ -31,22 +31,22 @@ export function KeyboardShortcuts({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-5">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+          <div className="flex items-center gap-1 whitespace-nowrap">
             <kbd className="kbd kbd-xs">Click</kbd>
             <span>Select key</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 whitespace-nowrap">
             <kbd className="kbd kbd-xs">Drag</kbd>
             <span>Select area</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 whitespace-nowrap">
             <kbd className="kbd kbd-xs">Ctrl</kbd>
             <span>+</span>
             <kbd className="kbd kbd-xs">Click</kbd>
             <span>Multi-select</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 whitespace-nowrap">
             <kbd className="kbd kbd-xs">Esc</kbd>
             <span>Clear selection</span>
           </div>
