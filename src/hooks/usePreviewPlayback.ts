@@ -1,25 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AudioSource, KeySounds } from '@/utils/soundPack';
 
 /**
- * Plays the mapped time segment for a key, the way the finished sound pack will.
+ * Plays a key's sound the way the finished sound pack will: the press sound
+ * when the key goes down and, when the key has one, the release sound when it
+ * comes up.
  *
- * The file is decoded once into an AudioBuffer so each key press can start a new
- * buffer source at an offset — repeated presses overlap instead of cutting each
- * other off, which is what fast typing sounds like on a real pack.
+ * Each source is decoded once into an AudioBuffer so each key press can start
+ * a new buffer source at an offset — repeated presses overlap instead of
+ * cutting each other off, which is what fast typing sounds like on a real pack.
  */
 export function usePreviewPlayback(
-  audioFile: File | null,
-  modifiedKeys: Map<string, [number, number]>,
+  sources: AudioSource[],
+  keySounds: KeySounds,
   enabled: boolean,
 ) {
   const audioContextRef = useRef<AudioContext | null>(null);
-  const bufferRef = useRef<AudioBuffer | null>(null);
+  const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Decode the file once per file change, but only while preview is active.
+  // Decode the files once per change, but only while preview is active.
   useEffect(() => {
-    if (!enabled || !audioFile) return;
+    if (!enabled || sources.length === 0) return;
 
     let cancelled = false;
     setIsLoading(true);
@@ -27,36 +30,44 @@ export function usePreviewPlayback(
 
     const context = new AudioContext();
     audioContextRef.current = context;
+    const buffers = new Map<string, AudioBuffer>();
+    buffersRef.current = buffers;
 
-    audioFile
-      .arrayBuffer()
-      .then((data) => context.decodeAudioData(data))
-      .then((buffer) => {
-        if (cancelled) return;
-        bufferRef.current = buffer;
-        setIsLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setError('Could not decode this file for preview.');
-        setIsLoading(false);
-      });
+    Promise.all(
+      sources.map(async (source) => {
+        try {
+          const data = await source.file.arrayBuffer();
+          buffers.set(source.id, await context.decodeAudioData(data));
+          return null;
+        } catch {
+          return source.file.name;
+        }
+      }),
+    ).then((failed) => {
+      if (cancelled) return;
+      const names = failed.filter((name): name is string => name !== null);
+      if (names.length > 0) {
+        setError(`Could not decode ${names.join(', ')} for preview.`);
+      }
+      setIsLoading(false);
+    });
 
     return () => {
       cancelled = true;
-      bufferRef.current = null;
+      buffersRef.current = new Map();
       context.close().catch(() => {
         // Already closed — nothing to clean up.
       });
       audioContextRef.current = null;
     };
-  }, [audioFile, enabled]);
+  }, [sources, enabled]);
 
   const playKey = useCallback(
-    (keyCode: string) => {
+    (keyCode: string, phase: 'press' | 'release' = 'press') => {
       const context = audioContextRef.current;
-      const buffer = bufferRef.current;
-      const segment = modifiedKeys.get(keyCode);
+      const sound = keySounds.get(keyCode);
+      const segment = phase === 'press' ? sound?.press : sound?.release;
+      const buffer = sound ? buffersRef.current.get(sound.source) : undefined;
       if (!context || !buffer || !segment) return;
 
       const [startMs, endMs] = segment;
@@ -76,7 +87,7 @@ export function usePreviewPlayback(
       source.connect(context.destination);
       source.start(0, start, duration);
     },
-    [modifiedKeys],
+    [keySounds],
   );
 
   return { playKey, isLoading, error };

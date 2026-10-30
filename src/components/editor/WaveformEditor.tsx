@@ -2,6 +2,7 @@ import { RotateCcw, Zap } from 'lucide-react';
 import React from 'react';
 import { CombinedWaveform } from '@/components/editor/CombinedWaveform';
 import { useWaveformEditor } from '@/hooks/useWaveformEditor';
+import type { KeySounds } from '@/utils/soundPack';
 
 interface WaveformEditorProps {
   audioFile: File | null;
@@ -16,8 +17,9 @@ interface WaveformEditorProps {
   wavesurfer: React.MutableRefObject<any>;
   regionsPlugin: React.MutableRefObject<any>;
   onPlaySelectedSegmentReady?: (playFn: () => void) => void;
-  modifiedKeys?: Map<string, [number, number]>;
-  selectedKeys?: Set<string>;
+  /** Key sounds; those cut from `sourceId` are marked under the waveform. */
+  keySounds?: KeySounds;
+  sourceId?: string;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   /** Waveform height in px; the editor shrinks it on short screens. */
   waveformHeight?: number;
@@ -36,7 +38,8 @@ export function WaveformEditor({
   wavesurfer,
   regionsPlugin,
   onPlaySelectedSegmentReady,
-  modifiedKeys,
+  keySounds,
+  sourceId,
   videoRef: externalVideoRef,
   waveformHeight = 200,
 }: WaveformEditorProps) {
@@ -252,25 +255,42 @@ export function WaveformEditor({
               width: '100%',
             }}
           >
-            {modifiedKeys &&
+            {keySounds &&
               defaultDuration > 0 &&
               (() => {
-                // Group keys by their time ranges
-                const regionGroups = new Map<string, string[]>();
-
-                Array.from(modifiedKeys.entries()).forEach(
-                  ([keyName, [start, end]]) => {
-                    const regionKey = `${start}-${end}`;
-                    if (!regionGroups.has(regionKey)) {
-                      regionGroups.set(regionKey, []);
-                    }
-                    regionGroups.get(regionKey)!.push(keyName);
-                  },
-                );
+                // Group this file's press and release sounds by time range
+                const regionGroups = new Map<
+                  string,
+                  {
+                    phase: 'press' | 'release';
+                    start: number;
+                    end: number;
+                    keyNames: string[];
+                  }
+                >();
+                const add = (
+                  phase: 'press' | 'release',
+                  [start, end]: [number, number],
+                  keyName: string,
+                ) => {
+                  const regionKey = `${phase}:${start}-${end}`;
+                  const group = regionGroups.get(regionKey) ?? {
+                    phase,
+                    start,
+                    end,
+                    keyNames: [],
+                  };
+                  group.keyNames.push(keyName);
+                  regionGroups.set(regionKey, group);
+                };
+                keySounds.forEach((sound, keyName) => {
+                  if (sound.source !== sourceId) return;
+                  add('press', sound.press, keyName);
+                  if (sound.release) add('release', sound.release, keyName);
+                });
 
                 return Array.from(regionGroups.entries()).map(
-                  ([regionKey, keyNames]) => {
-                    const [start, end] = regionKey.split('-').map(Number);
+                  ([regionKey, { phase, start, end, keyNames }]) => {
                     const startPx = (start / 1000) * Math.max(100, zoomLevel);
                     const widthPx =
                       ((end - start) / 1000) * Math.max(100, zoomLevel);
@@ -283,10 +303,10 @@ export function WaveformEditor({
                         key={regionKey}
                         className="absolute top-[8px] transform -translate-y-1/2 -translate-x-1/2 tooltip z-50"
                         style={{ left: `${centerPx}px` }}
-                        data-tip={`Applied to ${keyNames.length} key${keyNames.length > 1 ? 's' : ''}: ${keyNames.join(', ')} (${Math.round(start)}ms - ${Math.round(end)}ms)`}
+                        data-tip={`${phase === 'press' ? 'Press' : 'Release'} sound of ${keyNames.length} key${keyNames.length > 1 ? 's' : ''}: ${keyNames.join(', ')} (${Math.round(start)}ms - ${Math.round(end)}ms)`}
                       >
                         <div
-                          className="badge badge-neutral badge-xs rounded-none"
+                          className={`badge badge-xs rounded-none ${phase === 'press' ? 'badge-neutral' : 'badge-secondary'}`}
                           style={{ minWidth: '20px' }}
                         >
                           {keyNames.length}

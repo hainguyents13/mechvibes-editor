@@ -1,16 +1,18 @@
 import React from 'react';
+import type { KeySounds } from '@/utils/soundPack';
 import { KeyButton } from './KeyButton';
 import {
   getKeyCode,
   keyboardLayouts,
+  type LayoutName,
   parseKeyboardLayout,
 } from './keyboardLayouts';
 
 interface KeyboardDisplayProps {
-  keyboardSize: 'fullsize' | 'tkl' | 'compact';
+  layout: LayoutName;
   selectedKeys: Set<string>;
   dragSelectedKeys: Set<string>;
-  modifiedKeys: Map<string, [number, number]>;
+  modifiedKeys: KeySounds;
   onKeyClick: (keyId: string, e: React.MouseEvent) => void;
   onKeyMouseDown: (keyId: string, e: React.MouseEvent) => void;
   onKeyMouseUp: (keyId: string, e: React.MouseEvent) => void;
@@ -24,10 +26,11 @@ interface KeyboardDisplayProps {
   /** Key codes currently held down, so they can be highlighted. */
   pressedKeyCodes?: Set<string>;
   onPreviewKeyDown?: (keyCode: string) => void;
+  onPreviewKeyUp?: (keyCode: string) => void;
 }
 
 export function KeyboardDisplay({
-  keyboardSize,
+  layout,
   selectedKeys,
   dragSelectedKeys,
   modifiedKeys,
@@ -42,10 +45,11 @@ export function KeyboardDisplay({
   isPreview = false,
   pressedKeyCodes,
   onPreviewKeyDown,
+  onPreviewKeyUp,
 }: KeyboardDisplayProps) {
   const internalKeyboardRef = React.useRef<HTMLDivElement>(null);
   const refToUse = keyboardRef || internalKeyboardRef;
-  const keys = parseKeyboardLayout(keyboardLayouts[keyboardSize]);
+  const keys = parseKeyboardLayout(keyboardLayouts[layout]);
 
   // Calculate keyboard dimensions
   const unitSize = 54;
@@ -98,13 +102,16 @@ export function KeyboardDisplay({
                 selectedKeys.has(keyId) || dragSelectedKeys.has(keyId)
               }
               isModified={modifiedKeys.has(keyCode)}
+              hasRelease={Boolean(modifiedKeys.get(keyCode)?.release)}
               isPreview={isPreview}
               isPressed={pressedKeyCodes?.has(keyCode) ?? false}
               onClick={onKeyClick}
               onMouseDown={
                 isPreview ? () => onPreviewKeyDown?.(keyCode) : onKeyMouseDown
               }
-              onMouseUp={onKeyMouseUp}
+              onMouseUp={
+                isPreview ? () => onPreviewKeyUp?.(keyCode) : onKeyMouseUp
+              }
               onMouseEnter={onKeyMouseEnter}
             />
           );

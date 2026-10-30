@@ -3,16 +3,14 @@ import { getKeyCode } from '@/components/editor/keyboardLayouts';
 
 interface UseKeyboardSelectionProps {
   keys: any[];
-  modifiedKeys: Map<string, [number, number]>;
-  setWaveformSelection: (selection: { start: number; end: number }) => void;
-  defaultDuration: number;
+  /** Called with the key code when a plain click leaves one key selected. */
+  onSingleKeySelect: (keyCode: string) => void;
   getKeyId: (key: any, index: number) => string;
 }
 
 export function useKeyboardSelection({
   keys,
-  modifiedKeys,
-  setWaveformSelection,
+  onSingleKeySelect,
   getKeyId,
 }: UseKeyboardSelectionProps) {
   // Selection states
@@ -198,25 +196,19 @@ export function useKeyboardSelection({
 
       setSelectedKeys(newSelected);
 
-      // Update waveform selection based on the selected key's stored values
-      if (!e.ctrlKey && !e.metaKey && !e.shiftKey && newSelected.size === 1) {
-        // Only update for single key selection (not multi-select)
+      // Show the key's sound when a plain click leaves exactly this key selected
+      if (
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        newSelected.size === 1 &&
+        newSelected.has(keyId)
+      ) {
         const key = keys.find((k, i) => getKeyId(k, i) === keyId);
-        if (key) {
-          const keyCode = getKeyCode(key.label);
-          const storedValues = modifiedKeys.get(keyCode);
-          if (storedValues) {
-            // Update waveform selection to show stored values
-            setWaveformSelection({
-              start: storedValues[0],
-              end: storedValues[1],
-            });
-          }
-          // If no stored values, don't update waveform selection
-        }
+        if (key) onSingleKeySelect(getKeyCode(key.label));
       }
     },
-    [selectedKeys, keys, getKeyId, modifiedKeys, setWaveformSelection],
+    [selectedKeys, keys, getKeyId, onSingleKeySelect],
   );
 
   // Handle mouse down on keyboard area
