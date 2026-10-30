@@ -226,7 +226,7 @@ async function compressToOgg(file: File): Promise<Blob | null> {
 }
 
 /**
- * Build a MechvibesDX V2 config.json + zip from current editor settings
+ * Build a Mechvibes V2 config.json + zip from current editor settings
  * and trigger a download.
  *
  * - Video files: audio is extracted, unselected parts are cut out, the
@@ -279,7 +279,7 @@ export async function exportSoundPack({
     config_version: '2',
     id: slugify(name),
     name,
-    author: author?.trim() || 'MechvibesDX Editor',
+    author: author?.trim() || 'Mechvibes Editor',
     description,
     definition_method: 'single',
     audio_file: audioEntryName,
