@@ -1,6 +1,8 @@
 import JSZip from 'jszip';
 
 export type ImportedSoundPack = {
+  /** config.id, when the pack has one. */
+  id: string | null;
   name: string;
   author: string;
   description: string;
@@ -95,6 +97,7 @@ export async function parseSoundPackZip(
   }
 
   return {
+    id: typeof config.id === 'string' && config.id.trim() ? config.id : null,
     name:
       typeof config.name === 'string'
         ? config.name

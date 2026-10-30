@@ -21,12 +21,16 @@ import {
 } from '@/components/editor/keyboardLayouts';
 import { TimeSegmentControls } from '@/components/editor/TimeSegmentControls';
 import { WaveformEditor } from '@/components/editor/WaveformEditor';
-import { siteIdentity } from '@/config/siteIdentity';
+import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import { useAudioFile } from '@/hooks/useAudioFile';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
+import { editorParams } from '@/lib/urlParams';
 import { exportSoundPack } from '@/utils/soundPackExport';
-import { parseSoundPackZip } from '@/utils/soundPackImport';
+import {
+  type ImportedSoundPack,
+  parseSoundPackZip,
+} from '@/utils/soundPackImport';
 
 // Sound editing panel on wide (lg) screens. By default it takes half the
 // viewport, up to the original 524px, and never less than what its controls need
@@ -106,6 +110,25 @@ function readViewport() {
   return { width: window.innerWidth, height: window.innerHeight };
 }
 
+/** Defaults for a new pack; a link from the library fills in its name and author. */
+function createDefaultPackInfo() {
+  return {
+    name: editorParams.name ?? 'My Sound Pack',
+    author: editorParams.author ?? '',
+    description: `A custom sound pack created with the ${siteIdentity.productName} editor.`,
+    tags: '',
+    mode: 'time' as 'time' | 'file',
+  };
+}
+
+function describeRejectedSource(source: string) {
+  try {
+    return new URL(source).origin;
+  } catch {
+    return 'that address';
+  }
+}
+
 export function EditorPage() {
   // Basic state
   const [keyboardSize, setKeyboardSize] = useState<
@@ -116,13 +139,12 @@ export function EditorPage() {
   >(new Map());
   const [defaultDuration, setDefaultDuration] = useState(100);
   const [showEditPackModal, setShowEditPackModal] = useState(false);
-  const [packInfo, setPackInfo] = useState({
-    name: 'My Sound Pack',
-    author: '',
-    description: `A custom sound pack created with the ${siteIdentity.productName} editor.`,
-    tags: '',
-    mode: 'time' as 'time' | 'file',
-  });
+  const [packInfo, setPackInfo] = useState(createDefaultPackInfo);
+  // config.id of a loaded zip; a library link's ?pack= id takes precedence.
+  const [loadedPackId, setLoadedPackId] = useState<string | null>(null);
+  const [isLoadingSource, setIsLoadingSource] = useState(
+    editorParams.sourceUrl !== null,
+  );
   const [isPreview, setIsPreview] = useState(false);
   const [pressedKeyCodes, setPressedKeyCodes] = useState<Set<string>>(
     new Set(),
@@ -331,13 +353,8 @@ export function EditorPage() {
   const resetPack = useCallback(() => {
     setModifiedKeys(new Map());
     setSelectedKeys(new Set());
-    setPackInfo({
-      name: 'My Sound Pack',
-      author: '',
-      description: `A custom sound pack created with the ${siteIdentity.productName} editor.`,
-      tags: '',
-      mode: 'time',
-    });
+    setPackInfo(createDefaultPackInfo());
+    setLoadedPackId(null);
     clearAudioFile();
     setWaveformSelection({ start: 0, end: 0 });
     setActionError(null);
@@ -371,6 +388,60 @@ export function EditorPage() {
     }
   };
 
+  // Replace the current pack with a parsed zip. Name and author from a library
+  // link win over the zip's: a fork starts from the original but is its own pack.
+  const applyImportedPack = async (imported: ImportedSoundPack) => {
+    resetPack();
+    setLoadedPackId(imported.id);
+    setPackInfo((prev) => ({
+      ...prev,
+      name: editorParams.name ?? imported.name,
+      author: editorParams.author ?? (imported.author || prev.author),
+      description: imported.description || prev.description,
+      mode: imported.mode,
+    }));
+    setModifiedKeys(imported.modifiedKeys);
+    await handleFileFromObject(imported.audioFile);
+  };
+
+  // Start from the pack in ?source= (a fork's original). Only allowed library
+  // origins are fetched; any other source is reported and left alone.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on load; the URL params never change
+  useEffect(() => {
+    if (editorParams.rejectedSource) {
+      setActionError(
+        `The pack in this link was not loaded: ${describeRejectedSource(editorParams.rejectedSource)} is not a Mechvibes library site.`,
+      );
+    }
+    const sourceUrl = editorParams.sourceUrl;
+    if (!sourceUrl) return;
+
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch(sourceUrl, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`The library answered ${response.status}.`);
+        }
+        const blob = await response.blob();
+        const imported = await parseSoundPackZip(
+          new File([blob], 'source.zip', { type: 'application/zip' }),
+        );
+        if (controller.signal.aborted) return;
+        await applyImportedPack(imported);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.warn('[editor] could not load ?source:', error);
+        setActionError(
+          'Could not load the original pack from the library. Reload the page to try again.',
+        );
+      } finally {
+        if (!controller.signal.aborted) setIsLoadingSource(false);
+      }
+    })();
+    return () => controller.abort();
+  }, []);
+
   // Import a sound pack zip and apply its contents to current settings
   const handleImportFile = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -380,17 +451,7 @@ export function EditorPage() {
     if (!file) return;
 
     try {
-      const imported = await parseSoundPackZip(file);
-      resetPack();
-      setPackInfo((prev) => ({
-        ...prev,
-        name: imported.name,
-        author: imported.author || prev.author,
-        description: imported.description || prev.description,
-        mode: imported.mode,
-      }));
-      setModifiedKeys(imported.modifiedKeys);
-      await handleFileFromObject(imported.audioFile);
+      await applyImportedPack(await parseSoundPackZip(file));
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : 'Could not import sound pack.',
@@ -404,6 +465,7 @@ export function EditorPage() {
     setActionError(null);
     try {
       await exportSoundPack({
+        id: editorParams.packId ?? loadedPackId ?? undefined,
         name: packInfo.name,
         author: packInfo.author,
         description: packInfo.description,
@@ -545,6 +607,7 @@ export function EditorPage() {
 
         {showEditPackModal && (
           <EditPackModal
+            libraryPackId={editorParams.packId}
             isOpen={showEditPackModal}
             packInfo={packInfo}
             onClose={() => setShowEditPackModal(false)}
@@ -555,20 +618,44 @@ export function EditorPage() {
           />
         )}
 
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
-          {actionError && (
-            <div className="w-full max-w-4xl mx-auto shrink-0 flex items-start justify-between gap-3 rounded-box border border-error/30 bg-error/10 px-4 py-3 text-sm">
-              <span>{actionError}</span>
-              <button
-                type="button"
-                className="btn btn-xs btn-ghost"
-                onClick={() => setActionError(null)}
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
+        {/* Library link and errors sit outside the keyboard column, whose
+            fit-to-height scale only accounts for its own rows. */}
+        {editorParams.packId && !isPreview && (
+          <div className="shrink-0 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-base-300 bg-info/10 px-4 py-2 text-sm">
+            {isLoadingSource ? (
+              <span className="flex items-center gap-2">
+                <span className="loading loading-spinner loading-xs" />
+                Loading the original pack…
+              </span>
+            ) : (
+              <span>
+                Editing the library pack{' '}
+                <span className="font-medium">{packInfo.name}</span>. Export the
+                zip, then upload it on the pack's page.
+              </span>
+            )}
+            <a
+              href={`${websiteUrl}/profile/sound-packs/${editorParams.packId}/edit`}
+              className="link font-medium"
+            >
+              Open the pack page
+            </a>
+          </div>
+        )}
+        {actionError && (
+          <div className="shrink-0 flex items-center justify-center gap-3 border-b border-error/30 bg-error/10 px-4 py-2 text-sm">
+            <span>{actionError}</span>
+            <button
+              type="button"
+              className="btn btn-xs btn-ghost"
+              onClick={() => setActionError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
           {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
           <div
             className="editor-chrome-vertical editor-chrome-top w-full min-w-[min(100%,46rem)] mx-auto shrink-0"

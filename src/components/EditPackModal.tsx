@@ -10,6 +10,8 @@ interface PackInfo {
 }
 
 interface EditPackModalProps {
+  /** Library id the editor was opened for; shown read-only. */
+  libraryPackId?: string | null;
   isOpen: boolean;
   onClose: () => void;
   packInfo: PackInfo;
@@ -17,6 +19,7 @@ interface EditPackModalProps {
 }
 
 export function EditPackModal({
+  libraryPackId,
   isOpen,
   onClose,
   packInfo,
@@ -75,6 +78,21 @@ export function EditPackModal({
                 : 'Upload individual audio files for each key'}
             </p>
           </fieldset>
+
+          {libraryPackId && (
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend">Library ID</legend>
+              <input
+                type="text"
+                className="input input-sm w-full font-mono"
+                value={libraryPackId}
+                readOnly
+              />
+              <p className="label text-xs mt-1">
+                Issued by the library and written into the exported pack
+              </p>
+            </fieldset>
+          )}
 
           <fieldset className="fieldset">
             <legend className="fieldset-legend">Name</legend>

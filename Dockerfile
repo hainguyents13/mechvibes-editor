@@ -11,6 +11,9 @@ COPY vendor ./vendor
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+# Vite inlines VITE_* values into the bundle, so they are build arguments.
+# Unset, the editor falls back to https://mechvibes.com.
+ARG VITE_LIBRARY_ORIGINS
 RUN pnpm build
 
 FROM nginx:alpine
