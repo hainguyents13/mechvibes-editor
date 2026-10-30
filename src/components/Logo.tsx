@@ -6,7 +6,7 @@ interface LogoProps {
 
 export const Logo = ({ text }: LogoProps) => {
   return (
-    <div className="flex shrink-0 items-center">
+    <div className="hidden sm:flex shrink-0 items-center">
       <a
         href={websiteUrl}
         className="flex items-center space-x-2 whitespace-nowrap"
@@ -18,7 +18,7 @@ export const Logo = ({ text }: LogoProps) => {
           height={32}
           className="h-8 w-8"
         />
-        <span className=" font-bold">{text}</span>
+        <span className="font-bold">{text}</span>
       </a>
     </div>
   );
