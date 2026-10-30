@@ -4,8 +4,6 @@ A browser-based sound pack editor for [Mechvibes](https://github.com/hainguyents
 
 The editor runs entirely in the browser. It has no backend and needs no account. To share a pack, upload the exported zip to the sound pack library on the Mechvibes website.
 
-> Status: early setup. The editor is being moved here from the Mechvibes website.
-
 ## Development
 
 Requires Node.js 22+ and pnpm.
@@ -14,7 +12,17 @@ Requires Node.js 22+ and pnpm.
 pnpm install
 pnpm dev        # start the dev server
 pnpm lint       # biome check
+pnpm typecheck  # tsc
 pnpm build      # typecheck and build to dist/
+```
+
+## Deployment
+
+The editor is a static site. The `Dockerfile` builds it and serves `dist/` with nginx on port 80, falling back to `index.html` for every path.
+
+```bash
+docker build -t mechvibes-editor .
+docker run -p 8080:80 mechvibes-editor
 ```
 
 ## Sound pack format
