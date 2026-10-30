@@ -1,0 +1,7 @@
+.git
+node_modules
+dist
+plans
+.playwright-mcp
+.env
+.env.*
