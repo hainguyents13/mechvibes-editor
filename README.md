@@ -2,6 +2,8 @@
 
 A browser-based sound pack editor for [Mechvibes](https://github.com/hainguyents13/mechvibes). Load an audio file, map sounds to keys, and export a sound pack zip that the app can import.
 
+Open it at [editor.mechvibes.com](https://editor.mechvibes.com).
+
 The editor runs entirely in the browser. It has no backend and needs no account. To share a pack, upload the exported zip to the sound pack library on the Mechvibes website.
 
 ## Development
