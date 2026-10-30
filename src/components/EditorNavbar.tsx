@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
 import type { LibraryUser } from '@/lib/websiteApi';
+import type { PackType } from '@/utils/soundPack';
 import { Logo } from './Logo';
 
 // Website pages, opened in a new tab so the pack being edited stays open.
@@ -29,7 +30,7 @@ const WEBSITE_LINKS = [
 
 interface EditorNavbarProps {
   packName: string;
-  editMode: 'time' | 'file';
+  packType: PackType;
   onEditPack: () => void;
   onNewPack: () => void;
   onImport: () => void;
@@ -70,7 +71,7 @@ function Avatar({ user }: { user: LibraryUser }) {
 
 export function EditorNavbar({
   packName,
-  editMode,
+  packType,
   onEditPack,
   onNewPack,
   onImport,
@@ -139,7 +140,7 @@ export function EditorNavbar({
           >
             <span className="font-medium truncate">{packName}</span>
             <span className="badge badge-xs badge-neutral hidden sm:inline-flex">
-              {editMode === 'time' ? 'Time' : 'File'}
+              {packType}
             </span>
             <Pencil className="h-3 w-3 shrink-0" />
           </button>

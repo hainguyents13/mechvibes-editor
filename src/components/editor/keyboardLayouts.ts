@@ -362,7 +362,16 @@ export const keyboardLayouts = {
       'Ctrl',
     ],
   ],
+  // Mouse packs: the buttons and wheel the app listens for (MouseLeft…Mouse8).
+  mouse: [
+    [{ w: 2, h: 2 }, 'Left button', 'Wheel up', { w: 2, h: 2 }, 'Right button'],
+    [{ x: 2 }, 'Middle button'],
+    [{ x: 2 }, 'Wheel down'],
+    ['Button 4', 'Button 5', 'Button 6', 'Button 7', 'Button 8'],
+  ],
 };
+
+export type LayoutName = keyof typeof keyboardLayouts;
 
 // Function to parse keyboard layout and render keys
 export function parseKeyboardLayout(layout: any[], _unitSize: number = 54) {
@@ -494,6 +503,16 @@ export const getKeyCode = (label: string): string => {
     PrtSc: 'PrintScreen',
     'Scroll Lock': 'ScrollLock',
     'Pause\nBreak': 'Pause',
+    'Left button': 'MouseLeft',
+    'Right button': 'MouseRight',
+    'Middle button': 'MouseMiddle',
+    'Wheel up': 'MouseWheelUp',
+    'Wheel down': 'MouseWheelDown',
+    'Button 4': 'Mouse4',
+    'Button 5': 'Mouse5',
+    'Button 6': 'Mouse6',
+    'Button 7': 'Mouse7',
+    'Button 8': 'Mouse8',
   };
 
   return keyCodeMap[key] || key;

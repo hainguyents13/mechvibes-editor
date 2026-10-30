@@ -9,6 +9,8 @@ interface KeyButtonProps {
   height: number;
   isSelected: boolean;
   isModified: boolean;
+  /** The key also plays a sound when it comes up. */
+  hasRelease?: boolean;
   keyId: string;
   onClick: (keyId: string, e: React.MouseEvent) => void;
   onMouseDown: (keyId: string, e: React.MouseEvent) => void;
@@ -27,6 +29,7 @@ export function KeyButton({
   height,
   isSelected,
   isModified,
+  hasRelease = false,
   keyId,
   onMouseDown,
   onMouseUp,
@@ -79,6 +82,9 @@ export function KeyButton({
     >
       {!isPreview && isModified && (
         <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white shadow-lg ring-2 ring-primary/30"></div>
+      )}
+      {!isPreview && hasRelease && (
+        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>
       )}
       {label.replace(/ /g, '\n')}
     </button>

@@ -3,9 +3,16 @@ import React from 'react';
 import { KEY_GROUPS } from '@/components/editor/key-groups';
 import { cn } from '@/lib/utils';
 import {
-  applyTimeSegmentToKeys,
+  applyPressToKeys,
+  applyReleaseToKeys,
   isValidWaveformSelection,
+  keysAcceptingRelease,
+  removeReleaseFromKeys,
 } from '@/utils/audioUtils';
+import type { KeySounds } from '@/utils/soundPack';
+
+/** Which half of a key's sound the controls assign. */
+export type SoundSlot = 'press' | 'release';
 
 interface TimeSegmentControlsProps {
   waveformSelection: { start: number; end: number };
@@ -16,15 +23,24 @@ interface TimeSegmentControlsProps {
   playSelectedSegment: () => void;
   selectedKeys: Set<string>;
   setSelectedKeys: React.Dispatch<React.SetStateAction<Set<string>>>;
-  modifiedKeys: Map<string, [number, number]>;
-  setModifiedKeys: React.Dispatch<
-    React.SetStateAction<Map<string, [number, number]>>
-  >;
+  /** Key codes of the selected keys. */
+  selectedCodes: string[];
+  keySounds: KeySounds;
+  setKeySounds: React.Dispatch<React.SetStateAction<KeySounds>>;
+  /** The source shown in the waveform; applied sounds are cut from it. */
+  activeSourceId: string;
+  /** Length of the active source in seconds. */
+  audioDuration: number;
+  slot: SoundSlot;
+  setSlot: (slot: SoundSlot) => void;
   /** Keys of the current layout, used to resolve the group-select buttons. */
   keys?: any[];
   /** Same id builder the keyboard uses, so group ids match selection ids. */
   getKeyId?: (key: any, index: number) => string;
 }
+
+const plural = (count: number, word: string) =>
+  `${count} ${word}${count !== 1 ? 's' : ''}`;
 
 export function TimeSegmentControls({
   waveformSelection,
@@ -33,20 +49,39 @@ export function TimeSegmentControls({
   playSelectedSegment,
   selectedKeys,
   setSelectedKeys,
-  modifiedKeys,
-  setModifiedKeys,
+  selectedCodes,
+  keySounds,
+  setKeySounds,
+  activeSourceId,
+  audioDuration,
+  slot,
+  setSlot,
   keys,
   getKeyId,
 }: TimeSegmentControlsProps) {
   const hasValidSelection = isValidWaveformSelection(waveformSelection);
-  const canApply = selectedKeys.size > 0 && hasValidSelection;
+  // A release sound needs a press sound from the same file on the key.
+  const targetCodes =
+    slot === 'press'
+      ? selectedCodes
+      : keysAcceptingRelease(selectedCodes, activeSourceId, keySounds);
+  const canApply = targetCodes.length > 0 && hasValidSelection;
+  const codesWithRelease = selectedCodes.filter(
+    (code) => keySounds.get(code)?.release,
+  );
 
   const [showResetConfirm, setShowResetConfirm] = React.useState(false);
 
-  const applyToKeyIds = (keyIds: Set<string>) => {
-    if (keyIds.size === 0 || !hasValidSelection) return;
-    setModifiedKeys(
-      applyTimeSegmentToKeys(keyIds, waveformSelection, modifiedKeys),
+  const applySelection = () => {
+    if (!canApply) return;
+    const segment: [number, number] = [
+      waveformSelection.start,
+      waveformSelection.end,
+    ];
+    setKeySounds(
+      slot === 'press'
+        ? applyPressToKeys(targetCodes, activeSourceId, segment, keySounds)
+        : applyReleaseToKeys(targetCodes, activeSourceId, segment, keySounds),
     );
   };
 
@@ -70,6 +105,16 @@ export function TimeSegmentControls({
   const selectGroup = (ids: Set<string>) => {
     setSelectedKeys(isGroupSelected(ids) ? new Set() : new Set(ids));
   };
+
+  let hint: string | null = null;
+  if (selectedCodes.length === 0) {
+    hint = 'Select at least one key to assign this sound.';
+  } else if (slot === 'release' && targetCodes.length === 0) {
+    hint =
+      'A release sound plays when the key comes up. Give the selected keys a press sound from this file first.';
+  } else if (!hasValidSelection) {
+    hint = 'Drag on the waveform to pick the sound first.';
+  }
 
   return (
     <>
@@ -104,6 +149,35 @@ export function TimeSegmentControls({
           <h2 className="text-xs font-medium text-base-content">Sound</h2>
         </legend>
         <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col">
+            <span className="label text-xs">Plays on</span>
+            <div className="join">
+              <button
+                type="button"
+                className={cn(
+                  'btn btn-sm join-item',
+                  slot === 'press' ? 'btn-active' : '',
+                )}
+                aria-pressed={slot === 'press'}
+                onClick={() => setSlot('press')}
+                title="Assign the sound a key plays when it goes down"
+              >
+                Press
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'btn btn-sm join-item',
+                  slot === 'release' ? 'btn-active' : '',
+                )}
+                aria-pressed={slot === 'release'}
+                onClick={() => setSlot('release')}
+                title="Assign the sound a key plays when it comes up"
+              >
+                Release
+              </button>
+            </div>
+          </div>
           <div className="w-24">
             <label className="label text-xs" htmlFor="start-time">
               Start (ms)
@@ -163,6 +237,19 @@ export function TimeSegmentControls({
           <div>
             <button
               type="button"
+              className="btn btn-sm rounded-box"
+              onClick={() =>
+                setWaveformSelection({ start: 0, end: audioDuration * 1000 })
+              }
+              disabled={!(audioDuration > 0)}
+              title="Select the whole file, for a file that holds one sound"
+            >
+              Whole file
+            </button>
+          </div>
+          <div>
+            <button
+              type="button"
               className={cn(
                 'btn btn-sm rounded-box',
                 isPlaying ? 'btn-active' : '',
@@ -191,35 +278,50 @@ export function TimeSegmentControls({
             <button
               type="button"
               className="btn btn-sm btn-primary rounded-box"
-              onClick={() => applyToKeyIds(selectedKeys)}
+              onClick={applySelection}
               disabled={!canApply}
-              title={`Assign this sound to ${selectedKeys.size} selected key${selectedKeys.size !== 1 ? 's' : ''}`}
+              title={`Assign this ${slot} sound to ${plural(targetCodes.length, 'key')}`}
             >
-              Apply to {selectedKeys.size} key
-              {selectedKeys.size !== 1 ? 's' : ''}
+              {slot === 'press' ? 'Apply' : 'Apply release'} to{' '}
+              {plural(targetCodes.length, 'key')}
             </button>
           </div>
+          {slot === 'release' && (
+            <div>
+              <button
+                type="button"
+                className="btn btn-sm rounded-box"
+                onClick={() =>
+                  setKeySounds(
+                    removeReleaseFromKeys(codesWithRelease, keySounds),
+                  )
+                }
+                disabled={codesWithRelease.length === 0}
+                title="Make the selected keys silent when they come up"
+              >
+                Remove release ({codesWithRelease.length})
+              </button>
+            </div>
+          )}
           <div className="ml-auto">
             <button
               type="button"
               className="btn btn-sm btn-error rounded-box"
               onClick={() => setShowResetConfirm(true)}
-              disabled={modifiedKeys.size === 0}
-              title={`Clear the sound on all ${modifiedKeys.size} mapped key${modifiedKeys.size !== 1 ? 's' : ''}`}
+              disabled={keySounds.size === 0}
+              title={`Clear the sound on all ${plural(keySounds.size, 'mapped key')}`}
             >
               <RotateCcw className="h-3 w-3" />
-              Reset all ({modifiedKeys.size})
+              Reset all ({keySounds.size})
             </button>
           </div>
         </div>
 
-        {/* Explain why the apply buttons are disabled */}
-        {!canApply && (
+        {/* Explain why the apply button is disabled */}
+        {hint && (
           <p className="mt-2 flex items-center gap-1.5 text-xs text-base-content/60">
             <Info className="h-3.5 w-3.5 shrink-0" />
-            {selectedKeys.size === 0
-              ? 'Select at least one key on the keyboard to assign this sound.'
-              : 'Drag on the waveform to pick the sound first.'}
+            {hint}
           </p>
         )}
       </fieldset>
@@ -232,9 +334,9 @@ export function TimeSegmentControls({
           <div className="modal-box">
             <h3 className="text-base font-semibold">Reset all key mappings?</h3>
             <p className="py-3 text-sm text-base-content/70">
-              This clears the sound on all {modifiedKeys.size} mapped key
-              {modifiedKeys.size !== 1 ? 's' : ''}. The audio file itself is
-              kept. This cannot be undone.
+              This clears the sound on all{' '}
+              {plural(keySounds.size, 'mapped key')}. The audio files themselves
+              are kept. This cannot be undone.
             </p>
             <div className="modal-action">
               <button
@@ -248,7 +350,7 @@ export function TimeSegmentControls({
                 type="button"
                 className="btn btn-sm btn-error rounded-box"
                 onClick={() => {
-                  setModifiedKeys(new Map());
+                  setKeySounds(new Map());
                   setShowResetConfirm(false);
                 }}
               >

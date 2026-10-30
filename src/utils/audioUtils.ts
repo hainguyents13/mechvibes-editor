@@ -1,24 +1,31 @@
-import { getKeyCode } from '@/components/editor/keyboardLayouts';
+import type { KeySound, KeySounds, Segment } from '@/utils/soundPack';
+
+/** Whether a file is audio or video the editor can cut sounds from. */
+export const isMediaFile = (file: File) =>
+  file.type.startsWith('audio/') || file.type.startsWith('video/');
 
 /**
- * Get audio duration from a File object
+ * Length of an audio or video file in seconds, or 0 when the browser cannot
+ * read it.
  */
 export const getAudioDuration = (file: File): Promise<number> => {
   return new Promise((resolve) => {
-    const audio = new Audio();
+    const media: HTMLMediaElement = file.type.startsWith('video/')
+      ? document.createElement('video')
+      : new Audio();
     const url = URL.createObjectURL(file);
 
-    audio.addEventListener('loadedmetadata', () => {
+    media.addEventListener('loadedmetadata', () => {
       URL.revokeObjectURL(url);
-      resolve(audio.duration);
+      resolve(Number.isFinite(media.duration) ? media.duration : 0);
     });
 
-    audio.addEventListener('error', () => {
+    media.addEventListener('error', () => {
       URL.revokeObjectURL(url);
       resolve(0);
     });
 
-    audio.src = url;
+    media.src = url;
   });
 };
 
@@ -33,46 +40,63 @@ export const formatDuration = (seconds: number): string => {
 };
 
 /**
- * Apply time segment to selected keys
+ * Give keys a press sound from `source`. A key that already had a release
+ * sound from the same source keeps it; one from another source loses it,
+ * because both halves of a key's sound come from one file.
  */
-export const applyTimeSegmentToKeys = (
-  selectedKeys: Set<string>,
-  waveformSelection: { start: number; end: number },
-  modifiedKeys: Map<string, [number, number]>,
-): Map<string, [number, number]> => {
-  const newModifiedKeys = new Map(modifiedKeys);
-  selectedKeys.forEach((keyId) => {
-    const keyCode = getKeyCode(keyId.split('-')[0]);
-    newModifiedKeys.set(keyCode, [
-      waveformSelection.start,
-      waveformSelection.end,
-    ]);
-  });
-  return newModifiedKeys;
+export const applyPressToKeys = (
+  keyCodes: string[],
+  source: string,
+  segment: Segment,
+  keySounds: KeySounds,
+): KeySounds => {
+  const next = new Map(keySounds);
+  for (const code of keyCodes) {
+    const current = keySounds.get(code);
+    const sound: KeySound = { source, press: segment };
+    if (current?.source === source && current.release) {
+      sound.release = current.release;
+    }
+    next.set(code, sound);
+  }
+  return next;
 };
 
-/**
- * Apply entire audio file to selected keys (file mode)
- */
-export const applyAudioFileToKeys = (
-  selectedKeys: Set<string>,
-  audioDuration: number,
-  modifiedKeys: Map<string, [number, number]>,
-): Map<string, [number, number]> => {
-  const newModifiedKeys = new Map(modifiedKeys);
-  selectedKeys.forEach((keyId) => {
-    const keyCode = getKeyCode(keyId.split('-')[0]);
-    // Use 0 to full duration for file mode
-    newModifiedKeys.set(keyCode, [0, audioDuration * 1000]);
-  });
-  return newModifiedKeys;
+/** Keys that can take a release sound from `source`: those whose press sound comes from it. */
+export const keysAcceptingRelease = (
+  keyCodes: string[],
+  source: string,
+  keySounds: KeySounds,
+) => keyCodes.filter((code) => keySounds.get(code)?.source === source);
+
+/** Give keys a release sound. Keys without a press sound from `source` are left alone. */
+export const applyReleaseToKeys = (
+  keyCodes: string[],
+  source: string,
+  segment: Segment,
+  keySounds: KeySounds,
+): KeySounds => {
+  const next = new Map(keySounds);
+  for (const code of keysAcceptingRelease(keyCodes, source, keySounds)) {
+    const current = keySounds.get(code) as KeySound;
+    next.set(code, { ...current, release: segment });
+  }
+  return next;
 };
 
-/**
- * Check if a file is a valid audio file
- */
-export const isValidAudioFile = (file: File): boolean => {
-  return file.type.startsWith('audio/');
+/** Drop the release sound of the given keys; they go back to a silent release. */
+export const removeReleaseFromKeys = (
+  keyCodes: string[],
+  keySounds: KeySounds,
+): KeySounds => {
+  const next = new Map(keySounds);
+  for (const code of keyCodes) {
+    const current = keySounds.get(code);
+    if (current?.release) {
+      next.set(code, { source: current.source, press: current.press });
+    }
+  }
+  return next;
 };
 
 /**

@@ -1,6 +1,6 @@
 # Mechvibes Editor
 
-A browser-based sound pack editor for [Mechvibes](https://github.com/hainguyents13/mechvibes). Load an audio file, map sounds to keys, and export a sound pack zip that the app can import.
+A browser-based sound pack editor for [Mechvibes](https://github.com/hainguyents13/mechvibes). Load audio or video files, map sounds to keys or mouse buttons, and export a sound pack zip that the app can import.
 
 Open it at [editor.mechvibes.com](https://editor.mechvibes.com).
 
@@ -41,7 +41,14 @@ To work against a local website, run it on `localhost:3000` with `NEXT_PUBLIC_ED
 
 ## Sound pack format
 
-Exported packs follow the `config.json` v2 format documented in the app repo: [soundpack-config-v2.md](https://github.com/hainguyents13/mechvibes/blob/main/docs/soundpack-config-v2.md).
+Exported packs follow the `config.json` v2 format documented in the app repo: [soundpack-config-v2.md](https://github.com/hainguyents13/mechvibes/blob/main/docs/soundpack-config-v2.md). The editor covers all of it:
+
+- Each key or button has a press sound and, optionally, a release sound (`timing` with one or two segments).
+- Keys cut from one file make a `single` pack. Keys cut from several files make a `multi` pack, where each key names its file.
+- Keyboard and mouse packs (`soundpack_type`), tags, an icon, and the `recommended_volume` and `random_pitch` options.
+- Files other than OGG and MP3 are encoded to OGG. A video keeps only the parts its keys use.
+
+Opening a pack and exporting it again keeps what the editor does not edit, such as `version`, `created_at`, unknown fields and the license file. Classic (V1) packs cannot be opened.
 
 ## License
 

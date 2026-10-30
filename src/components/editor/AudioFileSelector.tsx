@@ -1,13 +1,18 @@
-import { Music, Upload, Video, X } from 'lucide-react';
-import type React from 'react';
+import { Music, Plus, Upload, Video, X } from 'lucide-react';
+import React from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
-import { useAudioFile } from '@/hooks/useAudioFile';
+import { cn } from '@/lib/utils';
+import { formatDuration, isMediaFile } from '@/utils/audioUtils';
+import type { AudioSource } from '@/utils/soundPack';
 
 interface AudioFileSelectorProps {
-  audioFile: File | null;
-  audioDuration: number;
-  onFileSelect: (file: File) => void;
-  onClearFile: () => void;
+  sources: AudioSource[];
+  activeSourceId: string | null;
+  /** How many keys use each source. */
+  keyCounts: Map<string, number>;
+  onSelect: (id: string) => void;
+  onAdd: (files: File[]) => void;
+  onRemove: (id: string) => void;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
 
@@ -17,55 +22,69 @@ function formatLabel(file: File): string {
   return (subtype.replace(/^x-/, '') || 'unknown').toUpperCase();
 }
 
+const stopEvent = (e: React.DragEvent) => {
+  e.preventDefault();
+  e.stopPropagation();
+};
+
 export function AudioFileSelector({
-  audioFile,
-  audioDuration,
-  onFileSelect,
-  onClearFile,
+  sources,
+  activeSourceId,
+  keyCounts,
+  onSelect,
+  onAdd,
+  onRemove,
   videoRef,
 }: AudioFileSelectorProps) {
-  const { handleDragOver, handleDragEnter, handleDragLeave, formatDuration } =
-    useAudioFile();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [pendingRemoval, setPendingRemoval] =
+    React.useState<AudioSource | null>(null);
 
-  const isVideo = audioFile?.type.startsWith('video/') ?? false;
+  const addFiles = (files: FileList | null) => {
+    const media = Array.from(files ?? []).filter(isMediaFile);
+    if (media.length > 0) onAdd(media);
+  };
 
-  // Handle file selection from input
-  const handleInputChange = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    if (
-      file &&
-      (file.type.startsWith('audio/') || file.type.startsWith('video/'))
-    ) {
-      onFileSelect(file);
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    addFiles(event.target.files);
+    event.target.value = '';
+  };
+
+  const handleFileDrop = (e: React.DragEvent) => {
+    stopEvent(e);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const requestRemoval = (source: AudioSource) => {
+    if ((keyCounts.get(source.id) ?? 0) > 0) {
+      setPendingRemoval(source);
+    } else {
+      onRemove(source.id);
     }
   };
 
-  // Handle drag and drop
-  const handleFileDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const fileInput = (
+    <input
+      ref={inputRef}
+      id="audio-file-input"
+      type="file"
+      className="hidden"
+      accept="audio/*,video/*"
+      multiple
+      onChange={handleInputChange}
+    />
+  );
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
-        onFileSelect(file);
-      }
-    }
-  };
-
-  if (!audioFile) {
+  if (sources.length === 0) {
     return (
       // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: mouse-driven editor surface ported unchanged from the website; keyboard access is a follow-up
       <div
         className="group h-full min-h-32 min-w-0 flex flex-col items-center justify-center editor-dropzone-surface border border-dashed border-base-content/20 rounded-box p-8 text-center hover:border-base-content/40 transition-colors cursor-pointer motion-safe:animate-[dropzone-glow_2.4s_ease-out_infinite] hover:animate-none"
-        onDragOver={handleDragOver}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
+        onDragOver={stopEvent}
+        onDragEnter={stopEvent}
+        onDragLeave={stopEvent}
         onDrop={handleFileDrop}
-        onClick={() => document.getElementById('audio-file-input')?.click()}
+        onClick={() => inputRef.current?.click()}
       >
         <Upload className="h-12 w-12 text-base-content/40 mb-3" />
         <h2 className="text-sm font-medium text-base-content mb-3">
@@ -77,7 +96,7 @@ export function AudioFileSelector({
           <Video className="h-8 w-8" />
         </div>
         <div className="text-sm text-base-content/60 mb-1.5">
-          Drop an{' '}
+          Drop{' '}
           <span className="text-primary underline underline-offset-2">
             audio
           </span>{' '}
@@ -85,71 +104,113 @@ export function AudioFileSelector({
           <span className="text-primary underline underline-offset-2">
             video
           </span>{' '}
-          file here, or click to select
+          files here, or click to select
         </div>
         <div className="text-xs text-base-content/40">
-          Audio: MP3, WAV, OGG, M4A · Video: MP4, WebM
+          Audio: MP3, WAV, OGG, FLAC, M4A · Video: MP4, WebM
         </div>
         <div className="mt-1.5 text-xs text-base-content/40">
-          Video is used for its audio track — the clip stays visible for
-          reference
+          Use one recording for every key, or a file per key
         </div>
-        <input
-          id="audio-file-input"
-          type="file"
-          className="hidden"
-          accept="audio/*,video/*"
-          onChange={handleInputChange}
-        />
+        {fileInput}
       </div>
     );
   }
 
-  const sizeMb = `${(audioFile.size / (1024 * 1024)).toFixed(1)} MB`;
-  const meta = `${sizeMb} • ${formatDuration(audioDuration)}`;
-
-  // Audio tracks will become a multi-file list; today it holds the one selected file.
-  const audioTracks = isVideo ? [] : [audioFile];
+  const activeSource = sources.find((source) => source.id === activeSourceId);
+  const isVideo = activeSource?.file.type.startsWith('video/') ?? false;
 
   return (
-    <div className="h-full min-w-0 flex flex-col gap-3">
-      {isVideo ? (
-        /* Video: the file itself titles the panel, clear button on the same row */
-        <div className="flex items-start justify-between gap-2 shrink-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Video className="h-4 w-4 shrink-0 text-primary" />
-              <h2
-                className="text-xs font-medium text-base-content truncate"
-                title={audioFile.name}
-              >
-                {audioFile.name}
-              </h2>
-              <span className="shrink-0 badge badge-xs badge-primary font-semibold tracking-wide">
-                {formatLabel(audioFile)}
-              </span>
-            </div>
-            {/* Indented to line up with the title, past the icon and its gap */}
-            <div className="pl-6 text-[10px] text-base-content/60">{meta}</div>
-          </div>
-          <button
-            type="button"
-            className="shrink-0 btn btn-xs btn-ghost rounded-box text-error"
-            onClick={onClearFile}
-            title="Clear file"
-          >
-            <X className="h-3 w-3" />
-            Clear
-          </button>
-        </div>
-      ) : (
-        <h2 className="text-xs font-medium text-base-content shrink-0">
-          Audio or video sources ({audioTracks.length})
+    // biome-ignore lint/a11y/noStaticElementInteractions: drop target for more files; the Add button is the accessible path
+    <div
+      className="h-full min-w-0 flex flex-col gap-3"
+      onDragOver={stopEvent}
+      onDragEnter={stopEvent}
+      onDragLeave={stopEvent}
+      onDrop={handleFileDrop}
+    >
+      <div className="flex items-center justify-between gap-2 shrink-0">
+        <h2 className="text-xs font-medium text-base-content">
+          Audio sources ({sources.length})
         </h2>
-      )}
+        <button
+          type="button"
+          className="btn btn-xs btn-ghost rounded-box"
+          onClick={() => inputRef.current?.click()}
+          title="Add audio or video files. Keys can each use a different file."
+        >
+          <Plus className="h-3 w-3" />
+          Add
+        </button>
+        {fileInput}
+      </div>
 
-      {isVideo ? (
-        /* Video: preview takes the whole panel so portrait clips stay as large as possible */
+      {/* One row per source, each with its own palette colour; the selected
+          one is shown in the waveform. */}
+      <ul
+        className={cn(
+          'min-h-0 overflow-y-auto flex flex-col gap-2',
+          isVideo ? 'shrink-0 max-h-28' : 'flex-1',
+        )}
+      >
+        {sources.map((source, index) => {
+          const color = getAudioTrackColor(index);
+          const isActive = source.id === activeSourceId;
+          const keyCount = keyCounts.get(source.id) ?? 0;
+          const Icon = source.file.type.startsWith('video/') ? Video : Music;
+          const sizeMb = `${(source.file.size / (1024 * 1024)).toFixed(1)} MB`;
+          return (
+            <li
+              key={source.id}
+              className={cn(
+                'flex items-center gap-1 rounded-box border border-l-4',
+                color.border,
+                color.bg,
+                isActive
+                  ? 'border-base-content/40 ring-1 ring-base-content/20'
+                  : 'border-base-content/10',
+              )}
+            >
+              <button
+                type="button"
+                className="min-w-0 flex-1 flex items-center gap-3 p-2 pl-3 text-left cursor-pointer"
+                onClick={() => onSelect(source.id)}
+                aria-pressed={isActive}
+                title={`Show ${source.file.name} in the waveform`}
+              >
+                <Icon className={`h-4 w-4 shrink-0 mr-1 ${color.text}`} />
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={cn(
+                      'text-xs text-base-content truncate',
+                      isActive ? 'font-semibold' : 'font-medium',
+                    )}
+                  >
+                    {source.file.name}
+                  </div>
+                  <div className="text-[10px] text-base-content/60">
+                    {formatLabel(source.file)} • {sizeMb} •{' '}
+                    {formatDuration(source.duration)} •{' '}
+                    {keyCount === 1 ? '1 key' : `${keyCount} keys`}
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="shrink-0 mr-1 btn btn-xs btn-ghost btn-square rounded-box text-error"
+                onClick={() => requestRemoval(source)}
+                title={`Remove ${source.file.name}`}
+                aria-label={`Remove ${source.file.name}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {isVideo && (
+        /* Video: the preview takes the rest of the panel so portrait clips stay as large as possible */
         <div className="flex-1 min-h-0 rounded-box flex items-center justify-center overflow-hidden">
           {/* src is assigned by CombinedWaveform, which uses this element as its media source */}
           {/* biome-ignore lint/a11y/useMediaCaption: user-supplied video, no captions exist */}
@@ -159,40 +220,50 @@ export function AudioFileSelector({
             className="max-w-full max-h-full rounded-box object-contain"
           />
         </div>
-      ) : (
-        /* Audio: one row per track, each with its own palette colour and clear button */
-        <ul className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2">
-          {audioTracks.map((track, index) => {
-            const color = getAudioTrackColor(index);
-            return (
-              <li
-                key={`${track.name}-${index}`}
-                className={`flex items-center gap-3 rounded-box border border-base-content/10 border-l-4 ${color.border} ${color.bg} p-2 pl-3`}
+      )}
+
+      {pendingRemoval && (
+        <dialog
+          className="modal modal-open"
+          onClose={() => setPendingRemoval(null)}
+        >
+          <div className="modal-box">
+            <h3 className="text-base font-semibold">
+              Remove {pendingRemoval.file.name}?
+            </h3>
+            <p className="py-3 text-sm text-base-content/70">
+              {keyCounts.get(pendingRemoval.id) === 1
+                ? '1 key uses this file and loses its sound.'
+                : `${keyCounts.get(pendingRemoval.id)} keys use this file and lose their sound.`}{' '}
+              This cannot be undone.
+            </p>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn btn-sm rounded-box"
+                onClick={() => setPendingRemoval(null)}
               >
-                <Music className={`h-4 w-4 shrink-0 mr-1 ${color.text}`} />
-                <div className="min-w-0 flex-1">
-                  <div
-                    className="text-xs font-medium text-base-content truncate"
-                    title={track.name}
-                  >
-                    {track.name}
-                  </div>
-                  <div className="text-[10px] text-base-content/60">
-                    {formatLabel(track)} • {meta}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="shrink-0 btn btn-xs btn-ghost btn-square rounded-box text-error"
-                  onClick={onClearFile}
-                  title={`Remove ${track.name}`}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-error rounded-box"
+                onClick={() => {
+                  onRemove(pendingRemoval.id);
+                  setPendingRemoval(null);
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="modal-backdrop"
+            aria-label="Close"
+            onClick={() => setPendingRemoval(null)}
+          />
+        </dialog>
       )}
     </div>
   );

@@ -12,18 +12,20 @@ import { ConfirmDiscardModal } from '@/components/ConfirmDiscardModal';
 import { EditorNavbar } from '@/components/EditorNavbar';
 import { EditPackModal } from '@/components/EditPackModal';
 import { AudioFileSelector } from '@/components/editor/AudioFileSelector';
-import { FileModeControls } from '@/components/editor/FileModeControls';
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
 import { KeyboardShortcuts } from '@/components/editor/KeyboardShortcuts';
 import {
+  getKeyCode,
   keyboardLayouts,
   parseKeyboardLayout,
 } from '@/components/editor/keyboardLayouts';
-import { TimeSegmentControls } from '@/components/editor/TimeSegmentControls';
+import {
+  type SoundSlot,
+  TimeSegmentControls,
+} from '@/components/editor/TimeSegmentControls';
 import { WaveformEditor } from '@/components/editor/WaveformEditor';
 import { canOpenPack, MyPacksModal } from '@/components/MyPacksModal';
 import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
-import { useAudioFile } from '@/hooks/useAudioFile';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
@@ -34,11 +36,32 @@ import {
   updatePackZip,
   WebsiteApiError,
 } from '@/lib/websiteApi';
+import { getAudioDuration } from '@/utils/audioUtils';
+import {
+  type AudioSource,
+  countKeysBySource,
+  createAudioSource,
+  type KeySounds,
+  type PackExtras,
+  type PackInfo,
+  type PackType,
+} from '@/utils/soundPack';
 import { buildSoundPackZip, exportSoundPack } from '@/utils/soundPackExport';
 import {
   type ImportedSoundPack,
   parseSoundPackZip,
 } from '@/utils/soundPackImport';
+
+// Mouse buttons in preview, by MouseEvent.button.
+const MOUSE_BUTTON_CODES = [
+  'MouseLeft',
+  'MouseMiddle',
+  'MouseRight',
+  'Mouse4',
+  'Mouse5',
+];
+/** The app plays at most one wheel sound per 120 ms. */
+const WHEEL_SOUND_INTERVAL_MS = 120;
 
 // Sound editing panel on wide (lg) screens. By default it takes half the
 // viewport, up to the original 524px, and never less than what its controls need
@@ -119,13 +142,16 @@ function readViewport() {
 }
 
 /** Defaults for a new pack. */
-function createDefaultPackInfo() {
+function createDefaultPackInfo(): PackInfo {
   return {
     name: 'My Sound Pack',
     author: '',
     description: `A custom sound pack created with the ${siteIdentity.productName} editor.`,
-    tags: '',
-    mode: 'time' as 'time' | 'file',
+    tags: [],
+    packType: 'Keyboard',
+    recommendedVolume: 1,
+    randomPitch: false,
+    icon: null,
   };
 }
 
@@ -195,15 +221,19 @@ export function EditorPage() {
   const [keyboardSize, setKeyboardSize] = useState<
     'fullsize' | 'tkl' | 'compact'
   >('fullsize');
-  const [modifiedKeys, setModifiedKeys] = useState<
-    Map<string, [number, number]>
-  >(new Map());
+  const [keySounds, setKeySounds] = useState<KeySounds>(new Map());
+  const [sources, setSources] = useState<AudioSource[]>([]);
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  // Whether the sound controls assign press or release sounds.
+  const [soundSlot, setSoundSlot] = useState<SoundSlot>('press');
   const [defaultDuration, setDefaultDuration] = useState(100);
   const [showEditPackModal, setShowEditPackModal] = useState(false);
   const [packInfo, setPackInfo] = useState(createDefaultPackInfo);
   // config.id of an imported zip, kept on export. The editor never invents
   // one: the library issues ids, and the app mints imported-<uuid> otherwise.
   const [loadedPackId, setLoadedPackId] = useState<string | null>(null);
+  // What an imported zip carried that the editor does not edit.
+  const [packExtras, setPackExtras] = useState<PackExtras | null>(null);
   const [isPreview, setIsPreview] = useState(false);
   const [pressedKeyCodes, setPressedKeyCodes] = useState<Set<string>>(
     new Set(),
@@ -250,13 +280,19 @@ export function EditorPage() {
   // Video preview element lives in AudioFileSelector, driven by WaveformEditor playback
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
-  // Get editMode from packInfo
-  const editMode = packInfo.mode;
+  const activeSource =
+    sources.find((source) => source.id === activeSourceId) ?? null;
+  const audioFile = activeSource?.file ?? null;
+  const audioDuration = activeSource?.duration ?? 0;
+  const keyCounts = useMemo(() => countKeysBySource(keySounds), [keySounds]);
+
+  // A mouse pack shows the mouse buttons instead of a keyboard.
+  const layout = packInfo.packType === 'Mouse' ? 'mouse' : keyboardSize;
 
   // Parse keyboard layout — memoised so key-group lookups don't rebuild each render
   const keys = useMemo(
-    () => parseKeyboardLayout(keyboardLayouts[keyboardSize]),
-    [keyboardSize],
+    () => parseKeyboardLayout(keyboardLayouts[layout]),
+    [layout],
   );
 
   const [viewport, setViewport] = useState(readViewport);
@@ -367,9 +403,14 @@ export function EditorPage() {
     return `${key.label || 'key'}-${index}-${key.x}-${key.y}`;
   }, []);
 
-  // Audio file hook
-  const { audioFile, audioDuration, handleFileFromObject, clearAudioFile } =
-    useAudioFile();
+  // Selection ids to key codes. Two keys can share a code (both Shift keys).
+  const keyCodeById = useMemo(() => {
+    const codes = new Map<string, string>();
+    keys.forEach((key, index) => {
+      codes.set(getKeyId(key, index), getKeyCode(key.label));
+    });
+    return codes;
+  }, [keys, getKeyId]);
 
   // Play function ref
   const playSelectedSegmentRef = React.useRef<(() => void) | null>(null);
@@ -394,42 +435,89 @@ export function EditorPage() {
     handleMouseDown,
   } = useKeyboardSelection({
     keys,
-    modifiedKeys,
-    setWaveformSelection: setWaveformSelectionCallback,
-    defaultDuration,
+    onSingleKeySelect: (keyCode) => {
+      // Show the key's file and the half of its sound being edited.
+      const sound = keySounds.get(keyCode);
+      if (!sound) return;
+      const segment =
+        soundSlot === 'release' && sound.release ? sound.release : sound.press;
+      setActiveSourceId(sound.source);
+      setWaveformSelection({ start: segment[0], end: segment[1] });
+    },
     getKeyId,
   });
 
-  // Handle file selection
-  const handleFileSelect = async (file: File) => {
-    await handleFileFromObject(file);
+  const selectedCodes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Array.from(selectedKeys, (id) => keyCodeById.get(id)).filter(
+            (code): code is string => Boolean(code),
+          ),
+        ),
+      ),
+    [selectedKeys, keyCodeById],
+  );
+
+  // Add audio or video files; the first one added opens in the waveform.
+  const handleAddSources = async (files: File[]) => {
+    const added = await Promise.all(
+      files.map(async (file) =>
+        createAudioSource(file, await getAudioDuration(file)),
+      ),
+    );
+    setSources((current) => [...current, ...added]);
+    setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
   };
 
-  // Handle clearing file
-  const handleClearFile = () => {
-    clearAudioFile();
+  const handleSelectSource = (id: string) => {
+    if (id === activeSourceId) return;
+    setActiveSourceId(id);
     setWaveformSelection({ start: 0, end: 0 });
+  };
+
+  // Removing a file also removes the sounds cut from it.
+  const handleRemoveSource = (id: string) => {
+    const remaining = sources.filter((source) => source.id !== id);
+    setSources(remaining);
+    setKeySounds((current) => {
+      const next = new Map(current);
+      next.forEach((sound, code) => {
+        if (sound.source === id) next.delete(code);
+      });
+      return next;
+    });
+    if (activeSourceId === id) {
+      setActiveSourceId(remaining[0]?.id ?? null);
+      setWaveformSelection({ start: 0, end: 0 });
+    }
+  };
+
+  const handlePackTypeChange = (packType: PackType) => {
+    setPackInfo((current) => ({ ...current, packType }));
   };
 
   // Reset the whole pack back to defaults
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dependency list kept as in the website editor; changing it changes when the hook re-runs
   const resetPack = useCallback(() => {
-    setModifiedKeys(new Map());
+    setKeySounds(new Map());
     setSelectedKeys(new Set());
     setPackInfo(createDefaultPackInfo());
     setLoadedPackId(null);
+    setPackExtras(null);
     // New and Import from disk leave the library pack, so Update cannot
     // publish unrelated work to it.
     setLibraryPack(null);
-    clearAudioFile();
+    setSources([]);
+    setActiveSourceId(null);
+    setSoundSlot('press');
     setWaveformSelection({ start: 0, end: 0 });
     setNotice(null);
-  }, [clearAudioFile, siteIdentity.productName]);
+  }, [setSelectedKeys]);
 
   // New pack: warn if there are unsaved modifications
   const handleNewPack = () => {
-    if (modifiedKeys.size > 0) {
+    if (keySounds.size > 0) {
       setConfirmDiscardAction('new');
     } else {
       resetPack();
@@ -438,7 +526,7 @@ export function EditorPage() {
 
   // Import: warn if there are unsaved modifications, then open the file picker
   const handleImportClick = () => {
-    if (modifiedKeys.size > 0) {
+    if (keySounds.size > 0) {
       setConfirmDiscardAction('import');
     } else {
       importInputRef.current?.click();
@@ -458,18 +546,24 @@ export function EditorPage() {
   };
 
   // Replace the current pack with a parsed zip.
-  const applyImportedPack = async (imported: ImportedSoundPack) => {
+  const applyImportedPack = (imported: ImportedSoundPack) => {
     resetPack();
     setLoadedPackId(imported.id);
     setPackInfo((prev) => ({
-      ...prev,
-      name: imported.name,
-      author: imported.author || prev.author,
-      description: imported.description || prev.description,
-      mode: imported.mode,
+      ...imported.info,
+      description: imported.info.description || prev.description,
     }));
-    setModifiedKeys(imported.modifiedKeys);
-    await handleFileFromObject(imported.audioFile);
+    setPackExtras(imported.extras);
+    setSources(imported.sources);
+    setActiveSourceId(imported.sources[0]?.id ?? null);
+    setKeySounds(imported.keySounds);
+    if (imported.warnings.length > 0) {
+      setNotice({
+        tone: 'error',
+        message: 'Some of this pack could not be opened:',
+        details: imported.warnings,
+      });
+    }
   };
 
   // Import a sound pack zip and apply its contents to current settings
@@ -481,7 +575,7 @@ export function EditorPage() {
     if (!file) return;
 
     try {
-      await applyImportedPack(await parseSoundPackZip(file));
+      applyImportedPack(await parseSoundPackZip(file));
     } catch (error) {
       setNotice({
         tone: 'error',
@@ -502,7 +596,7 @@ export function EditorPage() {
       const imported = await parseSoundPackZip(
         new File([zip], `${pack.slug}.zip`, { type: 'application/zip' }),
       );
-      await applyImportedPack(imported);
+      applyImportedPack(imported);
       setLibraryPack({
         id: pack.id,
         name: pack.name,
@@ -523,7 +617,7 @@ export function EditorPage() {
 
   const handleOpenLibraryPack = (pack: LibraryPackSummary) => {
     if (!canOpenPack(pack)) return;
-    if (modifiedKeys.size > 0) {
+    if (keySounds.size > 0) {
       setShowMyPacks(false);
       setConfirmDiscardAction({ pack });
     } else {
@@ -539,11 +633,10 @@ export function EditorPage() {
     try {
       const zip = await buildSoundPackZip({
         id: libraryPack.id,
-        name: packInfo.name,
-        author: packInfo.author,
-        description: packInfo.description,
-        audioFile,
-        modifiedKeys,
+        info: packInfo,
+        sources,
+        keySounds,
+        extras: packExtras,
       });
       const pack = await updatePackZip(
         libraryPack.id,
@@ -592,11 +685,10 @@ export function EditorPage() {
     try {
       await exportSoundPack({
         id: loadedPackId ?? undefined,
-        name: packInfo.name,
-        author: packInfo.author,
-        description: packInfo.description,
-        audioFile,
-        modifiedKeys,
+        info: packInfo,
+        sources,
+        keySounds,
+        extras: packExtras,
       });
       if (!libraryPack) {
         setNotice({
@@ -619,18 +711,19 @@ export function EditorPage() {
     }
   };
 
-  // Clear selection when changing keyboard size
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dependency list kept as in the website editor; changing it changes when the hook re-runs
+  // Clear selection when changing the keyboard size or the pack type
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the layout change is the trigger, not a value the effect reads
   useEffect(() => {
     setSelectedKeys(new Set());
-  }, [keyboardSize, setSelectedKeys]);
+  }, [layout, setSelectedKeys]);
 
   // Preview: play the mapped sound for whichever key the user presses
   const {
     playKey,
     isLoading: isPreviewLoading,
     error: previewError,
-  } = usePreviewPlayback(audioFile, modifiedKeys, isPreview);
+  } = usePreviewPlayback(sources, keySounds, isPreview);
+  const isMousePack = packInfo.packType === 'Mouse';
 
   const exitPreview = useCallback(() => {
     setIsPreview(false);
@@ -648,26 +741,54 @@ export function EditorPage() {
   useEffect(() => {
     if (!isPreview) return;
 
+    const press = (code: string) => {
+      playKey(code, 'press');
+      setPressedKeyCodes((prev) => new Set(prev).add(code));
+    };
+    const release = (code: string) => {
+      playKey(code, 'release');
+      setPressedKeyCodes((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         exitPreview();
         return;
       }
+      if (isMousePack) return;
       // Keep the browser out of it — F-keys, Tab and Space would otherwise
       // navigate or scroll instead of sounding like a key press.
       event.preventDefault();
       if (event.repeat) return;
-      playKey(event.code);
-      setPressedKeyCodes((prev) => new Set(prev).add(event.code));
+      press(event.code);
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      setPressedKeyCodes((prev) => {
-        const next = new Set(prev);
-        next.delete(event.code);
-        return next;
-      });
+      if (!isMousePack) release(event.code);
     };
+
+    // A mouse pack sounds on the real mouse buttons and wheel, as in the app.
+    const handleMouseDown = (event: MouseEvent) => {
+      const code = MOUSE_BUTTON_CODES[event.button];
+      if (code) press(code);
+    };
+    const handleMouseUp = (event: MouseEvent) => {
+      const code = MOUSE_BUTTON_CODES[event.button];
+      if (code) release(code);
+    };
+    let lastWheelSound = 0;
+    const handleWheel = (event: WheelEvent) => {
+      const now = performance.now();
+      if (event.deltaY === 0 || now - lastWheelSound < WHEEL_SOUND_INTERVAL_MS)
+        return;
+      lastWheelSound = now;
+      playKey(event.deltaY < 0 ? 'MouseWheelUp' : 'MouseWheelDown', 'press');
+    };
+    const handleContextMenu = (event: MouseEvent) => event.preventDefault();
 
     // Releasing focus mid-press would otherwise leave keys stuck highlighted.
     const handleBlur = () => setPressedKeyCodes(new Set());
@@ -675,12 +796,22 @@ export function EditorPage() {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
+    if (isMousePack) {
+      window.addEventListener('mousedown', handleMouseDown);
+      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('wheel', handleWheel);
+      window.addEventListener('contextmenu', handleContextMenu);
+    }
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [isPreview, playKey, exitPreview]);
+  }, [isPreview, isMousePack, playKey, exitPreview]);
 
   return (
     <>
@@ -692,7 +823,9 @@ export function EditorPage() {
                 ? 'Loading sounds…'
                 : previewError
                   ? previewError
-                  : `Press any highlighted key — ${modifiedKeys.size} key${modifiedKeys.size !== 1 ? 's' : ''} mapped`}
+                  : isMousePack
+                    ? `Click or scroll anywhere — ${keySounds.size} button${keySounds.size !== 1 ? 's' : ''} mapped`
+                    : `Press any highlighted key — ${keySounds.size} key${keySounds.size !== 1 ? 's' : ''} mapped`}
             </span>
             <button
               type="button"
@@ -706,17 +839,17 @@ export function EditorPage() {
         ) : (
           <EditorNavbar
             packName={packInfo.name}
-            editMode={editMode}
+            packType={packInfo.packType}
             onEditPack={() => setShowEditPackModal(true)}
             onNewPack={handleNewPack}
             onImport={handleImportClick}
             onExport={handleExport}
             isExporting={isExporting}
             onPreview={() => setIsPreview(true)}
-            canPreview={!!audioFile && modifiedKeys.size > 0}
+            canPreview={sources.length > 0 && keySounds.size > 0}
             session={session}
             signInHref={signInUrl(window.location.href)}
-            signInInNewTab={!!audioFile || modifiedKeys.size > 0}
+            signInInNewTab={sources.length > 0 || keySounds.size > 0}
             onOpenMyPacks={() => {
               setShowMyPacks(true);
               refreshSession();
@@ -780,6 +913,7 @@ export function EditorPage() {
           <EditPackModal
             isOpen={showEditPackModal}
             packInfo={packInfo}
+            isLibraryPack={libraryPack !== null}
             onClose={() => setShowEditPackModal(false)}
             onSave={(updatedPackInfo) => {
               setPackInfo(updatedPackInfo);
@@ -839,7 +973,22 @@ export function EditorPage() {
             <h2 className="sr-only">Keyboard settings</h2>
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
+                {/* soundpack_type: which device the pack is for */}
+                <div className="join">
+                  {(['Keyboard', 'Mouse'] as const).map((packType) => (
+                    <button
+                      key={packType}
+                      type="button"
+                      className={`btn btn-xs join-item ${packInfo.packType === packType ? 'btn-active' : ''}`}
+                      aria-pressed={packInfo.packType === packType}
+                      onClick={() => handlePackTypeChange(packType)}
+                      title={`Make a ${packType.toLowerCase()} sound pack`}
+                    >
+                      {packType}
+                    </button>
+                  ))}
+                </div>
+                {packInfo.packType === 'Keyboard' && (
                   <div className="join">
                     <button
                       type="button"
@@ -863,7 +1012,7 @@ export function EditorPage() {
                       Compact
                     </button>
                   </div>
-                </div>
+                )}
               </div>
               {/* Key State Examples */}
               <div className="flex items-center gap-4 text-xs">
@@ -879,6 +1028,13 @@ export function EditorPage() {
                     <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white shadow-lg ring-2 ring-primary/30"></div>
                   </div>
                   <span className="text-base-content/70">Modified</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="btn btn-xs relative pointer-events-none">
+                    Z
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>
+                  </div>
+                  <span className="text-base-content/70">Release sound</span>
                 </div>
               </div>
             </div>
@@ -909,10 +1065,10 @@ export function EditorPage() {
                 }}
               >
                 <KeyboardDisplay
-                  keyboardSize={keyboardSize}
+                  layout={layout}
                   selectedKeys={selectedKeys}
                   dragSelectedKeys={dragSelectedKeys}
-                  modifiedKeys={modifiedKeys}
+                  modifiedKeys={keySounds}
                   onKeyClick={handleKeyClick}
                   onKeyMouseDown={handleKeyMouseDown}
                   onKeyMouseUp={handleKeyMouseUp}
@@ -923,7 +1079,13 @@ export function EditorPage() {
                   keyboardRef={keyboardRef}
                   isPreview={isPreview}
                   pressedKeyCodes={pressedKeyCodes}
-                  onPreviewKeyDown={playKey}
+                  // Mouse packs answer the real mouse anywhere on the page.
+                  onPreviewKeyDown={
+                    isMousePack ? undefined : (code) => playKey(code, 'press')
+                  }
+                  onPreviewKeyUp={
+                    isMousePack ? undefined : (code) => playKey(code, 'release')
+                  }
                 />
               </div>
             </div>
@@ -1005,13 +1167,15 @@ export function EditorPage() {
                   to the file card once audio is loaded, and keeps room for the
                   clip when a video is loaded. */}
               <div
-                className={`w-full ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[240px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                className={`w-full ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
               >
                 <AudioFileSelector
-                  audioFile={audioFile}
-                  audioDuration={audioDuration}
-                  onFileSelect={handleFileSelect}
-                  onClearFile={handleClearFile}
+                  sources={sources}
+                  activeSourceId={activeSourceId}
+                  keyCounts={keyCounts}
+                  onSelect={handleSelectSource}
+                  onAdd={handleAddSources}
+                  onRemove={handleRemoveSource}
                   videoRef={videoPreviewRef}
                 />
               </div>
@@ -1020,57 +1184,48 @@ export function EditorPage() {
                   No horizontal padding here: the waveform runs edge to edge, and the
                   blocks around it carry their own px-4. */}
               <div className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto">
-                {audioFile ? (
+                {audioFile && activeSourceId ? (
                   <div className="min-h-full min-w-0 flex flex-col gap-3">
-                    {editMode === 'time' ? (
-                      <>
-                        {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
-                        <WaveformEditor
-                          audioFile={audioFile}
-                          defaultDuration={defaultDuration}
-                          setDefaultDuration={setDefaultDuration}
-                          waveformSelection={waveformSelection}
-                          setWaveformSelection={setWaveformSelectionCallback}
-                          zoomLevel={zoomLevel}
-                          setZoomLevel={setZoomLevelCallback}
-                          isPlaying={isPlaying}
-                          setIsPlaying={setIsPlayingCallback}
-                          wavesurfer={wavesurfer}
-                          regionsPlugin={regionsPlugin}
-                          onPlaySelectedSegmentReady={(playFn) => {
-                            playSelectedSegmentRef.current = playFn;
-                          }}
-                          modifiedKeys={modifiedKeys}
-                          selectedKeys={selectedKeys}
-                          videoRef={videoPreviewRef}
-                          waveformHeight={waveformHeight}
-                        />
+                    {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
+                    <WaveformEditor
+                      audioFile={audioFile}
+                      defaultDuration={defaultDuration}
+                      setDefaultDuration={setDefaultDuration}
+                      waveformSelection={waveformSelection}
+                      setWaveformSelection={setWaveformSelectionCallback}
+                      zoomLevel={zoomLevel}
+                      setZoomLevel={setZoomLevelCallback}
+                      isPlaying={isPlaying}
+                      setIsPlaying={setIsPlayingCallback}
+                      wavesurfer={wavesurfer}
+                      regionsPlugin={regionsPlugin}
+                      onPlaySelectedSegmentReady={(playFn) => {
+                        playSelectedSegmentRef.current = playFn;
+                      }}
+                      keySounds={keySounds}
+                      sourceId={activeSourceId}
+                      videoRef={videoPreviewRef}
+                      waveformHeight={waveformHeight}
+                    />
 
-                        {/* Time Segment Controls */}
-                        <TimeSegmentControls
-                          waveformSelection={waveformSelection}
-                          setWaveformSelection={setWaveformSelection}
-                          isPlaying={isPlaying}
-                          playSelectedSegment={playSelectedSegment}
-                          selectedKeys={selectedKeys}
-                          setSelectedKeys={setSelectedKeys}
-                          modifiedKeys={modifiedKeys}
-                          setModifiedKeys={setModifiedKeys}
-                          keys={keys}
-                          getKeyId={getKeyId}
-                        />
-                      </>
-                    ) : (
-                      <div className="px-4">
-                        {/* File Mode Controls */}
-                        <FileModeControls
-                          selectedKeys={selectedKeys}
-                          modifiedKeys={modifiedKeys}
-                          setModifiedKeys={setModifiedKeys}
-                          audioDuration={audioDuration}
-                        />
-                      </div>
-                    )}
+                    {/* Time Segment Controls */}
+                    <TimeSegmentControls
+                      waveformSelection={waveformSelection}
+                      setWaveformSelection={setWaveformSelection}
+                      isPlaying={isPlaying}
+                      playSelectedSegment={playSelectedSegment}
+                      selectedKeys={selectedKeys}
+                      setSelectedKeys={setSelectedKeys}
+                      selectedCodes={selectedCodes}
+                      keySounds={keySounds}
+                      setKeySounds={setKeySounds}
+                      activeSourceId={activeSourceId}
+                      audioDuration={audioDuration}
+                      slot={soundSlot}
+                      setSlot={setSoundSlot}
+                      keys={keys}
+                      getKeyId={getKeyId}
+                    />
                     {/* Absorbs leftover height so the blocks above stay pinned to the top */}
                     <div className="flex-1 min-h-0" />
                   </div>
