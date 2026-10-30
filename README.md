@@ -1,6 +1,6 @@
 # Mechvibes Editor
 
-A browser-based sound pack editor for [Mechvibes DX](https://github.com/hainguyents13/mechvibes-dx). Load an audio file, map sounds to keys, and export a sound pack zip that the app can import.
+A browser-based sound pack editor for [Mechvibes](https://github.com/hainguyents13/mechvibes). Load an audio file, map sounds to keys, and export a sound pack zip that the app can import.
 
 The editor runs entirely in the browser. It has no backend and needs no account. To share a pack, upload the exported zip to the sound pack library on the Mechvibes website.
 
@@ -19,7 +19,7 @@ pnpm build      # typecheck and build to dist/
 
 ## Sound pack format
 
-Exported packs follow the `config.json` v2 format documented in the app repo: [soundpack-config-v2.md](https://github.com/hainguyents13/mechvibes-dx/blob/main/docs/soundpack-config-v2.md).
+Exported packs follow the `config.json` v2 format documented in the app repo: [soundpack-config-v2.md](https://github.com/hainguyents13/mechvibes/blob/main/docs/soundpack-config-v2.md).
 
 ## License
 
