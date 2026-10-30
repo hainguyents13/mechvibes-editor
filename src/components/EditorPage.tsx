@@ -20,6 +20,10 @@ import {
   parseKeyboardLayout,
 } from '@/components/editor/keyboardLayouts';
 import {
+  MOUSE_DISPLAY_SIZE,
+  MouseDisplay,
+} from '@/components/editor/MouseDisplay';
+import {
   type SoundSlot,
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
@@ -328,10 +332,15 @@ export function EditorPage() {
   const KEYBOARD_GAP = 3;
   const keyboardMaxX = Math.max(...keys.map((k: any) => k.x + k.width));
   const keyboardMaxY = Math.max(...keys.map((k: any) => k.y + k.height));
+  // The mouse is a drawing with its own size rather than a grid of keys.
   const keyboardNaturalWidth =
-    keyboardMaxX * (KEYBOARD_UNIT + KEYBOARD_GAP) + KEYBOARD_GAP * 2 - 1;
+    layout === 'mouse'
+      ? MOUSE_DISPLAY_SIZE.width
+      : keyboardMaxX * (KEYBOARD_UNIT + KEYBOARD_GAP) + KEYBOARD_GAP * 2 - 1;
   const keyboardNaturalHeight =
-    keyboardMaxY * (KEYBOARD_UNIT + KEYBOARD_GAP) + KEYBOARD_GAP * 2 - 1;
+    layout === 'mouse'
+      ? MOUSE_DISPLAY_SIZE.height
+      : keyboardMaxY * (KEYBOARD_UNIT + KEYBOARD_GAP) + KEYBOARD_GAP * 2 - 1;
 
   // Scale the keyboard to fit the available space (no scrollbar)
   const keyboardAreaRef = useRef<HTMLDivElement>(null);
@@ -1064,29 +1073,37 @@ export function EditorPage() {
                   height: keyboardNaturalHeight,
                 }}
               >
-                <KeyboardDisplay
-                  layout={layout}
-                  selectedKeys={selectedKeys}
-                  dragSelectedKeys={dragSelectedKeys}
-                  modifiedKeys={keySounds}
-                  onKeyClick={handleKeyClick}
-                  onKeyMouseDown={handleKeyMouseDown}
-                  onKeyMouseUp={handleKeyMouseUp}
-                  onKeyMouseEnter={handleKeyMouseEnter}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  keyboardRef={keyboardRef}
-                  isPreview={isPreview}
-                  pressedKeyCodes={pressedKeyCodes}
+                {isMousePack ? (
                   // Mouse packs answer the real mouse anywhere on the page.
-                  onPreviewKeyDown={
-                    isMousePack ? undefined : (code) => playKey(code, 'press')
-                  }
-                  onPreviewKeyUp={
-                    isMousePack ? undefined : (code) => playKey(code, 'release')
-                  }
-                />
+                  <MouseDisplay
+                    selectedKeys={selectedKeys}
+                    modifiedKeys={keySounds}
+                    onKeyMouseDown={handleKeyMouseDown}
+                    onKeyMouseUp={handleKeyMouseUp}
+                    keyboardRef={keyboardRef}
+                    isPreview={isPreview}
+                    pressedKeyCodes={pressedKeyCodes}
+                  />
+                ) : (
+                  <KeyboardDisplay
+                    layout={layout}
+                    selectedKeys={selectedKeys}
+                    dragSelectedKeys={dragSelectedKeys}
+                    modifiedKeys={keySounds}
+                    onKeyClick={handleKeyClick}
+                    onKeyMouseDown={handleKeyMouseDown}
+                    onKeyMouseUp={handleKeyMouseUp}
+                    onKeyMouseEnter={handleKeyMouseEnter}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    keyboardRef={keyboardRef}
+                    isPreview={isPreview}
+                    pressedKeyCodes={pressedKeyCodes}
+                    onPreviewKeyDown={(code) => playKey(code, 'press')}
+                    onPreviewKeyUp={(code) => playKey(code, 'release')}
+                  />
+                )}
               </div>
             </div>
           </div>
