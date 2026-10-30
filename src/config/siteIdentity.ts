@@ -15,7 +15,7 @@ const identityId: SiteIdentityId =
 export const siteIdentity: SiteIdentity = IDENTITIES[identityId];
 
 /** The Mechvibes website: home page, guides and the sound pack library. */
-export const websiteUrl = 'https://beta.mechvibes.com';
+export const websiteUrl = 'https://mechvibes.com';
 
 export const editorRepoUrl =
   'https://github.com/hainguyents13/mechvibes-editor';
