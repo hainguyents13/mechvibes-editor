@@ -81,6 +81,84 @@ body[data-editor-preview="true"] footer {
   );
 }
 
+/* Guided tour (driver.js): its popover follows the site theme. driver.css is
+   unlayered, so these rules repeat its specificity plus the tour class. */
+.editor-tour.driver-popover {
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  font-family: inherit;
+  max-width: 340px;
+  padding: 16px;
+}
+
+.editor-tour .driver-popover-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.editor-tour .driver-popover-description {
+  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+}
+
+.editor-tour .driver-popover-progress-text {
+  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+  font-size: 12px;
+}
+
+.editor-tour .driver-popover-close-btn {
+  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+}
+
+.editor-tour .driver-popover-close-btn:hover,
+.editor-tour .driver-popover-close-btn:focus {
+  color: var(--color-base-content);
+}
+
+.editor-tour .driver-popover-footer-btn {
+  background-color: var(--color-base-200);
+  color: var(--color-base-content);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-field);
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  text-shadow: none;
+}
+
+.editor-tour .driver-popover-footer-btn:hover,
+.editor-tour .driver-popover-footer-btn:focus-visible {
+  background-color: var(--color-base-300);
+}
+
+.editor-tour .driver-popover-next-btn {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-content);
+}
+
+.editor-tour .driver-popover-next-btn:hover,
+.editor-tour .driver-popover-next-btn:focus-visible {
+  background-color: color-mix(in oklab, var(--color-primary) 85%, black);
+}
+
+.editor-tour .driver-popover-arrow-side-left {
+  border-left-color: var(--color-base-100);
+}
+
+.editor-tour .driver-popover-arrow-side-right {
+  border-right-color: var(--color-base-100);
+}
+
+.editor-tour .driver-popover-arrow-side-top {
+  border-top-color: var(--color-base-100);
+}
+
+.editor-tour .driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--color-base-100);
+}
+
 /* Dropzone sits inside that container and needs to read as a distinct target. */
 .editor-dropzone-surface {
   background-color: color-mix(

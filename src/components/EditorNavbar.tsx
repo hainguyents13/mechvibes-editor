@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CircleHelp,
   CloudUpload,
   Download,
   FolderOpen,
@@ -47,6 +48,8 @@ interface EditorNavbarProps {
   /** Set while a library pack is open and the visitor is signed in. */
   onUpdate?: () => void;
   isUpdating?: boolean;
+  /** Show the guided tour of the editor. */
+  onStartTour: () => void;
 }
 
 function Avatar({ user }: { user: LibraryUser }) {
@@ -85,6 +88,7 @@ export function EditorNavbar({
   onOpenMyPacks,
   onUpdate,
   isUpdating = false,
+  onStartTour,
 }: EditorNavbarProps) {
   return (
     <div className="sticky top-0 z-50 w-full bg-base-200 border-b border-base-300">
@@ -136,6 +140,7 @@ export function EditorNavbar({
           <button
             type="button"
             onClick={onEditPack}
+            data-tour="pack-details"
             className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 max-w-full px-2 sm:px-3"
           >
             <span className="font-medium truncate">{packName}</span>
@@ -148,6 +153,20 @@ export function EditorNavbar({
 
         {/* Right Section */}
         <div className="flex items-center gap-1 lg:gap-2 shrink-0">
+          <div
+            className="tooltip tooltip-bottom"
+            data-tip="Show where to start"
+          >
+            <button
+              type="button"
+              onClick={onStartTour}
+              aria-label="Tour"
+              className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
+            >
+              <CircleHelp className="h-4 w-4 xl:mr-2" />
+              <span className="hidden xl:inline">Tour</span>
+            </button>
+          </div>
           <button
             type="button"
             onClick={onNewPack}
@@ -160,6 +179,7 @@ export function EditorNavbar({
           <div
             className="tooltip tooltip-bottom"
             data-tip="Open a sound pack zip to change it"
+            data-tour="import"
           >
             <button
               type="button"
@@ -173,6 +193,7 @@ export function EditorNavbar({
           </div>
           <div
             className="tooltip tooltip-bottom"
+            data-tour="preview"
             data-tip={
               canPreview
                 ? 'Try the pack on your keyboard'
@@ -217,6 +238,7 @@ export function EditorNavbar({
             type="button"
             onClick={onExport}
             aria-label="Export"
+            data-tour="export"
             disabled={isExporting || isUpdating}
             className="btn btn-sm btn-neutral rounded-box flex items-center space-x-1 px-2 lg:px-3"
           >
@@ -237,6 +259,7 @@ export function EditorNavbar({
               target={signInInNewTab ? '_blank' : undefined}
               rel={signInInNewTab ? 'noopener' : undefined}
               aria-label="Sign in"
+              data-tour="account"
               className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
             >
               <LogIn className="h-4 w-4 lg:mr-2" />
@@ -247,6 +270,7 @@ export function EditorNavbar({
             <button
               type="button"
               onClick={onOpenMyPacks}
+              data-tour="account"
               aria-label={`My packs (signed in as ${session.user.name})`}
               title={`Signed in as ${session.user.name}`}
               className="btn btn-sm btn-ghost rounded-box flex items-center gap-2 px-2 lg:px-3"
