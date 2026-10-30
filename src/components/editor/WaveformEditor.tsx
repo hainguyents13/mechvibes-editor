@@ -19,6 +19,8 @@ interface WaveformEditorProps {
   modifiedKeys?: Map<string, [number, number]>;
   selectedKeys?: Set<string>;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
+  /** Waveform height in px; the editor shrinks it on short screens. */
+  waveformHeight?: number;
 }
 
 export function WaveformEditor({
@@ -36,6 +38,7 @@ export function WaveformEditor({
   onPlaySelectedSegmentReady,
   modifiedKeys,
   videoRef: externalVideoRef,
+  waveformHeight = 200,
 }: WaveformEditorProps) {
   const {
     soundRegionsMode,
@@ -223,7 +226,7 @@ export function WaveformEditor({
       >
         <div style={{ minWidth: '100%', width: 'max-content' }}>
           {/* Waveform */}
-          <div style={{ height: '200px' }}>
+          <div style={{ height: waveformHeight }}>
             <CombinedWaveform
               ref={combinedWaveformRef}
               audioUrl={audioUrl}
@@ -237,6 +240,7 @@ export function WaveformEditor({
               onRegionSelect={setSelectedSoundRegion}
               onReady={handleWaveformReady}
               scrollContainerRef={waveformScrollRef}
+              height={waveformHeight}
             />
           </div>
 

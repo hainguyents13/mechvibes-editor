@@ -28,6 +28,26 @@ import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { exportSoundPack } from '@/utils/soundPackExport';
 import { parseSoundPackZip } from '@/utils/soundPackImport';
 
+// Sound editing panel on wide (lg) screens. It takes half the viewport, up to
+// the original 524px, and never less than what its controls need with the
+// smallest waveform. The waveform absorbs every pixel the panel gives up, so the
+// keyboard above gets the rest of the screen.
+const LG_MIN_WIDTH = 1024;
+const PANEL_MAX_HEIGHT = 524;
+const WAVEFORM_MAX_HEIGHT = 200;
+const WAVEFORM_MIN_HEIGHT = 110;
+const PANEL_MIN_HEIGHT =
+  PANEL_MAX_HEIGHT - (WAVEFORM_MAX_HEIGHT - WAVEFORM_MIN_HEIGHT);
+
+/** Panel height in px on lg screens, or null when the panel stacks and sizes to its content. */
+function getPanelHeight(): number | null {
+  if (window.innerWidth < LG_MIN_WIDTH) return null;
+  return Math.min(
+    PANEL_MAX_HEIGHT,
+    Math.max(PANEL_MIN_HEIGHT, Math.round(window.innerHeight / 2)),
+  );
+}
+
 export function EditorPage() {
   // Basic state
   const [keyboardSize, setKeyboardSize] = useState<
@@ -95,6 +115,17 @@ export function EditorPage() {
     [keyboardSize],
   );
 
+  const [panelHeight, setPanelHeight] = useState(getPanelHeight);
+  useEffect(() => {
+    const onResize = () => setPanelHeight(getPanelHeight());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const waveformHeight =
+    panelHeight === null
+      ? WAVEFORM_MAX_HEIGHT
+      : WAVEFORM_MAX_HEIGHT - (PANEL_MAX_HEIGHT - panelHeight);
+
   // Keyboard natural dimensions (used to scale-to-fit and avoid a scrollbar)
   const KEYBOARD_UNIT = 54;
   const KEYBOARD_GAP = 3;
@@ -117,7 +148,8 @@ export function EditorPage() {
     if (!target) return;
     // Settings row + shortcuts row + the two gaps between them. Fixed rather than
     // measured: those rows derive their width from keyboardScale, so measuring them
-    // would make the scale depend on its own output. Preview collapses both rows,
+    // would make the scale depend on its own output. The rows keep a minimum width
+    // so they stay on one line and this height holds. Preview collapses both rows,
     // so the keyboard gets that space back.
     const rowsHeight = isPreview ? 0 : 24 + 20 + 24;
     const rescale = (width: number, height: number) => {
@@ -136,15 +168,27 @@ export function EditorPage() {
     });
     observer.observe(target);
 
+    // Same content box the observer reports: without the container's padding,
+    // otherwise the keyboard is scaled past the space it actually has.
+    const rescaleFromLayout = () => {
+      const style = getComputedStyle(target);
+      rescale(
+        target.clientWidth -
+          parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight),
+        target.clientHeight -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
+      );
+    };
+
     // The panels collapse over ~320ms without resizing this container, so step
     // the scale through the transition instead of waiting for a resize event.
-    const rect = target.getBoundingClientRect();
-    rescale(rect.width, rect.height);
+    rescaleFromLayout();
     let frame = 0;
     const start = performance.now();
     const followTransition = () => {
-      const box = target.getBoundingClientRect();
-      rescale(box.width, box.height);
+      rescaleFromLayout();
       if (performance.now() - start < 360) {
         frame = requestAnimationFrame(followTransition);
       }
@@ -452,7 +496,7 @@ export function EditorPage() {
 
           {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
           <div
-            className="editor-chrome-vertical editor-chrome-top w-full mx-auto shrink-0"
+            className="editor-chrome-vertical editor-chrome-top w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
             data-hidden={isPreview}
             style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
           >
@@ -567,12 +611,18 @@ export function EditorPage() {
           className="editor-chrome-vertical shrink-0 editor-panel-surface border-t-2 border-base-content/20"
           data-hidden={isPreview}
         >
-          <div className="lg:h-[524px]">
+          <div
+            style={panelHeight === null ? undefined : { height: panelHeight }}
+          >
             <h2 className="sr-only">Sound editing</h2>
             {/* Dividers run edge to edge: padding lives inside each column, not on the row */}
             <div className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20">
-              {/* Left: audio/video import — fixed 500x500 square, fits portrait video better */}
-              <div className="w-full h-[240px] lg:h-full lg:w-[500px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3">
+              {/* Left: audio/video import. Stacked, it is a short dropzone, sizes
+                  to the file card once audio is loaded, and keeps room for the
+                  clip when a video is loaded. */}
+              <div
+                className={`w-full ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[240px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+              >
                 <AudioFileSelector
                   audioFile={audioFile}
                   audioDuration={audioDuration}
@@ -609,6 +659,7 @@ export function EditorPage() {
                           modifiedKeys={modifiedKeys}
                           selectedKeys={selectedKeys}
                           videoRef={videoPreviewRef}
+                          waveformHeight={waveformHeight}
                         />
 
                         {/* Time Segment Controls */}

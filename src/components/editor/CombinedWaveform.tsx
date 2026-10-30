@@ -20,6 +20,8 @@ interface CombinedWaveformProps {
   onReady: (duration: number) => void;
   /** The element that actually scrolls horizontally, used to keep zoom anchored. */
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
+  /** Waveform height in px. Changes are applied without rebuilding the waveform. */
+  height?: number;
 }
 
 export interface CombinedWaveformRef {
@@ -50,6 +52,7 @@ export const CombinedWaveform = forwardRef<
       onRegionSelect,
       onReady,
       scrollContainerRef,
+      height = 200,
     },
     ref,
   ) => {
@@ -57,6 +60,9 @@ export const CombinedWaveform = forwardRef<
     const wavesurferRef = useRef<any>(null);
     const regionsRef = useRef<any>(null);
     const [isReady, setIsReady] = useState(false);
+    // Read at init time so a height change does not rebuild the waveform.
+    const heightRef = useRef(height);
+    heightRef.current = height;
 
     // Time (seconds) the zoom should stay centred on. Captured before each zoom so
     // the view can be re-anchored afterwards, since ws.zoom() does not preserve it.
@@ -302,7 +308,7 @@ export const CombinedWaveform = forwardRef<
             cursorColor: '#7c3aed',
             barWidth: soundOnlyMode ? 3 : 2,
             barRadius: soundOnlyMode ? 3 : 2,
-            height: 200,
+            height: heightRef.current,
             normalize: true,
             backend: 'WebAudio',
             plugins: [regions, timeline],
@@ -456,6 +462,13 @@ export const CombinedWaveform = forwardRef<
         }
       };
     }, [audioUrl, soundOnlyMode, isVideo]); // Only reinitialize when URL, mode, or video type changes
+
+    // Follow the panel height on the live waveform.
+    useEffect(() => {
+      if (isReady) {
+        wavesurferRef.current?.setOptions({ height });
+      }
+    }, [height, isReady]);
 
     // Update zoom when level changes, keeping the view anchored.
     //

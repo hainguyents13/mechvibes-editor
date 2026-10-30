@@ -14,7 +14,7 @@ export function KeyboardShortcuts({
 }: KeyboardShortcutsProps) {
   return (
     <div
-      className="w-full mx-auto shrink-0"
+      className="w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
       style={maxWidth ? { maxWidth } : undefined}
     >
       <h2 className="sr-only">Selection and shortcuts</h2>
