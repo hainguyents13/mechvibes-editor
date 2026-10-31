@@ -2,11 +2,15 @@ import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 
 interface LogoProps {
   text: string;
+  /** The navbar leaves the logo out on phones to keep room for its buttons. */
+  showOnPhones?: boolean;
 }
 
-export const Logo = ({ text }: LogoProps) => {
+export const Logo = ({ text, showOnPhones = false }: LogoProps) => {
   return (
-    <div className="hidden sm:flex shrink-0 items-center">
+    <div
+      className={`${showOnPhones ? 'flex' : 'hidden sm:flex'} shrink-0 items-center`}
+    >
       <a
         href={websiteUrl}
         target="_blank"

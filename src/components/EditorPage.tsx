@@ -38,11 +38,13 @@ import { FileDropOverlay } from '@/components/FileDropOverlay';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
+import { PhoneScreen } from '@/components/start/PhoneScreen';
 import { StartScreen } from '@/components/start/StartScreen';
 import { websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePackHistory } from '@/hooks/usePackHistory';
+import { usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
@@ -297,6 +299,9 @@ export function EditorPage() {
   // The editor opens on the start screen; the pack controls show in the workspace.
   const [screen, setScreen] = useState<EditorScreen>('start');
   const isWorkspace = screen === 'workspace';
+  // A phone gets a page of its own instead of the editor. The pack stays in
+  // state, so a window narrowed for a moment loses nothing.
+  const isPhone = usePhoneScreen();
   // What the link the editor was opened with asks for, until it is acted on
   // or the visitor goes elsewhere from the start screen.
   const [startLink, setStartLink] = useState(() =>
@@ -535,9 +540,10 @@ export function EditorPage() {
 
   // Preview plays the real keyboard, and a dialog or a busy overlay holds a
   // copy of the pack, so page-wide shortcuts stay off meanwhile. The start
-  // screens have no pack to edit.
+  // screens have no pack to edit, and the phone page shows none.
   const isKeyboardOwnedElsewhere =
     !isWorkspace ||
+    isPhone ||
     isPreview ||
     showEditPackModal ||
     confirmDiscardAction !== null ||
@@ -1101,6 +1107,15 @@ export function EditorPage() {
   };
   useEffect(() => () => tourRef.current?.destroy(), []);
 
+  // The phone page hides the workspace, so nothing of it may go on running:
+  // preview would play the keyboard, and the tour would point at nothing.
+  useEffect(() => {
+    if (!isPhone) return;
+    exitPreview();
+    setIsPlaying(false);
+    tourRef.current?.destroy();
+  }, [isPhone, exitPreview]);
+
   // The editor opens on the start screen, also after a reload.
   useEffect(() => {
     window.history.replaceState(screenState('start'), '');
@@ -1109,9 +1124,15 @@ export function EditorPage() {
   // A link into the editor waits on the start screen until the account is
   // known. Its parameters then leave the address bar; the link itself stays
   // for signing in, and is acted on once the visitor is signed in, also when
-  // they sign in from another tab.
+  // they sign in from another tab. On a phone the link stays in the address
+  // bar, for Copy link to pass on to a bigger screen.
   useEffect(() => {
-    if (!startLink || screen !== 'start' || session.status === 'loading') {
+    if (
+      !startLink ||
+      isPhone ||
+      screen !== 'start' ||
+      session.status === 'loading'
+    ) {
       return;
     }
     if (parseStartLink(window.location.search)) {
@@ -1291,6 +1312,14 @@ export function EditorPage() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
+
+  if (isPhone) {
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <PhoneScreen />
+      </div>
+    );
+  }
 
   return (
     <>
