@@ -160,7 +160,8 @@ export function EditorNavbar({
             className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 max-w-full px-2 sm:px-3"
           >
             <span className="font-medium truncate">{packName}</span>
-            <span className="badge badge-xs badge-neutral hidden sm:inline-flex">
+            {/* Left out at lg, where the labelled buttons on the right leave the name little room */}
+            <span className="badge badge-xs badge-neutral hidden sm:inline-flex lg:hidden xl:inline-flex">
               {packType}
             </span>
             <Pencil className="h-3 w-3 shrink-0" />
@@ -229,7 +230,8 @@ export function EditorNavbar({
             className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
           >
             <Plus className="h-3 w-3" />
-            <span className="hidden lg:inline">New</span>
+            {/* New and Import are labelled from xl, so the pack name keeps room at lg */}
+            <span className="hidden xl:inline">New</span>
           </button>
           <div
             className="tooltip tooltip-bottom"
@@ -242,8 +244,8 @@ export function EditorNavbar({
               aria-label="Import"
               className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
             >
-              <Import className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">Import</span>
+              <Import className="h-4 w-4 xl:mr-2" />
+              <span className="hidden xl:inline">Import</span>
             </button>
           </div>
           <div

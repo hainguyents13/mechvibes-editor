@@ -380,11 +380,13 @@ export const keyboardLayouts = {
     ],
   ],
   // Mouse packs: the buttons and wheel the app listens for (MouseLeft…Mouse8).
+  // MouseDisplay draws them as a mouse, not as this grid, in this order: the
+  // arrow keys and Shift ranges follow it, and the wheel comes after the main
+  // buttons so it is drawn on top of them.
   mouse: [
-    [{ w: 2, h: 2 }, 'Left button', 'Wheel up', { w: 2, h: 2 }, 'Right button'],
-    [{ x: 2 }, 'Middle button'],
-    [{ x: 2 }, 'Wheel down'],
-    ['Button 4', 'Button 5', 'Button 6', 'Button 7', 'Button 8'],
+    ['Left button', 'Right button', 'Wheel up', 'Middle button', 'Wheel down'],
+    // Forward sits above back on the left side.
+    ['Button 5', 'Button 4', 'Button 6', 'Button 7', 'Button 8'],
   ],
 };
 

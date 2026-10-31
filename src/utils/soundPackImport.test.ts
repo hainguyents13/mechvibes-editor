@@ -78,19 +78,43 @@ describe('migrateKeyCode', () => {
     ['Del', 'NumpadDecimal'],
     ['Break', 'Pause'],
   ])('renames %s to %s', (code, target) => {
-    expect(migrateKeyCode(code, none)).toBe(target);
+    expect(migrateKeyCode(code, none, 'Keyboard')).toBe(target);
   });
 
   it('leaves out a code whose key the pack already defines', () => {
-    expect(migrateKeyCode('Del', new Set(['Del', 'NumpadDecimal']))).toBeNull();
+    expect(
+      migrateKeyCode('Del', new Set(['Del', 'NumpadDecimal']), 'Keyboard'),
+    ).toBeNull();
   });
 
   it.each(['Home', 'Digit5', 'Insert', 'Delete', 'ins', 'constructor'])(
     'keeps %s',
     (code) => {
-      expect(migrateKeyCode(code, none)).toBe(code);
+      expect(migrateKeyCode(code, none, 'Keyboard')).toBe(code);
     },
   );
+
+  it.each([
+    ['Escape', 'MouseLeft'],
+    ['Digit1', 'MouseRight'],
+    ['Digit2', 'MouseMiddle'],
+  ])(
+    'renames %s in a mouse pack to %s, the button the app plays',
+    (code, target) => {
+      expect(migrateKeyCode(code, none, 'Mouse')).toBe(target);
+    },
+  );
+
+  it('keeps those keys in a keyboard pack', () => {
+    expect(migrateKeyCode('Escape', none, 'Keyboard')).toBe('Escape');
+    expect(migrateKeyCode('Digit1', none, 'Keyboard')).toBe('Digit1');
+  });
+
+  it('leaves out an old button whose new name the mouse pack already defines', () => {
+    expect(
+      migrateKeyCode('Escape', new Set(['Escape', 'MouseLeft']), 'Mouse'),
+    ).toBeNull();
+  });
 });
 
 describe('opening a pack with old key names', () => {
@@ -181,10 +205,16 @@ describe('findSegmentsPastEnd', () => {
       ['KeyC', sound(oneSecond, { press: [0, 100], release: [1000, 1100] })],
       ['KeyD', sound(oneSecond, { press: [900, 1200], release: [1000, 1100] })],
       ['KeyE', sound(oneSecond, { press: [0, 1000] })],
+      ['KeyF', sound(oneSecond, { press: [1000, 1100], release: [0, 100] })],
+      [
+        'KeyG',
+        sound(oneSecond, { press: [1000, 1100], release: [1000, 1100] }),
+      ],
     ]);
 
     expect(findSegmentsPastEnd(keySounds, [oneSecond])).toEqual({
-      silent: ['KeyC', 'KeyD'],
+      silent: ['KeyC', 'KeyD', 'KeyG'],
+      pressPastEnd: ['KeyF'],
       cutShort: ['KeyB'],
     });
   });
@@ -198,6 +228,7 @@ describe('findSegmentsPastEnd', () => {
 
     expect(findSegmentsPastEnd(keySounds, [source])).toEqual({
       silent: [],
+      pressPastEnd: [],
       cutShort: ['KeyB'],
     });
   });
@@ -213,6 +244,7 @@ describe('findSegmentsPastEnd', () => {
 
     expect(findSegmentsPastEnd(keySounds, [unknown])).toEqual({
       silent: [],
+      pressPastEnd: [],
       cutShort: [],
     });
   });
@@ -386,5 +418,106 @@ describe('opening a pack whose sounds run past their file', () => {
     expect(pack.notes).toEqual([
       'These keys run past the end of their audio file. The app stops them where the file ends: KeyB.',
     ]);
+  });
+
+  it('says a multi pack plays the release on press when only the press starts after the end', async () => {
+    vi.mocked(getAudioDuration).mockResolvedValue(1);
+
+    const pack = await parseSoundPackZip(
+      await multiPack(
+        {
+          KeyA: {
+            audio_file: 'a.ogg',
+            timing: [
+              [5000, 5100],
+              [100, 200],
+            ],
+          },
+          KeyB: {
+            audio_file: 'a.ogg',
+            timing: [
+              [100, 200],
+              [5000, 5100],
+            ],
+          },
+        },
+        { 'a.ogg': fakeAudio('a') },
+      ),
+    );
+
+    expect(pack.warnings).toEqual([
+      'Part of the sound of these keys starts after their audio file ends, so the app plays nothing there: KeyB.',
+      'The press sound of these keys starts after their audio file ends, so the app plays their release sound when the key goes down: KeyA.',
+    ]);
+  });
+
+  it('says a single pack plays nothing when only the press starts after the end', async () => {
+    vi.mocked(getAudioDuration).mockResolvedValue(1);
+
+    const pack = await parseSoundPackZip(
+      await singlePack({
+        KeyA: [
+          [5000, 5100],
+          [100, 200],
+        ],
+      }),
+    );
+
+    expect(pack.warnings).toEqual([
+      'Part of the sound of these keys starts after their audio file ends, so the app plays nothing there: KeyA.',
+    ]);
+  });
+});
+
+describe('opening a mouse pack converted from Mechvibes V1', () => {
+  /** A single pack zip of type `soundpack_type` whose keys play `definitions`. */
+  const packOfType = (
+    soundpack_type: string | undefined,
+    definitions: Record<string, unknown>,
+  ) =>
+    makePackZip({
+      'config.json': {
+        config_version: '2',
+        name: 'Converted pack',
+        definition_method: 'single',
+        audio_file: 'sound.ogg',
+        soundpack_type,
+        definitions,
+      },
+      'sound.ogg': fakeAudio('main'),
+    });
+
+  it('renames its keys to the buttons the app plays them as', async () => {
+    const pack = await parseSoundPackZip(
+      await packOfType('Mouse', {
+        Escape: [[0, 50]],
+        Digit1: [[100, 150]],
+        Digit2: [[200, 250]],
+        Mouse4: [[300, 350]],
+      }),
+    );
+
+    expect(pack.info.packType).toBe('Mouse');
+    expect([...pack.keySounds.keys()]).toEqual([
+      'MouseLeft',
+      'MouseRight',
+      'MouseMiddle',
+      'Mouse4',
+    ]);
+    expect(pack.keySounds.get('MouseRight')?.press).toEqual([100, 150]);
+    expect(pack.notes).toEqual([
+      'Renamed old button names to the buttons the app plays them as: Escape is now MouseLeft, Digit1 is now MouseRight, Digit2 is now MouseMiddle.',
+    ]);
+    expect(pack.warnings).toEqual([]);
+  });
+
+  it('keeps those keys in a keyboard pack', async () => {
+    const pack = await parseSoundPackZip(
+      await packOfType(undefined, { Escape: [[0, 50]], Digit1: [[100, 150]] }),
+    );
+
+    expect(pack.info.packType).toBe('Keyboard');
+    expect([...pack.keySounds.keys()]).toEqual(['Escape', 'Digit1']);
+    expect(pack.notes).toEqual([]);
   });
 });

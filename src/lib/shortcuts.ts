@@ -43,9 +43,21 @@ export function spaceOperatesTarget(target: EventTarget | null) {
   return target.closest(SPACE_OPERATED) !== null;
 }
 
-/** Whether a dialog or the guided tour is open; it owns the keyboard. */
+/** Whether a popover is open. A browser without popovers has none open. */
+function isPopoverOpen() {
+  try {
+    return document.querySelector(':popover-open') !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a dialog, a popover or the guided tour is open; it owns the keyboard. */
 function isOverlayOpen() {
-  return document.querySelector('.modal-open, .driver-popover') !== null;
+  return (
+    document.querySelector('.modal-open, dialog[open], .driver-popover') !==
+      null || isPopoverOpen()
+  );
 }
 
 /** Whether a page-wide shortcut should leave this key press alone. */

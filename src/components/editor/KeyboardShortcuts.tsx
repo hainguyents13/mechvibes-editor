@@ -23,6 +23,8 @@ interface KeyboardShortcutsProps {
   maxWidth?: number;
   /** A mouse pack has buttons rather than keys. */
   isMousePack?: boolean;
+  /** Take focus when Deselect, which had it, goes away. */
+  onFocusLost: () => void;
 }
 
 function Keys({ keys }: { keys: string[] }) {
@@ -39,6 +41,7 @@ export function KeyboardShortcuts({
   setSelectedKeys,
   maxWidth,
   isMousePack = false,
+  onFocusLost,
 }: KeyboardShortcutsProps) {
   // The mouse drawing has buttons, and no box to drag.
   const shortcuts = isMousePack
@@ -99,7 +102,11 @@ export function KeyboardShortcuts({
             <button
               type="button"
               className="link link-hover link-error text-xs"
-              onClick={() => setSelectedKeys(new Set())}
+              onClick={(e) => {
+                // It goes away with the selection.
+                if (e.currentTarget === document.activeElement) onFocusLost();
+                setSelectedKeys(new Set());
+              }}
             >
               Deselect
             </button>

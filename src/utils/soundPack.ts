@@ -169,3 +169,9 @@ export function countKeysBySource(keySounds: KeySounds) {
   });
   return counts;
 }
+
+/** The sources at least one key plays, in list order. */
+export function sourcesInUse(sources: AudioSource[], keySounds: KeySounds) {
+  const counts = countKeysBySource(keySounds);
+  return sources.filter((source) => counts.has(source.id));
+}

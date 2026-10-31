@@ -87,7 +87,12 @@ function isAudioEntry(name: string) {
   );
 }
 
-/** Keys with a segment past the end of their file; files of unknown length are skipped. */
+/**
+ * Keys with a segment past the end of their file; files of unknown length are
+ * skipped. `pressPastEnd` holds keys whose press starts after the end while
+ * their release does not; `silent` holds the other keys with a segment that
+ * starts after the end.
+ */
 export function findSegmentsPastEnd(
   keySounds: KeySounds,
   sources: AudioSource[],
@@ -96,18 +101,23 @@ export function findSegmentsPastEnd(
     sources.map((source) => [source.id, source.duration * 1000]),
   );
   const silent: string[] = [];
+  const pressPastEnd: string[] = [];
   const cutShort: string[] = [];
   keySounds.forEach(({ source, press, release }, code) => {
     const fileMs = lengths.get(source) ?? 0;
     if (fileMs <= 0) return;
+    const startsPastEnd = ([start]: Segment) => start >= fileMs;
     const segments = release ? [press, release] : [press];
-    // Same rounding as the editor's own check (TimeSegmentControls).
-    if (segments.some(([start]) => start >= fileMs)) silent.push(code);
-    else if (segments.some(([, end]) => end > Math.ceil(fileMs))) {
+    if (release && startsPastEnd(press) && !startsPastEnd(release)) {
+      pressPastEnd.push(code);
+    } else if (segments.some(startsPastEnd)) {
+      silent.push(code);
+    } else if (segments.some(([, end]) => end > Math.ceil(fileMs))) {
+      // Same rounding as the editor's own check (TimeSegmentControls).
       cutShort.push(code);
     }
   });
-  return { silent, cutShort };
+  return { silent, pressPastEnd, cutShort };
 }
 
 /**
@@ -121,12 +131,26 @@ export const LEGACY_KEY_CODES: ReadonlyMap<string, string> = new Map([
   ['Break', 'Pause'],
 ]);
 
+/**
+ * Keys that Mechvibes V1 mouse packs carry, as an earlier build of the app
+ * converted them. In a mouse pack the app plays each as the button it stands
+ * for.
+ */
+export const LEGACY_MOUSE_CODES: ReadonlyMap<string, string> = new Map([
+  ['Escape', 'MouseLeft'],
+  ['Digit1', 'MouseRight'],
+  ['Digit2', 'MouseMiddle'],
+]);
+
 /** The code a definition is kept under, or null when the pack already defines the key it stands for. */
 export function migrateKeyCode(
   code: string,
   definedCodes: ReadonlySet<string>,
+  packType: PackType,
 ): string | null {
-  const target = LEGACY_KEY_CODES.get(code);
+  const target =
+    LEGACY_KEY_CODES.get(code) ??
+    (packType === 'Mouse' ? LEGACY_MOUSE_CODES.get(code) : undefined);
   if (!target) return code;
   return definedCodes.has(target) ? null : target;
 }
@@ -236,17 +260,22 @@ export async function parseSoundPackZip(
     }
   }
 
+  const packType = readPackType(
+    config.soundpack_type,
+    Object.keys(definitions),
+  );
   const keySounds: KeySounds = new Map();
   const missingAudio: string[] = [];
   const invalidTiming: string[] = [];
   const tooManySegments: string[] = [];
   const definedCodes = new Set(Object.keys(definitions));
   const renamed: string[] = [];
+  const renamedButtons: string[] = [];
   const shadowedLegacy: string[] = [];
   const unreadableWholeFile: string[] = [];
 
   for (const [rawCode, definition] of Object.entries(definitions)) {
-    const code = migrateKeyCode(rawCode, definedCodes);
+    const code = migrateKeyCode(rawCode, definedCodes, packType);
     if (code === null) {
       shadowedLegacy.push(rawCode);
       continue;
@@ -292,7 +321,11 @@ export async function parseSoundPackZip(
       press: segments[0],
       ...(segments[1] ? { release: segments[1] } : {}),
     });
-    if (code !== rawCode) renamed.push(`${rawCode} is now ${code}`);
+    if (code !== rawCode) {
+      (LEGACY_KEY_CODES.has(rawCode) ? renamed : renamedButtons).push(
+        `${rawCode} is now ${code}`,
+      );
+    }
   }
 
   // Files no key plays stay in the editor, so sounds can still be cut from them.
@@ -310,7 +343,10 @@ export async function parseSoundPackZip(
     .sort((a, b) => (usage.get(b.id) ?? 0) - (usage.get(a.id) ?? 0));
   // Colours follow the list order, so the main file takes the first colour.
   const sources = addSources([], ordered);
-  const { silent, cutShort } = findSegmentsPastEnd(keySounds, sources);
+  const { silent, pressPastEnd, cutShort } = findSegmentsPastEnd(
+    keySounds,
+    sources,
+  );
 
   const warnings: string[] = [];
   if (missingAudio.length > 0) {
@@ -338,15 +374,28 @@ export async function parseSoundPackZip(
       `This browser cannot read the audio of these keys, so you cannot hear or edit them here. They still play their whole file in the app and are exported unchanged: ${listKeys(unreadableWholeFile)}.`,
     );
   }
-  if (silent.length > 0) {
+  // A multi pack drops a sound that starts after its file ends and keeps the
+  // key's other one, so a key left with only its release plays it on press.
+  const silentParts = isMulti ? silent : [...silent, ...pressPastEnd];
+  if (silentParts.length > 0) {
     warnings.push(
-      `Part of the sound of these keys starts after their audio file ends, so the app plays nothing there: ${listKeys(silent)}.`,
+      `Part of the sound of these keys starts after their audio file ends, so the app plays nothing there: ${listKeys(silentParts)}.`,
+    );
+  }
+  if (isMulti && pressPastEnd.length > 0) {
+    warnings.push(
+      `The press sound of these keys starts after their audio file ends, so the app plays their release sound when the key goes down: ${listKeys(pressPastEnd)}.`,
     );
   }
   const notes: string[] = [];
   if (renamed.length > 0) {
     notes.push(
       `Renamed key names the app does not know: ${renamed.join(', ')}.`,
+    );
+  }
+  if (renamedButtons.length > 0) {
+    notes.push(
+      `Renamed old button names to the buttons the app plays them as: ${renamedButtons.join(', ')}.`,
     );
   }
   if (cutShort.length > 0) {
@@ -412,7 +461,7 @@ export async function parseSoundPackZip(
       tags: Array.isArray(config.tags)
         ? config.tags.filter((tag): tag is string => typeof tag === 'string')
         : [],
-      packType: readPackType(config.soundpack_type, Object.keys(definitions)),
+      packType,
       recommendedVolume:
         Number.isFinite(volume) && volume >= 0 && volume <= 2 ? volume : 1,
       randomPitch: options.random_pitch === true,

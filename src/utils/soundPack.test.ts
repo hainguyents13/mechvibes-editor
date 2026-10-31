@@ -4,10 +4,12 @@ import {
   createAudioSource,
   isSamePackInfo,
   isWholeFile,
+  type KeySounds,
   listKeys,
   nextColorIndexes,
   type PackInfo,
   SOURCE_COLOR_COUNT,
+  sourcesInUse,
   WHOLE_FILE,
 } from '@/utils/soundPack';
 
@@ -120,5 +122,21 @@ describe('addSources', () => {
     expect(next[1]).toBe(c);
     expect(next[2]).toMatchObject({ id: added.id, file: added.file });
     expect(added.colorIndex).toBe(0);
+  });
+});
+
+describe('sourcesInUse', () => {
+  const source = (name: string) =>
+    createAudioSource(new File([name], name, { type: 'audio/wav' }), 1);
+
+  it('keeps the files a key plays, in list order, and leaves out the rest', () => {
+    const [a, b, c] = [source('a'), source('b'), source('c')];
+    const keySounds: KeySounds = new Map([
+      ['KeyA', { source: c.id, press: [0, 10] }],
+      ['KeyB', { source: a.id, press: [0, 10] }],
+      ['KeyC', { source: a.id, press: [20, 30] }],
+    ]);
+    expect(sourcesInUse([a, b, c], keySounds)).toEqual([a, c]);
+    expect(sourcesInUse([a, b, c], new Map())).toEqual([]);
   });
 });

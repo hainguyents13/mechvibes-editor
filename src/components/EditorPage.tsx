@@ -567,6 +567,14 @@ export function EditorPage() {
     },
   });
 
+  // Where focus goes when the control that had it goes away: the keyboard's
+  // key in the Tab order.
+  const focusKeyboard = useCallback(() => {
+    keyboardRef.current
+      ?.querySelector<HTMLElement | SVGElement>('[data-key-id][tabindex="0"]')
+      ?.focus();
+  }, [keyboardRef]);
+
   const selectedCodes = useMemo(
     () =>
       Array.from(
@@ -651,7 +659,8 @@ export function EditorPage() {
     }
   };
 
-  // Shortcuts are off while the dialog is open, so the pack cannot change under it.
+  // The dialog is modal and shortcuts are off while it is open, so the pack
+  // cannot change under it.
   const pendingCodes = pendingPackType
     ? codesOfOtherKind(keySounds.keys(), pendingPackType)
     : [];
@@ -1440,6 +1449,7 @@ export function EditorPage() {
                     clearKeySounds([code], current),
                   )
                 }
+                onFocusLost={focusKeyboard}
               />
             </div>
           )}
@@ -1454,6 +1464,7 @@ export function EditorPage() {
               setSelectedKeys={setSelectedKeys}
               maxWidth={keyboardNaturalWidth * keyboardScale}
               isMousePack={isMousePack}
+              onFocusLost={focusKeyboard}
             />
           </div>
         </div>

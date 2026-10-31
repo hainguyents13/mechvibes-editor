@@ -90,13 +90,25 @@ describe('shouldIgnoreShortcut', () => {
     ).toBe(true);
   });
 
-  it.each(['.modal-open', '.driver-popover'])(
+  it.each(['.modal-open', 'dialog[open]', '.driver-popover', ':popover-open'])(
     'ignores every press while %s is on the page',
     (overlay) => {
       openOverlay = overlay;
       expect(shouldIgnoreShortcut(event())).toBe(true);
     },
   );
+
+  it('lets a press through in a browser that does not know popovers', () => {
+    vi.stubGlobal('document', {
+      querySelector: (selector: string) => {
+        if (selector.includes(':popover-open')) {
+          throw new SyntaxError(`'${selector}' is not a valid selector`);
+        }
+        return null;
+      },
+    });
+    expect(shouldIgnoreShortcut(event())).toBe(false);
+  });
 });
 
 describe('spaceOperatesTarget', () => {

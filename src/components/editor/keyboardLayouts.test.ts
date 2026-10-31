@@ -175,17 +175,19 @@ describe('keyboard layouts', () => {
     expect(codeOf(fullsize, 'Home', 16.25)).toBe('Home');
   });
 
-  it('give the mouse buttons their codes', () => {
+  // Shift ranges follow this order and the arrow keys follow the drawing, so
+  // the two must agree.
+  it('give the mouse buttons their codes, in the order the drawing goes through them', () => {
     expect(
       parseKeyboardLayout(keyboardLayouts.mouse).map((key) => key.code),
     ).toEqual([
       'MouseLeft',
-      'MouseWheelUp',
       'MouseRight',
+      'MouseWheelUp',
       'MouseMiddle',
       'MouseWheelDown',
-      'Mouse4',
       'Mouse5',
+      'Mouse4',
       'Mouse6',
       'Mouse7',
       'Mouse8',

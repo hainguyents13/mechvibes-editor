@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AudioSource, KeySounds } from '@/utils/soundPack';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type AudioSource,
+  type KeySounds,
+  sourcesInUse,
+} from '@/utils/soundPack';
 
 /**
  * Plays a key's sound the way the finished sound pack will: the press sound
@@ -20,9 +24,15 @@ export function usePreviewPlayback(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Only the files keys play: one no key uses cannot break the preview.
+  const playedSources = useMemo(
+    () => sourcesInUse(sources, keySounds),
+    [sources, keySounds],
+  );
+
   // Decode the files once per change, but only while preview is active.
   useEffect(() => {
-    if (!enabled || sources.length === 0) return;
+    if (!enabled || playedSources.length === 0) return;
 
     let cancelled = false;
     setIsLoading(true);
@@ -34,7 +44,7 @@ export function usePreviewPlayback(
     buffersRef.current = buffers;
 
     Promise.all(
-      sources.map(async (source) => {
+      playedSources.map(async (source) => {
         try {
           const data = await source.file.arrayBuffer();
           buffers.set(source.id, await context.decodeAudioData(data));
@@ -60,7 +70,7 @@ export function usePreviewPlayback(
       });
       audioContextRef.current = null;
     };
-  }, [sources, enabled]);
+  }, [playedSources, enabled]);
 
   const playKey = useCallback(
     (keyCode: string, phase: 'press' | 'release' = 'press') => {

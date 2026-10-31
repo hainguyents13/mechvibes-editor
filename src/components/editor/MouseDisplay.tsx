@@ -100,7 +100,8 @@ const sideRegion = (
   };
 };
 
-// Drawn in this order, so the wheel sits on top of the main buttons.
+// Drawn in the mouse layout's order (keyboardLayouts.ts), which puts the wheel
+// on top of the main buttons.
 const REGIONS: Record<string, Region> = {
   'Left button': {
     shape: mainButton(-1),
@@ -202,16 +203,15 @@ export function MouseDisplay({
   isPreview = false,
   pressedKeyCodes,
 }: MouseDisplayProps) {
-  // Same keys and ids as the keyboard display, so selection and quick
-  // select work unchanged.
-  const keys = parseKeyboardLayout(keyboardLayouts.mouse).map((key, index) => ({
-    label: key.label,
-    code: key.code,
-    id: `${key.label || 'key'}-${index}-${key.x}-${key.y}`,
-  }));
-  const ordered = Object.keys(REGIONS).flatMap((label) =>
-    keys.filter((key) => key.label === label),
-  );
+  // Same keys, ids and order as the keyboard display, so selection, Shift
+  // ranges and quick select work unchanged.
+  const ordered = parseKeyboardLayout(keyboardLayouts.mouse)
+    .map((key, index) => ({
+      label: key.label,
+      code: key.code,
+      id: `${key.label || 'key'}-${index}-${key.x}-${key.y}`,
+    }))
+    .filter((key) => key.label in REGIONS);
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: a click beside the buttons deselects, as on the keyboard; Esc does the same from the keyboard
@@ -220,9 +220,14 @@ export function MouseDisplay({
       ref={keyboardRef}
       className="flex mx-auto justify-center select-none"
       style={MOUSE_DISPLAY_SIZE}
-      onClick={() => {
+      onClick={(e) => {
+        // A Shift, Ctrl or Cmd click that misses a button keeps the selection.
         if (!isPreview) {
-          onSelectKey(null, { range: false, toggle: false }, 'pointer');
+          onSelectKey(
+            null,
+            { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey },
+            'pointer',
+          );
         }
       }}
     >
@@ -306,7 +311,7 @@ export function MouseDisplay({
                   }
                   return;
                 }
-                // Arrows follow the drawing, which does not match the layout grid.
+                // Arrows follow the drawing, as Shift ranges do.
                 const step =
                   e.key === 'ArrowRight' || e.key === 'ArrowDown'
                     ? 1
