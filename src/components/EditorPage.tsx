@@ -6,8 +6,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type WaveSurfer from 'wavesurfer.js';
-import type RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { ConfirmDiscardModal } from '@/components/ConfirmDiscardModal';
 import { ConfirmPackTypeModal } from '@/components/ConfirmPackTypeModal';
 import { EditorNavbar } from '@/components/EditorNavbar';
@@ -43,7 +41,7 @@ import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePackHistory } from '@/hooks/usePackHistory';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { hasSeenEditorTour, startEditorTour } from '@/lib/editorTour';
-import { shouldIgnoreShortcut } from '@/lib/shortcuts';
+import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import { plural } from '@/lib/utils';
 import {
   downloadPackZip,
@@ -59,6 +57,7 @@ import {
   type PackSnapshot,
 } from '@/utils/packHistory';
 import {
+  addSources,
   countKeysBySource,
   createAudioSource,
   isSamePackInfo,
@@ -347,9 +346,6 @@ export function EditorPage() {
     setIsPlaying(playing);
   }, []);
 
-  // Waveform refs
-  const wavesurfer = useRef<WaveSurfer | null>(null);
-  const regionsPlugin = useRef<RegionsPlugin | null>(null);
   // Video preview element lives in AudioFileSelector, driven by WaveformEditor playback
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
@@ -358,6 +354,11 @@ export function EditorPage() {
   const audioFile = activeSource?.file ?? null;
   const audioDuration = activeSource?.duration ?? 0;
   const keyCounts = useMemo(() => countKeysBySource(keySounds), [keySounds]);
+  // Keys show the colour and name of the file their sound comes from.
+  const sourcesById = useMemo(
+    () => new Map(sources.map((source) => [source.id, source])),
+    [sources],
+  );
   // Changes New, Import, opening a library pack or closing the tab would lose. A blank pack has none.
   const isDirty =
     !isSameSnapshot(present, savedSnapshot) && !isBlankPack(present);
@@ -595,12 +596,13 @@ export function EditorPage() {
         createAudioSource(file, await getAudioDuration(file)),
       ),
     );
-    // Appends to the latest files: an Undo can land while durations are read.
+    // Appends to the latest files, and picks colours against them: an Undo
+    // can land while durations are read.
     commit(
       added.length === 1
         ? `Add ${added[0].file.name}`
         : `Add ${added.length} files`,
-      (current) => ({ sources: [...current.sources, ...added] }),
+      (current) => ({ sources: addSources(current.sources, added) }),
     );
     setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
@@ -1070,6 +1072,31 @@ export function EditorPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isKeyboardOwnedElsewhere, undo, redo]);
 
+  // Space plays or stops the selected sound, as the waveform hint says.
+  useEffect(() => {
+    if (isKeyboardOwnedElsewhere || !activeSourceId) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.code !== 'Space' ||
+        event.repeat ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+      if (shouldIgnoreShortcut(event) || spaceOperatesTarget(event.target)) {
+        return;
+      }
+      // Also keeps the page from scrolling when there is nothing to play.
+      event.preventDefault();
+      playSelectedSegment();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isKeyboardOwnedElsewhere, activeSourceId, playSelectedSegment]);
+
   // Ask before closing or reloading the tab over unsaved changes.
   useEffect(() => {
     if (!isDirty) return;
@@ -1315,12 +1342,15 @@ export function EditorPage() {
                   </div>
                   <span className="text-base-content/70">Selected</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div
+                  className="flex items-center gap-2"
+                  title="The dot takes the colour of the file the sound comes from"
+                >
                   <div className="btn btn-xs relative pointer-events-none">
                     Q
-                    <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white shadow-lg ring-2 ring-primary/30"></div>
+                    <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-base-content/50 rounded-full border-2 border-white shadow-lg ring-2 ring-base-content/20"></div>
                   </div>
-                  <span className="text-base-content/70">Modified</span>
+                  <span className="text-base-content/70">Has a sound</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="btn btn-xs relative pointer-events-none">
@@ -1363,6 +1393,7 @@ export function EditorPage() {
                   <MouseDisplay
                     selectedKeys={selectedKeys}
                     modifiedKeys={keySounds}
+                    sourcesById={sourcesById}
                     tabStopId={tabStopId}
                     onSelectKey={selectKey}
                     onFocusKey={setFocusKeyId}
@@ -1375,6 +1406,7 @@ export function EditorPage() {
                     layout={layout}
                     selectedKeys={selectedKeys}
                     modifiedKeys={keySounds}
+                    sourcesById={sourcesById}
                     marquee={marquee}
                     tabStopId={tabStopId}
                     pointerHandlers={pointerHandlers}
@@ -1523,8 +1555,6 @@ export function EditorPage() {
                       setZoomLevel={setZoomLevelCallback}
                       isPlaying={isPlaying}
                       setIsPlaying={setIsPlayingCallback}
-                      wavesurfer={wavesurfer}
-                      regionsPlugin={regionsPlugin}
                       onPlaySelectedSegmentReady={(playFn) => {
                         playSelectedSegmentRef.current = playFn;
                       }}

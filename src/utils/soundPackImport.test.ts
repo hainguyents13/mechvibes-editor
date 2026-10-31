@@ -252,6 +252,36 @@ describe('opening a key that plays its whole file', () => {
   });
 });
 
+describe('colouring the files of an opened pack', () => {
+  it('colours them in list order, so the most used file takes the first colour', async () => {
+    const pack = await parseSoundPackZip(
+      await multiPack(
+        {
+          KeyA: { audio_file: 'a.ogg', timing: [[0, 50]] },
+          KeyB: { audio_file: 'b.ogg', timing: [[0, 50]] },
+          KeyC: { audio_file: 'b.ogg', timing: [[50, 100]] },
+        },
+        {
+          'a.ogg': fakeAudio('a'),
+          'b.ogg': fakeAudio('b'),
+          'c.ogg': fakeAudio('c'),
+        },
+      ),
+    );
+
+    expect(
+      pack.sources.map(({ file, colorIndex }) => [file.name, colorIndex]),
+    ).toEqual([
+      ['b.ogg', 0],
+      ['a.ogg', 1],
+      ['c.ogg', 2],
+    ]);
+    // Keys still point at their files.
+    expect(pack.keySounds.get('KeyB')?.source).toBe(pack.sources[0].id);
+    expect(pack.keySounds.get('KeyA')?.source).toBe(pack.sources[1].id);
+  });
+});
+
 describe('opening a pack with files no key uses', () => {
   it('keeps them last and leaves out macOS resource forks', async () => {
     const pack = await parseSoundPackZip(

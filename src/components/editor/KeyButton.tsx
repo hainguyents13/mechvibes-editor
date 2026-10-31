@@ -12,6 +12,10 @@ interface KeyButtonProps {
   isModified: boolean;
   /** The key also plays a sound when it comes up. */
   hasRelease?: boolean;
+  /** Background class of the has-a-sound dot: the colour of the key's source file. */
+  dotColor?: string;
+  /** Name of the file the key's sound comes from, shown on hover. */
+  sourceName?: string;
   keyId: string;
   /** 0 for the one key in the Tab order, -1 for the rest. */
   tabIndex: number;
@@ -34,6 +38,8 @@ export function KeyButton({
   isSelected,
   isModified,
   hasRelease = false,
+  dotColor,
+  sourceName,
   keyId,
   tabIndex,
   onKeyDown,
@@ -63,6 +69,8 @@ export function KeyButton({
       tabIndex={isPreview ? -1 : tabIndex}
       aria-pressed={isPreview ? undefined : isSelected}
       aria-label={label.trim() ? label.replace(/\n/g, ' ') : 'Space'}
+      // The file's name as well as its colour, for those who cannot tell colours apart.
+      title={!isPreview && sourceName ? `Sound from ${sourceName}` : undefined}
       className={cn(
         'btn text-xs flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
         !isPreview && isSelected ? 'btn-neutral' : '',
@@ -78,7 +86,12 @@ export function KeyButton({
       onMouseUp={isPreview ? onPreviewMouseUp : undefined}
     >
       {!isPreview && isModified && (
-        <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white shadow-lg ring-2 ring-primary/30"></div>
+        <div
+          className={cn(
+            'absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white shadow-lg ring-2 ring-base-content/20',
+            dotColor ?? 'bg-primary',
+          )}
+        />
       )}
       {!isPreview && hasRelease && (
         <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>

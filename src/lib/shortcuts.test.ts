@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { isTextEntry, shouldIgnoreShortcut } from '@/lib/shortcuts';
+import {
+  isTextEntry,
+  shouldIgnoreShortcut,
+  spaceOperatesTarget,
+} from '@/lib/shortcuts';
 
 // Tests run in Node, which has no DOM: stand-ins for the element classes the
 // rules check, and a document whose open overlay each test picks.
@@ -93,4 +97,48 @@ describe('shouldIgnoreShortcut', () => {
       expect(shouldIgnoreShortcut(event())).toBe(true);
     },
   );
+});
+
+describe('spaceOperatesTarget', () => {
+  // An element that is, or sits inside, what each of `selectors` matches.
+  class FakeNode {
+    selectors: string[];
+    constructor(...selectors: string[]) {
+      this.selectors = selectors;
+    }
+    closest(selector: string) {
+      const parts = selector.split(',').map((part) => part.trim());
+      return parts.some((part) => this.selectors.includes(part)) ? this : null;
+    }
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('Element', FakeNode);
+  });
+
+  const node = (...selectors: string[]) =>
+    new FakeNode(...selectors) as unknown as EventTarget;
+
+  it.each([
+    'button',
+    'a[href]',
+    'summary',
+    '[role="button"]',
+    'input:not([type="range"])',
+  ])('leaves Space to a focused %s', (selector) => {
+    expect(spaceOperatesTarget(node(selector))).toBe(true);
+  });
+
+  it('plays from a keyboard key or a mouse button, which take Enter', () => {
+    expect(spaceOperatesTarget(node('[data-key-id]', 'button'))).toBe(false);
+    expect(spaceOperatesTarget(node('[data-key-id]', '[role="button"]'))).toBe(
+      false,
+    );
+  });
+
+  it('plays from a range slider, the page and no target', () => {
+    expect(spaceOperatesTarget(node())).toBe(false);
+    expect(spaceOperatesTarget({} as EventTarget)).toBe(false);
+    expect(spaceOperatesTarget(null)).toBe(false);
+  });
 });

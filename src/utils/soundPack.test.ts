@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addSources,
+  createAudioSource,
   isSamePackInfo,
   isWholeFile,
   listKeys,
+  nextColorIndexes,
   type PackInfo,
+  SOURCE_COLOR_COUNT,
   WHOLE_FILE,
 } from '@/utils/soundPack';
 
@@ -62,5 +66,59 @@ describe('isSamePackInfo', () => {
   it('tells another icon file apart, even with the same name', () => {
     const icon = new File(['png'], 'icon.png', { type: 'image/png' });
     expect(isSamePackInfo(info, { ...info, icon })).toBe(false);
+  });
+});
+
+const slots = (...indexes: number[]) =>
+  indexes.map((colorIndex) => ({ colorIndex }));
+const everySlot = () =>
+  slots(...Array.from({ length: SOURCE_COLOR_COUNT }, (_, slot) => slot));
+
+describe('nextColorIndexes', () => {
+  it('takes the lowest free slots', () => {
+    expect(nextColorIndexes([], 3)).toEqual([0, 1, 2]);
+    expect(nextColorIndexes(slots(0, 2), 2)).toEqual([1, 3]);
+  });
+
+  it('reuses the least used slots once all are taken', () => {
+    expect(nextColorIndexes(everySlot(), 2)).toEqual([0, 1]);
+    expect(nextColorIndexes([...everySlot(), ...slots(0)], 1)).toEqual([1]);
+  });
+
+  it('picks nothing for no sources', () => {
+    expect(nextColorIndexes(slots(0, 1), 0)).toEqual([]);
+  });
+
+  it('counts a slot past the palette as the one it cycles to', () => {
+    expect(nextColorIndexes(slots(12), 1)).toEqual([0]);
+  });
+});
+
+describe('createAudioSource', () => {
+  it('keeps the colour slot it is given, with a new id each time', () => {
+    const file = new File(['a'], 'a.wav', { type: 'audio/wav' });
+    const first = createAudioSource(file, 1, 4);
+    const second = createAudioSource(file, 1);
+    expect(first.colorIndex).toBe(4);
+    expect(second.colorIndex).toBe(0);
+    expect(first.id).not.toBe(second.id);
+  });
+});
+
+describe('addSources', () => {
+  const source = (name: string) =>
+    createAudioSource(new File([name], name, { type: 'audio/wav' }), 1);
+
+  it('gives a removed file colour to the next one added, and keeps the others', () => {
+    const [a, b, c] = addSources([], [source('a'), source('b'), source('c')]);
+    expect([a, b, c].map((s) => s.colorIndex)).toEqual([0, 1, 2]);
+    const added = source('d');
+    // b is removed, so d takes its colour.
+    const next = addSources([a, c], [added]);
+    expect(next.map((s) => s.colorIndex)).toEqual([0, 2, 1]);
+    expect(next[0]).toBe(a);
+    expect(next[1]).toBe(c);
+    expect(next[2]).toMatchObject({ id: added.id, file: added.file });
+    expect(added.colorIndex).toBe(0);
   });
 });

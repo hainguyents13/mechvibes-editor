@@ -145,16 +145,16 @@ export function AudioFileSelector({
         {fileInput}
       </div>
 
-      {/* One row per source, each with its own palette colour; the selected
-          one is shown in the waveform. */}
+      {/* One row per source in its own fixed colour; the selected one is
+          shown in the waveform. */}
       <ul
         className={cn(
           'min-h-0 overflow-y-auto flex flex-col gap-2',
           isVideo ? 'shrink-0 max-h-28' : 'flex-1',
         )}
       >
-        {sources.map((source, index) => {
-          const color = getAudioTrackColor(index);
+        {sources.map((source) => {
+          const color = getAudioTrackColor(source.colorIndex);
           const isActive = source.id === activeSourceId;
           const keyCount = keyCounts.get(source.id) ?? 0;
           const Icon = source.file.type.startsWith('video/') ? Video : Music;
@@ -164,11 +164,12 @@ export function AudioFileSelector({
               key={source.id}
               className={cn(
                 'flex items-center gap-1 rounded-box border border-l-4',
-                color.border,
                 color.bg,
                 isActive
                   ? 'border-base-content/40 ring-1 ring-base-content/20'
                   : 'border-base-content/10',
+                // After the border colour, or cn drops it as overridden.
+                color.border,
               )}
             >
               <button

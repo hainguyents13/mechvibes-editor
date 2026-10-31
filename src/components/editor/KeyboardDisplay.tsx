@@ -1,5 +1,6 @@
 import React from 'react';
-import type { KeySounds } from '@/utils/soundPack';
+import type { AudioSource, KeySounds } from '@/utils/soundPack';
+import { getAudioTrackColor } from './audio-track-colors';
 import { KeyButton } from './KeyButton';
 import {
   ARROW_DIRECTIONS,
@@ -20,6 +21,8 @@ interface KeyboardDisplayProps {
   layout: LayoutName;
   selectedKeys: Set<string>;
   modifiedKeys: KeySounds;
+  /** The pack's sources by id, for the colour and name of each key's file. */
+  sourcesById: Map<string, AudioSource>;
   /** The marquee being dragged, in unscaled keyboard pixels. */
   marquee: LayoutRect | null;
   /** The one key in the Tab order. */
@@ -45,6 +48,7 @@ export function KeyboardDisplay({
   layout,
   selectedKeys,
   modifiedKeys,
+  sourcesById,
   marquee,
   tabStopId,
   pointerHandlers,
@@ -117,6 +121,8 @@ export function KeyboardDisplay({
         {keys.map((key, index) => {
           const keyId = getKeyId(key, index);
           const keyCode = key.code;
+          const sound = modifiedKeys.get(keyCode);
+          const source = sound ? sourcesById.get(sound.source) : undefined;
           return (
             <KeyButton
               // biome-ignore lint/suspicious/noArrayIndexKey: key kept as in the website editor
@@ -128,8 +134,12 @@ export function KeyboardDisplay({
               width={key.width}
               height={key.height}
               isSelected={selectedKeys.has(keyId)}
-              isModified={modifiedKeys.has(keyCode)}
-              hasRelease={Boolean(modifiedKeys.get(keyCode)?.release)}
+              isModified={Boolean(sound)}
+              hasRelease={Boolean(sound?.release)}
+              dotColor={
+                source ? getAudioTrackColor(source.colorIndex).dot : undefined
+              }
+              sourceName={source?.file.name}
               isPreview={isPreview}
               isPressed={pressedKeyCodes?.has(keyCode) ?? false}
               tabIndex={keyId === tabStopId ? 0 : -1}

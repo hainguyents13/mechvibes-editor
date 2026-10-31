@@ -56,7 +56,7 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       popover: {
         title: '2. Pick keys',
         description:
-          'Click a key to select it, drag across keys to select several, or Ctrl+click to add one. A dot marks a key that already has a sound.',
+          'Click a key to select it, drag across keys to select several, or Ctrl+click to add one. A dot marks a key that already has a sound, in the colour of its file.',
       },
     },
     {

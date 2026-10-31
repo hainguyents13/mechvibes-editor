@@ -1,8 +1,12 @@
 import { RotateCcw, Zap } from 'lucide-react';
 import React from 'react';
-import { CombinedWaveform } from '@/components/editor/CombinedWaveform';
+import {
+  CombinedWaveform,
+  type CombinedWaveformRef,
+} from '@/components/editor/CombinedWaveform';
+import { getUsageBadges } from '@/components/editor/waveform-selection';
 import { useWaveformEditor } from '@/hooks/useWaveformEditor';
-import { isWholeFile, type KeySounds } from '@/utils/soundPack';
+import type { KeySounds } from '@/utils/soundPack';
 
 interface WaveformEditorProps {
   audioFile: File | null;
@@ -14,8 +18,6 @@ interface WaveformEditorProps {
   setZoomLevel: (level: number) => void;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
-  wavesurfer: React.MutableRefObject<any>;
-  regionsPlugin: React.MutableRefObject<any>;
   onPlaySelectedSegmentReady?: (playFn: () => void) => void;
   /** Key sounds; those cut from `sourceId` are marked under the waveform. */
   keySounds?: KeySounds;
@@ -35,8 +37,6 @@ export function WaveformEditor({
   setZoomLevel,
   isPlaying,
   setIsPlaying,
-  wavesurfer,
-  regionsPlugin,
   onPlaySelectedSegmentReady,
   keySounds,
   sourceId,
@@ -46,27 +46,14 @@ export function WaveformEditor({
   const {
     soundRegionsMode,
     toggleSoundRegionsMode,
-    setSelectedSoundRegion,
     silenceThreshold,
     setSilenceThreshold,
     handleZoom,
     handleResetZoom,
     audioUrl,
-  } = useWaveformEditor({
-    audioFile,
-    defaultDuration,
-    setDefaultDuration,
-    waveformSelection,
-    setWaveformSelection,
-    zoomLevel,
-    setZoomLevel,
-    isPlaying,
-    setIsPlaying,
-    wavesurfer,
-    regionsPlugin,
-  });
+  } = useWaveformEditor({ audioFile, setZoomLevel });
 
-  const combinedWaveformRef = React.useRef<any>(null);
+  const combinedWaveformRef = React.useRef<CombinedWaveformRef>(null);
   // The horizontally scrolling wrapper around the waveform — zoom anchors to it
   const waveformScrollRef = React.useRef<HTMLDivElement>(null);
   const fallbackVideoRef = React.useRef<HTMLVideoElement>(null);
@@ -76,16 +63,10 @@ export function WaveformEditor({
   // Create the unified playSelectedSegment function that always uses segment inputs
   const actualPlaySelectedSegment = React.useCallback(() => {
     const waveformRef = combinedWaveformRef.current;
-    if (!waveformRef) {
-      console.log('CombinedWaveform ref not available');
-      return;
-    }
+    if (!waveformRef) return;
 
     const ws = waveformRef.wavesurfer;
-    if (!ws) {
-      console.log('WaveSurfer instance not available');
-      return;
-    }
+    if (!ws) return;
 
     // Stop any current playback (toggle functionality)
     if (isPlaying) {
@@ -100,7 +81,6 @@ export function WaveformEditor({
       waveformSelection.start < 0 ||
       waveformSelection.end <= waveformSelection.start
     ) {
-      console.log('No valid time segment to play:', waveformSelection);
       return;
     }
 
@@ -128,23 +108,7 @@ export function WaveformEditor({
       }
     };
     animationId = requestAnimationFrame(stopAtEnd);
-
-    // Clean up function
-    return () => {
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-    };
   }, [waveformSelection, setIsPlaying, isPlaying]);
-
-  const handleWaveformReady = React.useCallback(
-    (duration: number) => {
-      setDefaultDuration(duration);
-      wavesurfer.current = combinedWaveformRef.current?.wavesurfer;
-      regionsPlugin.current = combinedWaveformRef.current?.regions;
-    },
-    [setDefaultDuration, wavesurfer, regionsPlugin],
-  );
 
   // Provide the playSelectedSegment function to parent whenever it changes
   React.useEffect(() => {
@@ -240,8 +204,7 @@ export function WaveformEditor({
               silenceThreshold={silenceThreshold}
               waveformSelection={waveformSelection}
               onSelectionChange={setWaveformSelection}
-              onRegionSelect={setSelectedSoundRegion}
-              onReady={handleWaveformReady}
+              onReady={setDefaultDuration}
               scrollContainerRef={waveformScrollRef}
               height={waveformHeight}
             />
@@ -256,129 +219,33 @@ export function WaveformEditor({
             }}
           >
             {keySounds &&
+              sourceId &&
               defaultDuration > 0 &&
-              (() => {
-                // Group this file's press and release sounds by time range
-                const regionGroups = new Map<
-                  string,
-                  {
-                    phase: 'press' | 'release';
-                    start: number;
-                    end: number;
-                    keyNames: string[];
-                  }
-                >();
-                const add = (
-                  phase: 'press' | 'release',
-                  [start, end]: [number, number],
-                  keyName: string,
-                ) => {
-                  const regionKey = `${phase}:${start}-${end}`;
-                  const group = regionGroups.get(regionKey) ?? {
-                    phase,
-                    start,
-                    end,
-                    keyNames: [],
-                  };
-                  group.keyNames.push(keyName);
-                  regionGroups.set(regionKey, group);
-                };
-                keySounds.forEach((sound, keyName) => {
-                  // A key of unknown length has no span to mark.
-                  if (sound.source !== sourceId || isWholeFile(sound.press))
-                    return;
-                  add('press', sound.press, keyName);
-                  if (sound.release) add('release', sound.release, keyName);
-                });
-
-                return Array.from(regionGroups.entries()).map(
-                  ([regionKey, { phase, start, end, keyNames }]) => {
-                    const startPx = (start / 1000) * Math.max(100, zoomLevel);
-                    const widthPx =
-                      ((end - start) / 1000) * Math.max(100, zoomLevel);
-
-                    // Position badge at the center of the region
-                    const centerPx = startPx + widthPx / 2;
-
-                    return (
-                      <div
-                        key={regionKey}
-                        className="absolute top-[8px] transform -translate-y-1/2 -translate-x-1/2 tooltip z-50"
-                        style={{ left: `${centerPx}px` }}
-                        data-tip={`${phase === 'press' ? 'Press' : 'Release'} sound of ${keyNames.length} key${keyNames.length > 1 ? 's' : ''}: ${keyNames.join(', ')} (${Math.round(start)}ms - ${Math.round(end)}ms)`}
-                      >
-                        <div
-                          className={`badge badge-xs rounded-none ${phase === 'press' ? 'badge-neutral' : 'badge-secondary'}`}
-                          style={{ minWidth: '20px' }}
-                        >
-                          {keyNames.length}
-                        </div>
-                      </div>
-                    );
-                  },
-                );
-              })()}
+              // Placed at the zoom value the waveform is drawn at.
+              getUsageBadges(keySounds, sourceId, zoomLevel).map(
+                ({ id, phase, start, end, keyNames, centerPx }) => (
+                  <div
+                    key={id}
+                    className="absolute top-[8px] transform -translate-y-1/2 -translate-x-1/2 tooltip z-50"
+                    style={{ left: `${centerPx}px` }}
+                    data-tip={`${phase === 'press' ? 'Press' : 'Release'} sound of ${keyNames.length} key${keyNames.length > 1 ? 's' : ''}: ${keyNames.join(', ')} (${Math.round(start)}ms - ${Math.round(end)}ms)`}
+                  >
+                    <div
+                      className={`badge badge-xs rounded-none ${phase === 'press' ? 'badge-neutral' : 'badge-secondary'}`}
+                      style={{ minWidth: '20px' }}
+                    >
+                      {keyNames.length}
+                    </div>
+                  </div>
+                ),
+              )}
           </div>
         </div>
       </div>
 
-      {/* Debug Information Panel */}
-      {/* <div className='mt-2 p-3 bg-base-200 rounded-box'>
-        <h4 className='text-sm font-medium mb-2'>Debug Information</h4>
-        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-          <div>
-            <h5 className='text-xs font-medium mb-1'>Current Selection:</h5>
-            <pre className='text-xs bg-base-100 p-2 rounded overflow-x-auto'>
-              {JSON.stringify({
-                start: `${waveformSelection.start}ms`,
-                end: `${waveformSelection.end}ms`,
-                duration: `${waveformSelection.end - waveformSelection.start}ms`
-              }, null, 2)}
-            </pre>
-          </div>
-          <div>
-            <h5 className='text-xs font-medium mb-1'>Selected Keys:</h5>
-            <pre className='text-xs bg-base-100 p-2 rounded overflow-x-auto'>
-              {JSON.stringify(Array.from(selectedKeys || []), null, 2)}
-            </pre>
-          </div>
-        </div>
-        <div className='mt-2'>
-          <h5 className='text-xs font-medium mb-1'>Applied Key Segments:</h5>
-          <pre className='text-xs bg-base-100 p-2 rounded overflow-x-auto max-h-40'>
-            {JSON.stringify(
-              modifiedKeys ? Object.fromEntries(
-                Array.from(modifiedKeys.entries()).map(([key, [start, end]]) => [
-                  key, 
-                  { 
-                    start: `${start}ms`, 
-                    end: `${end}ms`, 
-                    duration: `${end - start}ms` 
-                  }
-                ])
-              ) : {}, 
-              null, 
-              2
-            )}
-          </pre>
-        </div>
-        <div className='mt-2'>
-          <h5 className='text-xs font-medium mb-1'>Waveform Settings:</h5>
-          <pre className='text-xs bg-base-100 p-2 rounded overflow-x-auto'>
-            {JSON.stringify({
-              zoomLevel: `${zoomLevel}%`,
-              defaultDuration: `${defaultDuration}s`,
-              soundRegionsMode,
-              silenceThreshold,
-              selectedSoundRegion
-            }, null, 2)}
-          </pre>
-        </div>
-      </div> */}
-
       <div className="shrink-0 px-4 text-xs text-base-content/50">
         {soundRegionsMode
-          ? 'Auto detect: click a highlighted region to pick that sound'
+          ? 'Auto detect: click a highlighted region to pick that sound • Drag edges to resize • Space to play'
           : 'Drag on the waveform to pick a sound • Drag edges to resize • Space to play • Scroll to pan'}
       </div>
     </fieldset>

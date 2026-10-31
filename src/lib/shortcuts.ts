@@ -27,6 +27,22 @@ export function isTextEntry(target: EventTarget | null) {
   );
 }
 
+/** Controls that Space operates when they have focus. */
+const SPACE_OPERATED =
+  'input:not([type="range"]), button, a[href], summary, [role="button"]';
+
+/**
+ * Whether Space operates the focused control rather than playing the sound:
+ * buttons, links, checkboxes and the like. Keyboard keys and mouse buttons
+ * take Enter, and a range slider ignores Space, so Space still plays after
+ * either.
+ */
+export function spaceOperatesTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('[data-key-id]')) return false;
+  return target.closest(SPACE_OPERATED) !== null;
+}
+
 /** Whether a dialog or the guided tour is open; it owns the keyboard. */
 function isOverlayOpen() {
   return document.querySelector('.modal-open, .driver-popover') !== null;

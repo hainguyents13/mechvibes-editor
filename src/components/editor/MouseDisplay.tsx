@@ -1,6 +1,7 @@
 import type React from 'react';
 import { cn } from '@/lib/utils';
-import type { KeySounds } from '@/utils/soundPack';
+import type { AudioSource, KeySounds } from '@/utils/soundPack';
+import { getAudioTrackColor } from './audio-track-colors';
 import type { SelectModifiers } from './key-selection';
 import { keyboardLayouts, parseKeyboardLayout } from './keyboardLayouts';
 
@@ -169,6 +170,8 @@ const REGIONS: Record<string, Region> = {
 interface MouseDisplayProps {
   selectedKeys: Set<string>;
   modifiedKeys: KeySounds;
+  /** The pack's sources by id, for the colour and name of each button's file. */
+  sourcesById: Map<string, AudioSource>;
   /** The one button in the Tab order. */
   tabStopId: string | null;
   onSelectKey: (
@@ -191,6 +194,7 @@ interface MouseDisplayProps {
 export function MouseDisplay({
   selectedKeys,
   modifiedKeys,
+  sourcesById,
   tabStopId,
   onSelectKey,
   onFocusKey,
@@ -237,6 +241,12 @@ export function MouseDisplay({
         {ordered.map(({ label, code, id: keyId }, index) => {
           const region = REGIONS[label];
           const sound = modifiedKeys.get(code);
+          const source = sound ? sourcesById.get(sound.source) : undefined;
+          // The file's name as well as its colour, for those who cannot tell colours apart.
+          const title =
+            !isPreview && source
+              ? `${region.title}, sound from ${source.file.name}`
+              : region.title;
           const isSelected = !isPreview && selectedKeys.has(keyId);
           const isPressed = pressedKeyCodes?.has(code) ?? false;
           const isInert = isPreview && !sound;
@@ -318,7 +328,7 @@ export function MouseDisplay({
               <g className="stroke-base-content/30" strokeWidth={1.5}>
                 {region.shape}
               </g>
-              <title>{region.title}</title>
+              <title>{title}</title>
               {/* Side labels sit outside the body, in the page's text colour */}
               <g
                 className={
@@ -332,7 +342,12 @@ export function MouseDisplay({
                   cx={region.dot[0]}
                   cy={region.dot[1]}
                   r={5}
-                  className="fill-primary stroke-white"
+                  className={cn(
+                    source
+                      ? getAudioTrackColor(source.colorIndex).fill
+                      : 'fill-primary',
+                    'stroke-white',
+                  )}
                   strokeWidth={2}
                 />
               )}

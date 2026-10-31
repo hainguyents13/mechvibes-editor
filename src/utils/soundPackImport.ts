@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { getAudioDuration, getDecodedDuration } from '@/utils/audioUtils';
 import {
   type AudioSource,
+  addSources,
   createAudioSource,
   getExtension,
   ICON_TYPES,
@@ -209,6 +210,7 @@ export async function parseSoundPackZip(
       const duration =
         (await getAudioDuration(audioFile)) ||
         (await getDecodedDuration(audioFile));
+      // The colour slot is set below, once the sources are in usage order.
       sourcesByEntry.set(entry.name, createAudioSource(audioFile, duration));
     }
     return sourcesByEntry.get(entry.name) ?? null;
@@ -303,9 +305,11 @@ export async function parseSoundPackZip(
   keySounds.forEach(({ source }) => {
     usage.set(source, (usage.get(source) ?? 0) + 1);
   });
-  const sources = [...sourcesByEntry.values()]
+  const ordered = [...sourcesByEntry.values()]
     .filter((source): source is AudioSource => source !== null)
     .sort((a, b) => (usage.get(b.id) ?? 0) - (usage.get(a.id) ?? 0));
+  // Colours follow the list order, so the main file takes the first colour.
+  const sources = addSources([], ordered);
   const { silent, cutShort } = findSegmentsPastEnd(keySounds, sources);
 
   const warnings: string[] = [];

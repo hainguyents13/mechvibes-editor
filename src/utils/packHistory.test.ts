@@ -14,6 +14,7 @@ import {
 } from '@/utils/packHistory';
 import {
   type AudioSource,
+  addSources,
   createAudioSource,
   type KeySounds,
   type PackInfo,
@@ -247,6 +248,46 @@ describe('historyReducer', () => {
     expect(undone.present.sources[1].id).toBe(b.id);
     expect(undone.present.keySounds).toBe(keySounds);
     expect(keySounds.size).toBe(3);
+  });
+
+  it('keeps the colour of each file through removing, undoing and adding', () => {
+    // The changes handleAddSources and handleRemoveSource commit.
+    const add = (...names: string[]) =>
+      commit('Add', (current) => ({
+        sources: addSources(current.sources, names.map(source)),
+      }));
+    const remove = (name: string) =>
+      commit(`Remove ${name}`, (current) => ({
+        sources: current.sources.filter((s) => s.file.name !== name),
+      }));
+    const colors = (history: PackHistory) =>
+      history.present.sources.map((s) => [s.file.name, s.colorIndex]);
+
+    const added = run(
+      createHistory(snapshot()),
+      add('a.wav', 'b.wav', 'c.wav'),
+    );
+    const b = added.present.sources[1];
+    const removed = run(added, remove('b.wav'));
+    expect(colors(removed)).toEqual([
+      ['a.wav', 0],
+      ['c.wav', 2],
+    ]);
+
+    const undone = run(removed, UNDO);
+    expect(undone.present.sources[1]).toBe(b);
+    expect(colors(undone)).toEqual([
+      ['a.wav', 0],
+      ['b.wav', 1],
+      ['c.wav', 2],
+    ]);
+
+    // A file added after the removal takes the colour b left free.
+    expect(colors(run(removed, add('d.wav')))).toEqual([
+      ['a.wav', 0],
+      ['c.wav', 2],
+      ['d.wav', 1],
+    ]);
   });
 
   it('never changes the history it is given', () => {

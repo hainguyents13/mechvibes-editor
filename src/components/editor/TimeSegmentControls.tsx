@@ -275,7 +275,7 @@ export function TimeSegmentControls({
                 !waveformSelection.end ||
                 waveformSelection.end <= waveformSelection.start
               }
-              title={isPlaying ? 'Stop' : 'Test selection'}
+              title={isPlaying ? 'Stop (Space)' : 'Test selection (Space)'}
             >
               {isPlaying ? (
                 <div className="flex items-center gap-1">
