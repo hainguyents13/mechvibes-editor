@@ -25,6 +25,8 @@ export type ImportedSoundPack = {
   extras: PackExtras;
   /** What the editor could not keep, to show after opening. */
   warnings: string[];
+  /** What the editor changed or kept that needs no fix, to show after opening. */
+  notes: string[];
 };
 
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.flac']);
@@ -74,6 +76,27 @@ function isTimingPair(value: unknown): value is [number, number] {
 
 function listKeys(codes: string[]) {
   return `${codes.slice(0, 8).join(', ')}${codes.length > 8 ? ', …' : ''}`;
+}
+
+/**
+ * Codes earlier editor versions wrote for the numpad 0, numpad . and Pause
+ * keys by reading the wrong legend. No key sends these, so each can only mean
+ * the key it came from.
+ */
+export const LEGACY_KEY_CODES: ReadonlyMap<string, string> = new Map([
+  ['Ins', 'Numpad0'],
+  ['Del', 'NumpadDecimal'],
+  ['Break', 'Pause'],
+]);
+
+/** The code a definition is kept under, or null when the pack already defines the key it stands for. */
+export function migrateKeyCode(
+  code: string,
+  definedCodes: ReadonlySet<string>,
+): string | null {
+  const target = LEGACY_KEY_CODES.get(code);
+  if (!target) return code;
+  return definedCodes.has(target) ? null : target;
 }
 
 function readPackType(explicit: unknown, codes: string[]): PackType {
@@ -186,8 +209,16 @@ export async function parseSoundPackZip(
   const missingAudio: string[] = [];
   const invalidTiming: string[] = [];
   const tooManySegments: string[] = [];
+  const definedCodes = new Set(Object.keys(definitions));
+  const renamed: string[] = [];
+  const shadowedLegacy: string[] = [];
 
-  for (const [code, definition] of Object.entries(definitions)) {
+  for (const [rawCode, definition] of Object.entries(definitions)) {
+    const code = migrateKeyCode(rawCode, definedCodes);
+    if (code === null) {
+      shadowedLegacy.push(rawCode);
+      continue;
+    }
     let source = singleSource;
     if (isMulti) {
       const ownPath =
@@ -226,6 +257,7 @@ export async function parseSoundPackZip(
       press: segments[0],
       ...(segments[1] ? { release: segments[1] } : {}),
     });
+    if (code !== rawCode) renamed.push(`${rawCode} is now ${code}`);
   }
 
   const warnings: string[] = [];
@@ -242,6 +274,17 @@ export async function parseSoundPackZip(
   if (tooManySegments.length > 0) {
     warnings.push(
       `Left out because they have no sound or more than two, which the app plays as silence: ${listKeys(tooManySegments)}.`,
+    );
+  }
+  if (shadowedLegacy.length > 0) {
+    warnings.push(
+      `Left out because the pack already defines the key they stand for: ${listKeys(shadowedLegacy)}.`,
+    );
+  }
+  const notes: string[] = [];
+  if (renamed.length > 0) {
+    notes.push(
+      `Renamed key names the app does not know: ${renamed.join(', ')}.`,
     );
   }
 
@@ -311,5 +354,6 @@ export async function parseSoundPackZip(
     keySounds,
     extras: { config: extraConfig, files: licenseFiles },
     warnings,
+    notes,
   };
 }
