@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getKeyCode } from '@/components/editor/keyboardLayouts';
 
 interface UseKeyboardSelectionProps {
   keys: any[];
@@ -205,7 +204,7 @@ export function useKeyboardSelection({
         newSelected.has(keyId)
       ) {
         const key = keys.find((k, i) => getKeyId(k, i) === keyId);
-        if (key) onSingleKeySelect(getKeyCode(key.label));
+        if (key) onSingleKeySelect(key.code);
       }
     },
     [selectedKeys, keys, getKeyId, onSingleKeySelect],

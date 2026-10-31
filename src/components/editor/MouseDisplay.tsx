@@ -1,11 +1,7 @@
 import type React from 'react';
 import { cn } from '@/lib/utils';
 import type { KeySounds } from '@/utils/soundPack';
-import {
-  getKeyCode,
-  keyboardLayouts,
-  parseKeyboardLayout,
-} from './keyboardLayouts';
+import { keyboardLayouts, parseKeyboardLayout } from './keyboardLayouts';
 
 /** Natural size of the drawing; the editor scales it like the keyboard. */
 export const MOUSE_DISPLAY_SIZE = { width: 420, height: 340 };
@@ -196,7 +192,8 @@ export function MouseDisplay({
   // Same keys and ids as the keyboard display, so selection and quick
   // select work unchanged.
   const keys = parseKeyboardLayout(keyboardLayouts.mouse).map((key, index) => ({
-    label: key.label as string,
+    label: key.label,
+    code: key.code,
     id: `${key.label || 'key'}-${index}-${key.x}-${key.y}`,
   }));
   const ordered = Object.keys(REGIONS).flatMap((label) =>
@@ -221,9 +218,8 @@ export function MouseDisplay({
           className="fill-base-200 stroke-base-content/25"
           strokeWidth={1.5}
         />
-        {ordered.map(({ label, id: keyId }) => {
+        {ordered.map(({ label, code, id: keyId }) => {
           const region = REGIONS[label];
-          const code = getKeyCode(label);
           const sound = modifiedKeys.get(code);
           const isSelected = !isPreview && selectedKeys.has(keyId);
           const isPressed = pressedKeyCodes?.has(code) ?? false;
