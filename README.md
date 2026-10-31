@@ -29,6 +29,8 @@ docker run -p 8080:80 mechvibes-editor
 
 `VITE_WEBSITE_URL` is the Mechvibes website the editor links to and calls (default `https://mechvibes.com`). Vite inlines it, and the image's Content-Security-Policy allows API calls to its origin, so pass it as a build argument: `--build-arg VITE_WEBSITE_URL=...`. See [`.env.example`](./.env.example).
 
+`VITE_GA_MEASUREMENT_ID` turns on Google Analytics with the website's measurement ID. The image builds with it by default; `--build-arg VITE_GA_MEASUREMENT_ID=` builds without it, and local dev leaves it unset.
+
 ## Publishing to the library
 
 1. Build the pack here and export the zip.
