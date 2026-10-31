@@ -1,13 +1,55 @@
 import {
+  getExtension,
   isWholeFile,
   type KeySound,
   type KeySounds,
   type Segment,
 } from '@/utils/soundPack';
 
+// Types for media files the browser hands over without one: Windows often
+// leaves the type of a .flac, .m4a or .mov empty.
+const MEDIA_TYPES_BY_EXTENSION: Record<string, string> = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.weba': 'audio/webm',
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+};
+
+const isMediaType = (type: string) =>
+  type.startsWith('audio/') || type.startsWith('video/');
+
+/**
+ * The audio or video type of a file, from its declared type or else its
+ * extension; null when it is neither.
+ */
+export function mediaTypeOf(file: { name: string; type: string }) {
+  const type = file.type.toLowerCase();
+  if (isMediaType(type)) return type;
+  return MEDIA_TYPES_BY_EXTENSION[getExtension(file.name)] ?? null;
+}
+
 /** Whether a file is audio or video the editor can cut sounds from. */
-export const isMediaFile = (file: File) =>
-  file.type.startsWith('audio/') || file.type.startsWith('video/');
+export const isMediaFile = (file: { name: string; type: string }) =>
+  mediaTypeOf(file) !== null;
+
+/**
+ * The file with its media type filled in, so code that tells video from
+ * audio by type sees what the extension says.
+ */
+export function withMediaType(file: File) {
+  const type = mediaTypeOf(file);
+  if (!type || type === file.type) return file;
+  return new File([file], file.name, { type, lastModified: file.lastModified });
+}
 
 /**
  * Length of an audio or video file in seconds, or 0 when the browser cannot

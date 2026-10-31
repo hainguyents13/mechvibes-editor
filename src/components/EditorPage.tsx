@@ -34,6 +34,7 @@ import {
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
 import { WaveformEditor } from '@/components/editor/WaveformEditor';
+import { FileDropOverlay } from '@/components/FileDropOverlay';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
@@ -43,6 +44,7 @@ import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePackHistory } from '@/hooks/usePackHistory';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
+import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
@@ -64,7 +66,11 @@ import {
   updatePackZip,
   WebsiteApiError,
 } from '@/lib/websiteApi';
-import { clearKeySounds, getAudioDuration } from '@/utils/audioUtils';
+import {
+  clearKeySounds,
+  getAudioDuration,
+  withMediaType,
+} from '@/utils/audioUtils';
 import {
   createBlankSnapshot,
   createDefaultPackInfo,
@@ -286,7 +292,7 @@ export function EditorPage() {
     new Set(),
   );
   const [confirmDiscardAction, setConfirmDiscardAction] = useState<
-    null | 'start-over' | { pack: LibraryPackSummary }
+    null | 'start-over' | { pack: LibraryPackSummary } | { file: File }
   >(null);
   // The editor opens on the start screen; the pack controls show in the workspace.
   const [screen, setScreen] = useState<EditorScreen>('start');
@@ -600,11 +606,14 @@ export function EditorPage() {
   };
 
   // Add audio or video files; the first one added opens in the waveform.
+  // Files without a type get one from their extension first.
   const handleAddSources = async (files: File[]) => {
     const added = await Promise.all(
-      files.map(async (file) =>
-        createAudioSource(file, await getAudioDuration(file)),
-      ),
+      files
+        .map(withMediaType)
+        .map(async (file) =>
+          createAudioSource(file, await getAudioDuration(file)),
+        ),
     );
     // Appends to the latest files, and picks colours against them: an Undo
     // can land while durations are read.
@@ -800,6 +809,8 @@ export function EditorPage() {
     setConfirmDiscardAction(null);
     if (action === 'start-over') {
       startOver();
+    } else if (action && 'file' in action) {
+      openPackFile(action.file);
     } else if (action) {
       openLibraryPack(action.pack);
     }
@@ -917,6 +928,38 @@ export function EditorPage() {
       setConfirmDiscardAction({ pack });
     } else {
       openLibraryPack(pack);
+    }
+  };
+
+  // Files dropped or pasted on the start screen or in the workspace. Nothing
+  // else may be open over them: a dialog holds a copy of the pack.
+  const canDrop =
+    screen === 'start'
+      ? !isOpeningFile && openingPackId === null
+      : !isKeyboardOwnedElsewhere;
+
+  // Why a drop did nothing shows where a pack file's problem would.
+  const handleDrop = (route: DropRoute<File>) => {
+    switch (route.kind) {
+      case 'open-zip':
+        if (route.confirm) {
+          setConfirmDiscardAction({ file: route.file });
+        } else {
+          openPackFile(route.file);
+        }
+        return;
+      case 'to-type-question':
+        askPackType(route.files);
+        return;
+      case 'add-media':
+        handleAddSources(route.files);
+        return;
+      default:
+        if (isWorkspace) {
+          setNotice({ tone: 'error', message: route.message });
+        } else {
+          setOpenFileError(route.message);
+        }
     }
   };
 
@@ -1320,6 +1363,12 @@ export function EditorPage() {
           accept=".zip"
           className="hidden"
           onChange={handlePackFileChosen}
+        />
+
+        <FileDropOverlay
+          enabled={canDrop}
+          context={{ onStart: screen === 'start', isDirty }}
+          onDrop={handleDrop}
         />
 
         <ConfirmDiscardModal

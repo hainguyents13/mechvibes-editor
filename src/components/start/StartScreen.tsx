@@ -195,7 +195,9 @@ export function StartScreen({
         <h1 className="text-2xl md:text-3xl font-bold">
           Make a sound pack for {siteIdentity.productName}
         </h1>
-        <p className="mt-2 text-base-content/70">Pick where to start.</p>
+        <p className="mt-2 text-base-content/70">
+          Pick where to start, or drop a file anywhere on this page.
+        </p>
       </div>
 
       <div className="mt-10 grid gap-4 md:grid-cols-3 md:items-start">

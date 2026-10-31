@@ -22,11 +22,8 @@ function formatLabel(file: File): string {
   return (subtype.replace(/^x-/, '') || 'unknown').toUpperCase();
 }
 
-const stopEvent = (e: React.DragEvent) => {
-  e.preventDefault();
-  e.stopPropagation();
-};
-
+// Files dropped here reach the page-wide drop handler, which adds them the
+// same way as the file picker.
 export function AudioFileSelector({
   sources,
   activeSourceId,
@@ -48,11 +45,6 @@ export function AudioFileSelector({
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     addFiles(event.target.files);
     event.target.value = '';
-  };
-
-  const handleFileDrop = (e: React.DragEvent) => {
-    stopEvent(e);
-    addFiles(e.dataTransfer.files);
   };
 
   const requestRemoval = (source: AudioSource) => {
@@ -80,10 +72,6 @@ export function AudioFileSelector({
       // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: mouse-driven editor surface ported unchanged from the website; keyboard access is a follow-up
       <div
         className="group h-full min-h-32 min-w-0 flex flex-col items-center justify-center editor-dropzone-surface border border-dashed border-base-content/20 rounded-box p-8 text-center hover:border-base-content/40 transition-colors cursor-pointer motion-safe:animate-[dropzone-glow_2.4s_ease-out_infinite] hover:animate-none"
-        onDragOver={stopEvent}
-        onDragEnter={stopEvent}
-        onDragLeave={stopEvent}
-        onDrop={handleFileDrop}
         onClick={() => inputRef.current?.click()}
       >
         <Upload className="h-12 w-12 text-base-content/40 mb-3" />
@@ -121,14 +109,7 @@ export function AudioFileSelector({
   const isVideo = activeSource?.file.type.startsWith('video/') ?? false;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: drop target for more files; the Add button is the accessible path
-    <div
-      className="flex-1 min-h-0 min-w-0 flex flex-col gap-3"
-      onDragOver={stopEvent}
-      onDragEnter={stopEvent}
-      onDragLeave={stopEvent}
-      onDrop={handleFileDrop}
-    >
+    <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2 shrink-0">
         <h2 className="text-xs font-medium text-base-content">
           Audio sources ({sources.length})
