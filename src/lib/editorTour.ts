@@ -111,7 +111,11 @@ function buildSteps(signedIn: boolean): DriveStep[] {
   ];
 }
 
-/** Start the tour. It counts as seen once it closes, however it was closed. */
+/**
+ * Start the tour. It counts as seen as soon as it opens: driver.js skips its
+ * destroy callback when the tour closes mid-animation, so marking it on close
+ * would bring it back on the next visit.
+ */
 export function startEditorTour({ signedIn }: { signedIn: boolean }) {
   const steps = buildSteps(signedIn).filter(
     (step) =>
@@ -130,8 +134,8 @@ export function startEditorTour({ signedIn }: { signedIn: boolean }) {
     stagePadding: 6,
     stageRadius: 8,
     smoothScroll: true,
-    onDestroyed: markEditorTourSeen,
   });
   tour.drive();
+  markEditorTourSeen();
   return tour;
 }

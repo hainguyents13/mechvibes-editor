@@ -72,7 +72,8 @@ const TOUR_AUTO_START_DELAY_MS = 600;
 
 // Sound editing panel on wide (lg) screens. By default it takes half the
 // viewport, up to the original 524px, and never less than what its controls need
-// with the smallest waveform. Dragging its top edge trades keyboard space for
+// with the smallest waveform, unless the screen is too short to also fit a usable
+// keyboard. Dragging its top edge trades keyboard space for
 // waveform space, and the choice is remembered in this browser. The waveform
 // absorbs every pixel the panel gains or gives up.
 const LG_MIN_WIDTH = 1024;
@@ -88,6 +89,12 @@ const PANEL_DRAG_MIN_HEIGHT = 240;
 const PANEL_DRAG_MAX_HEIGHT = 720;
 /** Viewport height kept for the navbar, the footer and a usable keyboard. */
 const PANEL_RESERVED_HEIGHT = 320;
+/**
+ * Viewport height the default panel leaves for the navbar, the footer and a
+ * keyboard that is comfortable to click. On short screens (a 720px laptop) the
+ * panel gives way to it, and its controls scroll.
+ */
+const DEFAULT_KEYBOARD_RESERVED_HEIGHT = 360;
 const PANEL_RESIZE_STEP = 16;
 const PANEL_HEIGHT_STORAGE_KEY = 'mechvibes-editor:panel-height';
 
@@ -113,9 +120,13 @@ function getPanelHeight(
 ): number | null {
   if (viewport.width < LG_MIN_WIDTH) return null;
   if (chosen === null) {
-    return clamp(
+    const preferred = Math.max(
       Math.round(viewport.height / 2),
       PANEL_MIN_HEIGHT,
+    );
+    return clamp(
+      Math.min(preferred, viewport.height - DEFAULT_KEYBOARD_RESERVED_HEIGHT),
+      PANEL_DRAG_MIN_HEIGHT,
       PANEL_MAX_HEIGHT,
     );
   }
@@ -160,6 +171,16 @@ function createDefaultPackInfo(): PackInfo {
     randomPitch: false,
     icon: null,
   };
+}
+
+/** Whether the pack details are still the defaults of a new pack. */
+function isDefaultPackInfo(info: PackInfo) {
+  const defaults = createDefaultPackInfo();
+  return (Object.keys(defaults) as (keyof PackInfo)[]).every((field) =>
+    field === 'tags'
+      ? info.tags.join(',') === defaults.tags.join(',')
+      : info[field] === defaults[field],
+  );
 }
 
 /** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
@@ -292,6 +313,9 @@ export function EditorPage() {
   const audioFile = activeSource?.file ?? null;
   const audioDuration = activeSource?.duration ?? 0;
   const keyCounts = useMemo(() => countKeysBySource(keySounds), [keySounds]);
+  // Anything New, Import or opening a library pack would throw away.
+  const hasUnsavedWork =
+    sources.length > 0 || keySounds.size > 0 || !isDefaultPackInfo(packInfo);
 
   // A mouse pack shows the mouse buttons instead of a keyboard.
   const layout = packInfo.packType === 'Mouse' ? 'mouse' : keyboardSize;
@@ -529,7 +553,7 @@ export function EditorPage() {
 
   // New pack: warn if there are unsaved modifications
   const handleNewPack = () => {
-    if (keySounds.size > 0) {
+    if (hasUnsavedWork) {
       setConfirmDiscardAction('new');
     } else {
       resetPack();
@@ -538,7 +562,7 @@ export function EditorPage() {
 
   // Import: warn if there are unsaved modifications, then open the file picker
   const handleImportClick = () => {
-    if (keySounds.size > 0) {
+    if (hasUnsavedWork) {
       setConfirmDiscardAction('import');
     } else {
       importInputRef.current?.click();
@@ -629,7 +653,7 @@ export function EditorPage() {
 
   const handleOpenLibraryPack = (pack: LibraryPackSummary) => {
     if (!canOpenPack(pack)) return;
-    if (keySounds.size > 0) {
+    if (hasUnsavedWork) {
       setShowMyPacks(false);
       setConfirmDiscardAction({ pack });
     } else {
@@ -882,7 +906,7 @@ export function EditorPage() {
             canPreview={sources.length > 0 && keySounds.size > 0}
             session={session}
             signInHref={signInUrl(window.location.href)}
-            signInInNewTab={sources.length > 0 || keySounds.size > 0}
+            signInInNewTab={hasUnsavedWork}
             onOpenMyPacks={() => {
               setShowMyPacks(true);
               refreshSession();
