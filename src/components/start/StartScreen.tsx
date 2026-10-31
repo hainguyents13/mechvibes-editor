@@ -2,7 +2,12 @@ import { FolderOpen, Globe, type LucideIcon, Plus } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { siteIdentity, websiteHost } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
-import { ErrorLine, STRETCHED_ACTION, StartPage } from './StartPage';
+import {
+  ErrorLine,
+  ScreenHeading,
+  STRETCHED_ACTION,
+  StartPage,
+} from './StartPage';
 
 const ACTION_CLASS = `btn btn-sm btn-neutral rounded-box ${STRETCHED_ACTION}`;
 const CROSS_LINK_CLASS = 'link relative z-10 font-medium';
@@ -192,9 +197,9 @@ export function StartScreen({
   return (
     <StartPage>
       <div className="text-center">
-        <h1 className="text-2xl md:text-3xl font-bold">
+        <ScreenHeading className="text-2xl md:text-3xl font-bold">
           Make a sound pack for {siteIdentity.productName}
-        </h1>
+        </ScreenHeading>
         <p className="mt-2 text-base-content/70">
           Pick where to start, or drop a file anywhere on this page.
         </p>

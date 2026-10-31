@@ -11,10 +11,10 @@ import { getExtension } from '@/utils/soundPack';
 /** A dropped file, or one being dragged: its name is empty until the drop. */
 export type DroppedFile = { name: string; type: string };
 
-/** What is being dropped: files, and whether it also carries text or a link. */
+/** What is being dropped: files, and whether it also carries a link. */
 export type DropContents<F extends DroppedFile> = {
   files: readonly F[];
-  hasText: boolean;
+  hasLink: boolean;
 };
 
 export type DropContext = {
@@ -87,6 +87,23 @@ function kindOf(file: DroppedFile): FileKind {
   return mediaTypeOf(file) ? 'media' : 'other';
 }
 
+const LINK = /^\s*https?:\/\//i;
+
+/**
+ * Whether dragged, dropped or pasted data is a link. Browsers mark a link
+ * they drag as a URI list; other text counts only when it reads as a link,
+ * which a drag tells only on the drop: until then its text reads as empty.
+ */
+export function carriesLink(data: {
+  types: readonly string[];
+  getData: (format: string) => string;
+}) {
+  return (
+    data.types.includes('text/uri-list') ||
+    LINK.test(data.getData('text/plain'))
+  );
+}
+
 function archiveMessage(kind: 'rar' | '7z') {
   return `This is a .${kind} file. Unzip it, then open the folder or a .zip.`;
 }
@@ -97,13 +114,13 @@ function archiveMessage(kind: 'rar' | '7z') {
  * replaces everything else.
  */
 export function routeDrop<F extends DroppedFile>(
-  { files, hasText }: DropContents<F>,
+  { files, hasLink }: DropContents<F>,
   { onStart, isDirty }: DropContext,
 ): DropRoute<F> {
   if (files.length === 0) {
     return {
       kind: 'reject',
-      message: hasText ? DROP_MESSAGES.link : DROP_MESSAGES.unusable,
+      message: hasLink ? DROP_MESSAGES.link : DROP_MESSAGES.unusable,
     };
   }
   const kinds = files.map(kindOf);

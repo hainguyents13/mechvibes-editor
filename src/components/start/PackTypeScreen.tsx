@@ -1,6 +1,6 @@
 import { Keyboard, type LucideIcon, Mouse } from 'lucide-react';
 import type { PackType } from '@/utils/soundPack';
-import { BackButton, StartPage } from './StartPage';
+import { BackButton, ScreenHeading, StartPage } from './StartPage';
 
 const CHOICES: { packType: PackType; Icon: LucideIcon; hint: string }[] = [
   { packType: 'Keyboard', Icon: Keyboard, hint: 'Sounds when you type' },
@@ -27,9 +27,9 @@ export function PackTypeScreen({
   return (
     <StartPage>
       <BackButton onClick={onBack} />
-      <h1 className="mt-4 text-center text-2xl md:text-3xl font-bold">
+      <ScreenHeading className="mt-4 text-center text-2xl md:text-3xl font-bold">
         {question(fileCount)}
-      </h1>
+      </ScreenHeading>
 
       <div className="mx-auto mt-10 grid max-w-2xl gap-4 sm:grid-cols-2">
         {CHOICES.map(({ packType, Icon, hint }) => (

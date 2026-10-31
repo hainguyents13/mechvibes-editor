@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  carriesLink,
   DROP_MESSAGES,
   type DropContext,
   type DroppedFile,
@@ -14,8 +15,8 @@ const file = (name: string, type = ''): DroppedFile => ({ name, type });
 /** A file as a drag reports it, before the drop names it. */
 const dragged = (type: string): DroppedFile => ({ name: '', type });
 
-const drop = (files: DroppedFile[], context = WORKSPACE, hasText = false) =>
-  routeDrop({ files, hasText }, context);
+const drop = (files: DroppedFile[], context = WORKSPACE, hasLink = false) =>
+  routeDrop({ files, hasLink }, context);
 
 describe('routeDrop: pack .zip', () => {
   it.each([
@@ -148,7 +149,7 @@ describe('routeDrop: audio and video', () => {
     expect(result).toMatchObject({ kind: 'add-media', files: [a, b] });
   });
 
-  it('prefers files to text that comes with them', () => {
+  it('prefers files to a link that comes with them', () => {
     expect(drop([file('a.wav')], WORKSPACE, true)).toMatchObject({
       kind: 'add-media',
     });
@@ -200,7 +201,7 @@ describe('routeDrop: files the editor cannot use', () => {
     });
   });
 
-  it('refuses a link or text, which it cannot download', () => {
+  it('refuses a link, which it cannot download', () => {
     expect(drop([], WORKSPACE, true)).toEqual({
       kind: 'reject',
       message:
@@ -217,6 +218,43 @@ describe('routeDrop: files the editor cannot use', () => {
       kind: 'reject',
       message: DROP_MESSAGES.unusable,
     });
+  });
+});
+
+describe('carriesLink', () => {
+  /** Data as the browser hands it over; a drag reads as empty until the drop. */
+  const data = (
+    entries: Record<string, string>,
+    types = Object.keys(entries),
+  ) => ({
+    types,
+    getData: (format: string) => entries[format] ?? '',
+  });
+
+  it('takes a link the browser marks as one', () => {
+    expect(
+      carriesLink(
+        data({
+          'text/uri-list': 'https://youtu.be/abc',
+          'text/plain': 'https://youtu.be/abc',
+        }),
+      ),
+    ).toBe(true);
+    // While dragging, only the types are known.
+    expect(carriesLink(data({}, ['text/uri-list', 'text/plain']))).toBe(true);
+  });
+
+  it('takes text that reads as a link', () => {
+    expect(
+      carriesLink(data({ 'text/plain': ' http://example.com/a.mp3' })),
+    ).toBe(true);
+  });
+
+  it('does not take other text for a link', () => {
+    expect(carriesLink(data({ 'text/plain': 'my cool pack' }))).toBe(false);
+    expect(carriesLink(data({ 'text/plain': 'me@example.com' }))).toBe(false);
+    // While dragging, plain text cannot tell yet.
+    expect(carriesLink(data({}, ['text/plain', 'text/html']))).toBe(false);
   });
 });
 

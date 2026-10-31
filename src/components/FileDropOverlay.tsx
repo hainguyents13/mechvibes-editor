@@ -1,6 +1,7 @@
 import { CircleAlert, FolderOpen, type LucideIcon, Music } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
+  carriesLink,
   type DropContents,
   type DropContext,
   type DroppedFile,
@@ -9,20 +10,18 @@ import {
 } from '@/lib/dropRouting';
 import { isTextEntry } from '@/lib/shortcuts';
 
-function carriesText(dataTransfer: DataTransfer) {
-  return (
-    dataTransfer.types.includes('text/uri-list') ||
-    dataTransfer.types.includes('text/plain')
-  );
-}
-
-/** Whether a drag carries anything the page answers: files, a link or text. */
+/**
+ * Whether a drag carries anything the browser would open in place of the
+ * editor: files, a link or text.
+ */
 function carriesDrop(
   dataTransfer: DataTransfer | null,
 ): dataTransfer is DataTransfer {
   return (
     dataTransfer !== null &&
-    (dataTransfer.types.includes('Files') || carriesText(dataTransfer))
+    ['Files', 'text/uri-list', 'text/plain'].some((type) =>
+      dataTransfer.types.includes(type),
+    )
   );
 }
 
@@ -37,10 +36,13 @@ function draggedContents(
   if (files.length === 0 && dataTransfer.types.includes('Files')) {
     files.push({ name: '', type: '' });
   }
-  return { files, hasText: carriesText(dataTransfer) };
+  return { files, hasLink: carriesLink(dataTransfer) };
 }
 
-const LINK = /^\s*https?:\/\//i;
+/** Text that is not a link is no file and asks for nothing: it gets no answer. */
+function answers(contents: DropContents<DroppedFile>) {
+  return contents.files.length > 0 || contents.hasLink;
+}
 
 const ROUTE_LOOKS: Record<
   DropRoute<DroppedFile>['kind'],
@@ -57,7 +59,7 @@ const ROUTE_LOOKS: Record<
 };
 
 /**
- * Takes files, a link or text dropped or pasted anywhere on the page, and
+ * Takes files or a link dropped or pasted anywhere on the page, and
  * while a drag is over the page covers it with what the drop will do. The
  * cover takes the drop itself, so drop targets under it never see one.
  *
@@ -89,14 +91,13 @@ export function FileDropOverlay({
       depth = 0;
       setRoute(null);
     };
-    // While off, text dragged into a dialog's field still lands there.
+    // Text dragged into a text field lands there.
     const handles = (
       event: DragEvent,
     ): event is DragEvent & { dataTransfer: DataTransfer } =>
       !isFromPage &&
       carriesDrop(event.dataTransfer) &&
-      (latest.current.enabled ||
-        event.dataTransfer.types.includes('Files') ||
+      (event.dataTransfer.types.includes('Files') ||
         !isTextEntry(event.target));
 
     const onDragStart = () => {
@@ -110,10 +111,9 @@ export function FileDropOverlay({
       event.preventDefault();
       depth += 1;
       const { enabled, context } = latest.current;
+      const contents = draggedContents(event.dataTransfer);
       setRoute(
-        enabled
-          ? routeDrop(draggedContents(event.dataTransfer), context)
-          : null,
+        enabled && answers(contents) ? routeDrop(contents, context) : null,
       );
     };
     const onDragOver = (event: DragEvent) => {
@@ -136,11 +136,11 @@ export function FileDropOverlay({
       if (!handles(event)) return;
       event.preventDefault();
       const { enabled, context, onDrop } = latest.current;
-      if (!enabled) return;
-      const files = Array.from(event.dataTransfer.files);
-      onDrop(
-        routeDrop({ files, hasText: carriesText(event.dataTransfer) }, context),
-      );
+      const contents = {
+        files: Array.from(event.dataTransfer.files),
+        hasLink: carriesLink(event.dataTransfer),
+      };
+      if (enabled && answers(contents)) onDrop(routeDrop(contents, context));
     };
     // Pasting files or a link outside a text field is a drop by other means.
     const onPaste = (event: ClipboardEvent) => {
@@ -148,11 +148,13 @@ export function FileDropOverlay({
       if (!enabled || isTextEntry(event.target) || !event.clipboardData) {
         return;
       }
-      const files = Array.from(event.clipboardData.files);
-      const isLink = LINK.test(event.clipboardData.getData('text/plain'));
-      if (files.length === 0 && !isLink) return;
+      const contents = {
+        files: Array.from(event.clipboardData.files),
+        hasLink: carriesLink(event.clipboardData),
+      };
+      if (!answers(contents)) return;
       event.preventDefault();
-      onDrop(routeDrop({ files, hasText: isLink }, context));
+      onDrop(routeDrop(contents, context));
     };
 
     window.addEventListener('dragstart', onDragStart);

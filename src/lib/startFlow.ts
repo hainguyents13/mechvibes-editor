@@ -48,13 +48,14 @@ export function readScreenState(state: unknown): ScreenHistoryState | null {
  * - `show`: go to the entry's screen. Leaving the workspace this way starts over.
  * - `return-to-workspace`: the pack has work that would be lost, so add the
  *   workspace's entry back and ask before starting over (`confirm`), or stay
- *   put while it saves or opens something.
+ *   put while it saves or opens something. `aboveStart`: the entry goes back
+ *   on top of the start screen's, as one added there.
  * - `stay`: the entry is a workspace that was already left; it now stands for
  *   the current screen.
  */
 export type PopStateOutcome =
   | { kind: 'show'; screen: EditorScreen }
-  | { kind: 'return-to-workspace'; confirm: boolean }
+  | { kind: 'return-to-workspace'; confirm: boolean; aboveStart: boolean }
   | { kind: 'stay' };
 
 export function resolvePopState(
@@ -66,9 +67,12 @@ export function resolvePopState(
   const target = readScreenState(state)?.editorScreen ?? 'start';
   if (current === 'workspace') {
     if (target === 'workspace') return { kind: 'stay' };
-    if (pack.isBusy) return { kind: 'return-to-workspace', confirm: false };
+    const aboveStart = target === 'start';
+    if (pack.isBusy) {
+      return { kind: 'return-to-workspace', confirm: false, aboveStart };
+    }
     if (pack.hasUnsavedChanges) {
-      return { kind: 'return-to-workspace', confirm: true };
+      return { kind: 'return-to-workspace', confirm: true, aboveStart };
     }
     return { kind: 'show', screen: target };
   }
@@ -78,10 +82,11 @@ export function resolvePopState(
 }
 
 /**
- * How the on-page Back of the library list and the Keyboard-or-Mouse question
- * returns to the start screen: a history step when the entry was added on top
- * of the start screen's, otherwise by replacing the entry (a link or a reload
- * landed there directly, and stepping back would leave the editor).
+ * How the editor returns to the start screen (the on-page Back, Start over, a
+ * reload): a history step when the entry was added on top of the start
+ * screen's, so no second start entry is left for Back to step over; otherwise
+ * by replacing the entry (a link landed there directly, and stepping back
+ * would leave the editor).
  */
 export function backToStart(state: unknown): 'history-back' | 'replace' {
   return readScreenState(state)?.pushed ? 'history-back' : 'replace';

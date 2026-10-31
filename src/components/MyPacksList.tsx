@@ -1,5 +1,5 @@
 import { Package } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { canOpenPack, type LibraryPackSummary } from '@/lib/websiteApi';
 
 /** The pack's icon, or a placeholder when it has none or it fails to load. */
@@ -40,6 +40,7 @@ export function MyPacksList({
   openingId: string | null;
   onOpen: (pack: LibraryPackSummary) => void;
 }) {
+  const statusIdPrefix = useId();
   if (packs.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-base-content/60">
@@ -49,20 +50,28 @@ export function MyPacksList({
   }
   return (
     <ul className="divide-y divide-base-300">
-      {packs.map((pack) => (
+      {packs.map((pack, index) => (
         <li key={pack.id} className="flex items-center gap-3 py-3">
           <PackIcon url={pack.iconUrl} />
           <div className="min-w-0 flex-1">
             <p className="font-medium truncate">{pack.name}</p>
-            <p className="text-xs text-base-content/60">{statusLabel(pack)}</p>
-            {pack.status === 'REMOVED' && pack.removedReason && (
-              <p className="text-xs text-error">{pack.removedReason}</p>
-            )}
+            {/* Also read with the button, so it says why it cannot open. */}
+            <div id={`${statusIdPrefix}-${index}`}>
+              <p className="text-xs text-base-content/60">
+                {statusLabel(pack)}
+              </p>
+              {pack.status === 'REMOVED' && pack.removedReason && (
+                <p className="text-xs text-error">{pack.removedReason}</p>
+              )}
+            </div>
           </div>
+          {/* Every row has one, so the name tells them apart. */}
           <button
             type="button"
             onClick={() => onOpen(pack)}
             disabled={!canOpenPack(pack) || openingId !== null}
+            aria-label={`${openingId === pack.id ? 'Opening' : 'Open'} ${pack.name}`}
+            aria-describedby={`${statusIdPrefix}-${index}`}
             className="btn btn-sm rounded-box shrink-0"
           >
             {openingId === pack.id ? (

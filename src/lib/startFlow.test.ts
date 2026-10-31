@@ -63,7 +63,7 @@ describe('resolvePopState', () => {
 
   it('asks before leaving a workspace with unsaved changes', () => {
     expect(resolvePopState('workspace', screenState('start'), unsaved)).toEqual(
-      { kind: 'return-to-workspace', confirm: true },
+      { kind: 'return-to-workspace', confirm: true, aboveStart: true },
     );
   });
 
@@ -71,6 +71,17 @@ describe('resolvePopState', () => {
     expect(resolvePopState('workspace', screenState('start'), busy)).toEqual({
       kind: 'return-to-workspace',
       confirm: false,
+      aboveStart: true,
+    });
+  });
+
+  it('puts the workspace back above the start screen only when Back landed there', () => {
+    expect(
+      resolvePopState('workspace', screenState('pack-type', true), unsaved),
+    ).toEqual({
+      kind: 'return-to-workspace',
+      confirm: true,
+      aboveStart: false,
     });
   });
 
@@ -90,6 +101,10 @@ describe('resolvePopState', () => {
 describe('backToStart', () => {
   it('steps back when the screen was opened from the start screen', () => {
     expect(backToStart(screenState('my-packs', true))).toBe('history-back');
+  });
+
+  it('steps back from a workspace entered from a screen opened there', () => {
+    expect(backToStart(screenState('workspace', true))).toBe('history-back');
   });
 
   it('replaces the entry when the screen was reached directly', () => {

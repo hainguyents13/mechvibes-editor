@@ -3,7 +3,7 @@ import { MyPacksList } from '@/components/MyPacksList';
 import { websiteHost } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
 import type { LibraryPackSummary } from '@/lib/websiteApi';
-import { BackButton, ErrorLine, StartPage } from './StartPage';
+import { BackButton, ErrorLine, ScreenHeading, StartPage } from './StartPage';
 
 /** The visitor's library packs, in place of the start cards. */
 export function MyPacksScreen({
@@ -46,9 +46,9 @@ export function MyPacksScreen({
     <StartPage>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <BackButton onClick={onBack} />
-        <h1 className="flex-1 text-center text-xl md:text-2xl font-bold">
+        <ScreenHeading className="flex-1 text-center text-xl md:text-2xl font-bold">
           Your packs on {websiteHost}
-        </h1>
+        </ScreenHeading>
         <p className="min-w-16 max-w-48 truncate text-right text-sm text-base-content/60">
           {session.status === 'signed-in' &&
             `Signed in as ${session.user.name}`}

@@ -12,6 +12,30 @@ export function StartPage({ children }: { children: ReactNode }) {
   );
 }
 
+export const SCREEN_HEADING_ID = 'screen-heading';
+
+/**
+ * A screen's heading. It takes the focus when the screen opens, so a screen
+ * reader says where the visitor now is and Tab goes on from there.
+ */
+export function ScreenHeading({
+  className,
+  children,
+}: {
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <h1
+      id={SCREEN_HEADING_ID}
+      tabIndex={-1}
+      className={`${className} focus:outline-none`}
+    >
+      {children}
+    </h1>
+  );
+}
+
 /** Back to the start screen. */
 export function BackButton({ onClick }: { onClick: () => void }) {
   return (

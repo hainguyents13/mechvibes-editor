@@ -39,6 +39,7 @@ import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
 import { PhoneScreen } from '@/components/start/PhoneScreen';
+import { SCREEN_HEADING_ID, ScreenHeading } from '@/components/start/StartPage';
 import { StartScreen } from '@/components/start/StartScreen';
 import { websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
@@ -54,6 +55,7 @@ import {
   type EditorScreen,
   findLinkedPack,
   parseStartLink,
+  readScreenState,
   resolvePopState,
   screenState,
   startLinkUrl,
@@ -445,8 +447,9 @@ export function EditorPage() {
   const [keyboardScale, setKeyboardScale] = useState(1);
 
   useEffect(() => {
-    // The keyboard is on the page only in the workspace.
-    if (!isWorkspace) return;
+    // The keyboard is on the page only in the workspace, and the phone page
+    // takes it off: coming back mounts a new container to observe.
+    if (!isWorkspace || isPhone) return;
     const el = keyboardAreaRef.current;
     // Measure the parent, not the keyboard wrapper: the wrapper now shrinks to the
     // scaled keyboard, so observing it would feed its own output back in as input.
@@ -473,6 +476,8 @@ export function EditorPage() {
 
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
+      // A container taken off the page measures 0x0; that is no size to fit.
+      if (width === 0 && height === 0) return;
       rescale(width, height);
     });
     observer.observe(target);
@@ -510,6 +515,7 @@ export function EditorPage() {
     };
   }, [
     isWorkspace,
+    isPhone,
     keyboardNaturalWidth,
     keyboardNaturalHeight,
     isPreview,
@@ -730,33 +736,63 @@ export function EditorPage() {
     tourRef.current?.destroy();
   };
 
+  // The visitor went elsewhere than the link asked. It leaves the address bar
+  // too, so a reload or signing in later does not act on it after all.
+  const dropStartLink = () => {
+    setStartLink(null);
+    if (parseStartLink(window.location.search)) {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        withoutStartLink(window.location.href),
+      );
+    }
+  };
+
   // Show a screen before the workspace. Leaving the workspace empties the
   // pack, so nothing of it lingers behind the start screen.
   const showScreen = (next: EditorScreen) => {
     if (isWorkspace && next !== 'workspace') clearPack();
     if (next !== 'pack-type') setPendingFiles([]);
-    if (next !== 'start') setStartLink(null);
+    if (next !== 'start') dropStartLink();
     setOpenFileError(null);
     setLibraryOpenError(null);
     setScreen(next);
   };
 
   // A screen of its own in the browser's history, so Back returns from it.
+  // Shown first, so the link leaves the start screen's entry before the new
+  // entry copies its address.
   const pushScreen = (next: EditorScreen) => {
-    window.history.pushState(screenState(next, true), '');
     showScreen(next);
+    window.history.pushState(screenState(next, true), '');
   };
 
   // The workspace takes over the history entry it was entered from, so Back
-  // never lands on the step that started it.
+  // never lands on the step that started it. Whether that entry was added on
+  // top of the start screen's carries over, for Start over to step back.
   const enterWorkspace = () => {
-    window.history.replaceState(screenState('workspace'), '');
+    dropStartLink();
+    window.history.replaceState(
+      screenState('workspace', readScreenState(window.history.state)?.pushed),
+      '',
+    );
     setScreen('workspace');
-    setStartLink(null);
   };
 
+  // Set while a step back onto the start screen's entry is on its way, so
+  // its popstate is not taken for the visitor's Back.
+  const steppingBackRef = useRef(false);
+
+  // Steps back onto the start screen's entry when it lies right below, rather
+  // than turn this entry into a second one that Back would have to step over.
   const startOver = () => {
-    window.history.replaceState(screenState('start'), '');
+    if (backToStart(window.history.state) === 'history-back') {
+      steppingBackRef.current = true;
+      window.history.back();
+    } else {
+      window.history.replaceState(screenState('start'), '');
+    }
     showScreen('start');
   };
 
@@ -764,15 +800,6 @@ export function EditorPage() {
   const handleStartOver = () => {
     if (isDirty) {
       setConfirmDiscardAction('start-over');
-    } else {
-      startOver();
-    }
-  };
-
-  // The on-page Back of the library list and the Keyboard-or-Mouse question.
-  const handleBackToStart = () => {
-    if (backToStart(window.history.state) === 'history-back') {
-      window.history.back();
     } else {
       startOver();
     }
@@ -938,11 +965,13 @@ export function EditorPage() {
   };
 
   // Files dropped or pasted on the start screen or in the workspace. Nothing
-  // else may be open over them: a dialog holds a copy of the pack.
+  // else may be open over them: a dialog holds a copy of the pack. The phone
+  // page shows neither.
   const canDrop =
-    screen === 'start'
+    !isPhone &&
+    (screen === 'start'
       ? !isOpeningFile && openingPackId === null
-      : !isKeyboardOwnedElsewhere;
+      : !isKeyboardOwnedElsewhere);
 
   // Why a drop did nothing shows where a pack file's problem would.
   const handleDrop = (route: DropRoute<File>) => {
@@ -1116,9 +1145,16 @@ export function EditorPage() {
     tourRef.current?.destroy();
   }, [isPhone, exitPreview]);
 
-  // The editor opens on the start screen, also after a reload.
+  // The editor opens on the start screen, also after a reload. Reloaded on an
+  // entry added on top of the start screen's, it steps back onto that one.
+  // The ref also keeps a remount in development from stepping back twice.
   useEffect(() => {
-    window.history.replaceState(screenState('start'), '');
+    if (backToStart(window.history.state) === 'replace') {
+      window.history.replaceState(screenState('start'), '');
+    } else if (!steppingBackRef.current) {
+      steppingBackRef.current = true;
+      window.history.back();
+    }
   }, []);
 
   // A link into the editor waits on the start screen until the account is
@@ -1158,10 +1194,29 @@ export function EditorPage() {
     }
   });
 
+  // A new screen's heading takes the focus, which would otherwise drop to the
+  // page with the control that had it, so a screen reader says where the
+  // visitor now is. Not on load: the page starts with its own focus then.
+  const focusedScreenRef = useRef(screen);
+  useEffect(() => {
+    if (focusedScreenRef.current === screen) return;
+    focusedScreenRef.current = screen;
+    document.getElementById(SCREEN_HEADING_ID)?.focus({ preventScroll: true });
+  }, [screen]);
+
   // The browser's Back and Forward move between the start screens. Leaving
   // the workspace that way asks first when there is work to lose.
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      if (steppingBackRef.current) {
+        // The start screen already shows; the entry now stands for it.
+        steppingBackRef.current = false;
+        window.history.replaceState(
+          screenState('start', readScreenState(event.state)?.pushed),
+          '',
+        );
+        return;
+      }
       const outcome = resolvePopState(screen, event.state, {
         hasUnsavedChanges: isDirty,
         isBusy:
@@ -1170,7 +1225,10 @@ export function EditorPage() {
       if (outcome.kind === 'show') {
         showScreen(outcome.screen);
       } else if (outcome.kind === 'return-to-workspace') {
-        window.history.pushState(screenState('workspace'), '');
+        window.history.pushState(
+          screenState('workspace', outcome.aboveStart),
+          '',
+        );
         if (outcome.confirm) setConfirmDiscardAction('start-over');
       } else if (!isWorkspace) {
         window.history.replaceState(screenState(screen, true), '');
@@ -1313,10 +1371,21 @@ export function EditorPage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
 
+  // Also on the phone page, where it is off: a file dropped on a narrowed
+  // window must not open in place of the editor and the pack kept behind it.
+  const dropOverlay = (
+    <FileDropOverlay
+      enabled={canDrop}
+      context={{ onStart: screen === 'start', isDirty }}
+      onDrop={handleDrop}
+    />
+  );
+
   if (isPhone) {
     return (
       <div className="flex flex-col h-full min-h-0">
         <PhoneScreen />
+        {dropOverlay}
       </div>
     );
   }
@@ -1394,11 +1463,7 @@ export function EditorPage() {
           onChange={handlePackFileChosen}
         />
 
-        <FileDropOverlay
-          enabled={canDrop}
-          context={{ onStart: screen === 'start', isDirty }}
-          onDrop={handleDrop}
-        />
+        {dropOverlay}
 
         <ConfirmDiscardModal
           isOpen={confirmDiscardAction !== null}
@@ -1502,7 +1567,7 @@ export function EditorPage() {
             session={session}
             onRetrySession={refreshSession}
             signInHref={startSignInHref}
-            onBack={handleBackToStart}
+            onBack={startOver}
             openingId={openingPackId}
             onOpen={handleOpenLibraryPack}
             openError={libraryOpenError}
@@ -1514,13 +1579,16 @@ export function EditorPage() {
         {screen === 'pack-type' && (
           <PackTypeScreen
             fileCount={pendingFiles.length}
-            onBack={handleBackToStart}
+            onBack={startOver}
             onChoose={startNewPack}
           />
         )}
 
         {isWorkspace && (
           <>
+            <ScreenHeading className="sr-only">
+              Editing {packInfo.name}
+            </ScreenHeading>
             {/* Notices sit outside the keyboard column, whose fit-to-height
             scale only accounts for its own rows. */}
             {notice && (
