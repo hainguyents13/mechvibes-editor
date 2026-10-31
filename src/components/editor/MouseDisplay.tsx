@@ -1,11 +1,9 @@
 import type React from 'react';
 import { cn } from '@/lib/utils';
-import type { KeySounds } from '@/utils/soundPack';
-import {
-  getKeyCode,
-  keyboardLayouts,
-  parseKeyboardLayout,
-} from './keyboardLayouts';
+import type { AudioSource, KeySounds } from '@/utils/soundPack';
+import { getAudioTrackColor } from './audio-track-colors';
+import type { SelectModifiers } from './key-selection';
+import { keyboardLayouts, parseKeyboardLayout } from './keyboardLayouts';
 
 /** Natural size of the drawing; the editor scales it like the keyboard. */
 export const MOUSE_DISPLAY_SIZE = { width: 420, height: 340 };
@@ -102,7 +100,8 @@ const sideRegion = (
   };
 };
 
-// Drawn in this order, so the wheel sits on top of the main buttons.
+// Drawn in the mouse layout's order (keyboardLayouts.ts), which puts the wheel
+// on top of the main buttons.
 const REGIONS: Record<string, Region> = {
   'Left button': {
     shape: mainButton(-1),
@@ -172,8 +171,16 @@ const REGIONS: Record<string, Region> = {
 interface MouseDisplayProps {
   selectedKeys: Set<string>;
   modifiedKeys: KeySounds;
-  onKeyMouseDown: (keyId: string, e: React.MouseEvent) => void;
-  onKeyMouseUp: (keyId: string, e: React.MouseEvent) => void;
+  /** The pack's sources by id, for the colour and name of each button's file. */
+  sourcesById: Map<string, AudioSource>;
+  /** The one button in the Tab order. */
+  tabStopId: string | null;
+  onSelectKey: (
+    keyId: string | null,
+    modifiers: SelectModifiers,
+    via: 'pointer' | 'keyboard',
+  ) => void;
+  onFocusKey: (keyId: string) => void;
   keyboardRef?: React.RefObject<HTMLDivElement | null>;
   /** Preview mode: the real mouse plays the sounds; the drawing only lights up. */
   isPreview?: boolean;
@@ -182,32 +189,47 @@ interface MouseDisplayProps {
 
 /**
  * The mouse layout drawn as a mouse. Buttons select like keys: click to
- * select, Ctrl+click to add or remove.
+ * select, Ctrl or Cmd+click to add or remove, Shift+click for a range, arrow
+ * keys to move between buttons and Enter to select.
  */
 export function MouseDisplay({
   selectedKeys,
   modifiedKeys,
-  onKeyMouseDown,
-  onKeyMouseUp,
+  sourcesById,
+  tabStopId,
+  onSelectKey,
+  onFocusKey,
   keyboardRef,
   isPreview = false,
   pressedKeyCodes,
 }: MouseDisplayProps) {
-  // Same keys and ids as the keyboard display, so selection and quick
-  // select work unchanged.
-  const keys = parseKeyboardLayout(keyboardLayouts.mouse).map((key, index) => ({
-    label: key.label as string,
-    id: `${key.label || 'key'}-${index}-${key.x}-${key.y}`,
-  }));
-  const ordered = Object.keys(REGIONS).flatMap((label) =>
-    keys.filter((key) => key.label === label),
-  );
+  // Same keys, ids and order as the keyboard display, so selection, Shift
+  // ranges and quick select work unchanged.
+  const ordered = parseKeyboardLayout(keyboardLayouts.mouse)
+    .map((key, index) => ({
+      label: key.label,
+      code: key.code,
+      id: `${key.label || 'key'}-${index}-${key.x}-${key.y}`,
+    }))
+    .filter((key) => key.label in REGIONS);
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: a click beside the buttons deselects, as on the keyboard; Esc does the same from the keyboard
+    // biome-ignore lint/a11y/noStaticElementInteractions: the buttons inside take focus; this only catches clicks that miss them
     <div
       ref={keyboardRef}
       className="flex mx-auto justify-center select-none"
       style={MOUSE_DISPLAY_SIZE}
+      onClick={(e) => {
+        // A Shift, Ctrl or Cmd click that misses a button keeps the selection.
+        if (!isPreview) {
+          onSelectKey(
+            null,
+            { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey },
+            'pointer',
+          );
+        }
+      }}
     >
       <svg
         viewBox={`0 0 ${MOUSE_DISPLAY_SIZE.width} ${MOUSE_DISPLAY_SIZE.height}`}
@@ -221,17 +243,22 @@ export function MouseDisplay({
           className="fill-base-200 stroke-base-content/25"
           strokeWidth={1.5}
         />
-        {ordered.map(({ label, id: keyId }) => {
+        {ordered.map(({ label, code, id: keyId }, index) => {
           const region = REGIONS[label];
-          const code = getKeyCode(label);
           const sound = modifiedKeys.get(code);
+          const source = sound ? sourcesById.get(sound.source) : undefined;
+          // The file's name as well as its colour, for those who cannot tell colours apart.
+          const title =
+            !isPreview && source
+              ? `${region.title}, sound from ${source.file.name}`
+              : region.title;
           const isSelected = !isPreview && selectedKeys.has(keyId);
           const isPressed = pressedKeyCodes?.has(code) ?? false;
           const isInert = isPreview && !sound;
           // Opaque fills only: the wheel sits on top of the main buttons.
           let fill = '[&>:first-child]:fill-base-100';
           if (isSelected) fill = '[&>:first-child]:fill-neutral';
-          else if (isPressed)
+          else if (isPressed && !isInert)
             fill =
               '[&>:first-child]:fill-[color-mix(in_oklab,var(--color-primary)_70%,var(--color-base-100))]';
           else if (isPreview && sound) fill = '[&>:first-child]:fill-primary';
@@ -243,7 +270,8 @@ export function MouseDisplay({
             <g
               key={keyId}
               role="button"
-              tabIndex={isPreview ? -1 : 0}
+              data-key-id={keyId}
+              tabIndex={isPreview ? -1 : keyId === tabStopId ? 0 : -1}
               aria-pressed={isSelected}
               aria-label={region.title}
               className={cn(
@@ -260,25 +288,52 @@ export function MouseDisplay({
                 isInert ? 'opacity-30 pointer-events-none' : '',
                 'focus-visible:[&>:first-child]:stroke-primary',
               )}
-              onMouseDown={(e) => {
+              onFocus={() => onFocusKey(keyId)}
+              onClick={(e) => {
                 e.stopPropagation();
-                if (!isPreview) onKeyMouseDown(keyId, e);
-              }}
-              onMouseUp={(e) => {
-                e.stopPropagation();
-                if (!isPreview) onKeyMouseUp(keyId, e);
+                if (isPreview) return;
+                onSelectKey(
+                  keyId,
+                  { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey },
+                  'pointer',
+                );
               }}
               onKeyDown={(e) => {
-                if (isPreview || (e.key !== 'Enter' && e.key !== ' ')) return;
+                if (isPreview) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (!e.repeat) {
+                    onSelectKey(
+                      keyId,
+                      { range: e.shiftKey, toggle: true },
+                      'keyboard',
+                    );
+                  }
+                  return;
+                }
+                // Arrows follow the drawing, as Shift ranges do.
+                const step =
+                  e.key === 'ArrowRight' || e.key === 'ArrowDown'
+                    ? 1
+                    : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+                      ? -1
+                      : 0;
+                if (!step || e.altKey || e.ctrlKey || e.metaKey) return;
                 e.preventDefault();
-                onKeyMouseDown(keyId, e as unknown as React.MouseEvent);
-                onKeyMouseUp(keyId, e as unknown as React.MouseEvent);
+                const next = ordered[index + step];
+                if (next) {
+                  keyboardRef?.current
+                    ?.querySelector<SVGGElement>(
+                      `[data-key-id="${CSS.escape(next.id)}"]`,
+                    )
+                    ?.focus();
+                }
               }}
             >
               <g className="stroke-base-content/30" strokeWidth={1.5}>
                 {region.shape}
               </g>
-              <title>{region.title}</title>
+              <title>{title}</title>
               {/* Side labels sit outside the body, in the page's text colour */}
               <g
                 className={
@@ -292,7 +347,12 @@ export function MouseDisplay({
                   cx={region.dot[0]}
                   cy={region.dot[1]}
                   r={5}
-                  className="fill-primary stroke-white"
+                  className={cn(
+                    source
+                      ? getAudioTrackColor(source.colorIndex).fill
+                      : 'fill-primary',
+                    'stroke-white',
+                  )}
                   strokeWidth={2}
                 />
               )}

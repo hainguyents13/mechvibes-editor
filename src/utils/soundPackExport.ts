@@ -4,6 +4,7 @@ import {
   getExtension,
   ICON_TYPES,
   isRecord,
+  isWholeFile,
   type KeySounds,
   type PackExtras,
   type PackInfo,
@@ -269,7 +270,9 @@ function uniqueAudioName(file: File, ext: string, taken: Set<string>) {
  *
  * Keys cut from one source make a "single" pack whose file is `audio.<ext>`.
  * Keys cut from several make a "multi" pack: each key names its own file, and
- * the most used one is also the pack's main `audio_file`.
+ * the most used one is also the pack's main `audio_file`. A key that plays its
+ * whole file (WHOLE_FILE) is written without timing, so it makes a multi pack
+ * too. Files no key uses are left out.
  */
 export async function buildSoundPackZip({
   id,
@@ -303,7 +306,10 @@ export async function buildSoundPackZip({
   if (usedSources.length !== segmentsBySource.size) {
     throw new Error('Some keys use an audio file that is no longer loaded.');
   }
-  const isMulti = usedSources.length > 1;
+  // A key that plays its whole file has no timing, which only a multi pack allows.
+  const isMulti =
+    usedSources.length > 1 ||
+    [...keySounds.values()].some(({ press }) => isWholeFile(press));
 
   const zip = new JSZip();
   const takenNames = new Set(['config.json']);
@@ -329,7 +335,7 @@ export async function buildSoundPackZip({
 
   const definitions: Record<
     string,
-    { audio_file?: string; timing: Segment[] }
+    { audio_file?: string; timing?: Segment[] }
   > = {};
   keySounds.forEach(({ source, press, release }, code) => {
     const audio = packed.get(source);
@@ -337,9 +343,11 @@ export async function buildSoundPackZip({
     const place = (segment: Segment) =>
       audio.moved?.get(segmentKey(segment)) ?? segment;
     const timing = release ? [place(press), place(release)] : [place(press)];
-    definitions[code] = isMulti
-      ? { audio_file: audio.name, timing }
-      : { timing };
+    definitions[code] = isWholeFile(press)
+      ? { audio_file: audio.name }
+      : isMulti
+        ? { audio_file: audio.name, timing }
+        : { timing };
   });
 
   let iconName: string | undefined;

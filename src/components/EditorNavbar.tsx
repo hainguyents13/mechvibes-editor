@@ -13,10 +13,13 @@ import {
   Pencil,
   Play,
   Plus,
+  Redo2,
+  Undo2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
+import { IS_MAC } from '@/lib/utils';
 import type { LibraryUser } from '@/lib/websiteApi';
 import type { PackType } from '@/utils/soundPack';
 import { Logo } from './Logo';
@@ -28,6 +31,9 @@ const WEBSITE_LINKS = [
   { label: 'Download app', href: `${websiteUrl}/download`, Icon: MonitorDown },
   { label: 'Guide', href: `${websiteUrl}/guides/editor`, Icon: BookOpen },
 ];
+
+const UNDO_SHORTCUT = IS_MAC ? '⌘Z' : 'Ctrl+Z';
+const REDO_SHORTCUT = IS_MAC ? '⇧⌘Z' : 'Ctrl+Y';
 
 interface EditorNavbarProps {
   packName: string;
@@ -50,6 +56,12 @@ interface EditorNavbarProps {
   isUpdating?: boolean;
   /** Show the guided tour of the editor. */
   onStartTour: () => void;
+  /** Name of the action Undo reverts, or null when there is nothing to undo. */
+  undoLabel: string | null;
+  /** Name of the action Redo applies again, or null when there is nothing to redo. */
+  redoLabel: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 function Avatar({ user }: { user: LibraryUser }) {
@@ -89,14 +101,18 @@ export function EditorNavbar({
   onUpdate,
   isUpdating = false,
   onStartTour,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
 }: EditorNavbarProps) {
   return (
     <div className="sticky top-0 z-50 w-full bg-base-200 border-b border-base-300">
       <div className="flex px-2 sm:px-4 py-2 items-center justify-between gap-2">
         {/* Left Section  */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Website links: a menu on narrower screens, inline from 2xl up */}
-          <div className="dropdown 2xl:hidden">
+          {/* Website links: a menu on narrower screens, inline from 1800px up */}
+          <div className="dropdown min-[1800px]:hidden">
             <button
               type="button"
               aria-label="Mechvibes website"
@@ -118,7 +134,7 @@ export function EditorNavbar({
           <Logo text={`${siteIdentity.productName} Editor`} />
           <nav
             aria-label="Mechvibes website"
-            className="hidden 2xl:flex items-center gap-1 ml-2"
+            className="hidden min-[1800px]:flex items-center gap-1 ml-2"
           >
             {WEBSITE_LINKS.map(({ label, href, Icon }) => (
               <a
@@ -144,7 +160,8 @@ export function EditorNavbar({
             className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 max-w-full px-2 sm:px-3"
           >
             <span className="font-medium truncate">{packName}</span>
-            <span className="badge badge-xs badge-neutral hidden sm:inline-flex">
+            {/* Shown from xl only: below that the buttons on the right leave the name little room */}
+            <span className="badge badge-xs badge-neutral hidden xl:inline-flex shrink-0">
               {packType}
             </span>
             <Pencil className="h-3 w-3 shrink-0" />
@@ -153,6 +170,45 @@ export function EditorNavbar({
 
         {/* Right Section */}
         <div className="flex items-center gap-1 lg:gap-2 shrink-0">
+          {/* Icon-only; left out on phones, which cannot edit, so the account button keeps its room. The wrapper keeps the tooltip on a disabled button */}
+          <div className="hidden sm:flex items-center">
+            <div
+              className="tooltip tooltip-bottom"
+              data-tip={
+                undoLabel
+                  ? `Undo ${undoLabel} (${UNDO_SHORTCUT})`
+                  : 'Nothing to undo'
+              }
+            >
+              <button
+                type="button"
+                onClick={onUndo}
+                disabled={!undoLabel}
+                aria-label={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
+                className="btn btn-sm btn-ghost btn-square rounded-box"
+              >
+                <Undo2 className="h-4 w-4" />
+              </button>
+            </div>
+            <div
+              className="tooltip tooltip-bottom"
+              data-tip={
+                redoLabel
+                  ? `Redo ${redoLabel} (${REDO_SHORTCUT})`
+                  : 'Nothing to redo'
+              }
+            >
+              <button
+                type="button"
+                onClick={onRedo}
+                disabled={!redoLabel}
+                aria-label={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
+                className="btn btn-sm btn-ghost btn-square rounded-box"
+              >
+                <Redo2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
           <div
             className="tooltip tooltip-bottom"
             data-tip="Show where to start"
@@ -174,7 +230,8 @@ export function EditorNavbar({
             className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
           >
             <Plus className="h-3 w-3" />
-            <span className="hidden lg:inline">New</span>
+            {/* New and Import are labelled from xl, so the pack name keeps room at lg */}
+            <span className="hidden xl:inline">New</span>
           </button>
           <div
             className="tooltip tooltip-bottom"
@@ -187,8 +244,8 @@ export function EditorNavbar({
               aria-label="Import"
               className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
             >
-              <Import className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">Import</span>
+              <Import className="h-4 w-4 xl:mr-2" />
+              <span className="hidden xl:inline">Import</span>
             </button>
           </div>
           <div
@@ -276,11 +333,12 @@ export function EditorNavbar({
               className="btn btn-sm btn-ghost rounded-box flex items-center gap-2 px-2 lg:px-3"
             >
               <Avatar user={session.user} />
-              <span className="hidden xl:inline max-w-[8rem] truncate font-normal">
+              {/* Inline only on the widest screens, so the pack name keeps its room; the title and the My packs dialog name the user too */}
+              <span className="hidden min-[1800px]:inline max-w-[8rem] truncate font-normal">
                 {session.user.name}
               </span>
               <FolderOpen className="h-4 w-4 hidden lg:inline xl:hidden" />
-              <span className="hidden lg:inline">My packs</span>
+              <span className="hidden xl:inline">My packs</span>
             </button>
           )}
         </div>

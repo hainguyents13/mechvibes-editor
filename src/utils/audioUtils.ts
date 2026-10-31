@@ -1,4 +1,9 @@
-import type { KeySound, KeySounds, Segment } from '@/utils/soundPack';
+import {
+  isWholeFile,
+  type KeySound,
+  type KeySounds,
+  type Segment,
+} from '@/utils/soundPack';
 
 /** Whether a file is audio or video the editor can cut sounds from. */
 export const isMediaFile = (file: File) =>
@@ -27,6 +32,58 @@ export const getAudioDuration = (file: File): Promise<number> => {
 
     media.src = url;
   });
+};
+
+/**
+ * Length in seconds from decoding the whole file, for files whose metadata
+ * gives none (some OGG and VBR MP3); 0 when the browser cannot decode it.
+ */
+export const getDecodedDuration = async (file: File): Promise<number> => {
+  try {
+    // Offline: decoding needs no output device and no user gesture.
+    const context = new OfflineAudioContext(1, 1, 44100);
+    const buffer = await context.decodeAudioData(await file.arrayBuffer());
+    return buffer.duration;
+  } catch {
+    return 0;
+  }
+};
+
+/** Play part of a file once, outside preview. Returns a function that stops it. */
+export const playFileSegment = (
+  file: File,
+  [startMs, endMs]: Segment,
+): (() => void) => {
+  const media: HTMLMediaElement = file.type.startsWith('video/')
+    ? document.createElement('video')
+    : new Audio();
+  const url = URL.createObjectURL(file);
+  let timer = 0;
+  const stop = () => {
+    window.clearTimeout(timer);
+    media.pause();
+    media.removeAttribute('src');
+    URL.revokeObjectURL(url);
+  };
+  media.addEventListener(
+    'loadedmetadata',
+    () => {
+      media.currentTime = startMs / 1000;
+      media.play().catch(stop);
+    },
+    { once: true },
+  );
+  media.addEventListener(
+    'playing',
+    () => {
+      if (endMs > startMs) timer = window.setTimeout(stop, endMs - startMs);
+    },
+    { once: true },
+  );
+  media.addEventListener('ended', stop, { once: true });
+  media.addEventListener('error', stop, { once: true });
+  media.src = url;
+  return stop;
 };
 
 /**
@@ -62,12 +119,19 @@ export const applyPressToKeys = (
   return next;
 };
 
-/** Keys that can take a release sound from `source`: those whose press sound comes from it. */
+/**
+ * Keys that can take a release sound from `source`: those whose press sound
+ * comes from it. A key that plays its whole file has no timing to follow.
+ */
 export const keysAcceptingRelease = (
   keyCodes: string[],
   source: string,
   keySounds: KeySounds,
-) => keyCodes.filter((code) => keySounds.get(code)?.source === source);
+) =>
+  keyCodes.filter((code) => {
+    const sound = keySounds.get(code);
+    return sound?.source === source && !isWholeFile(sound.press);
+  });
 
 /** Give keys a release sound. Keys without a press sound from `source` are left alone. */
 export const applyReleaseToKeys = (
@@ -96,6 +160,21 @@ export const removeReleaseFromKeys = (
       next.set(code, { source: current.source, press: current.press });
     }
   }
+  return next;
+};
+
+/**
+ * Remove the whole sound (press and release) of the given keys; they go back
+ * to silent. Returns `keySounds` itself when none of them had a sound, so
+ * callers can skip recording a change that did nothing.
+ */
+export const clearKeySounds = (
+  keyCodes: string[],
+  keySounds: KeySounds,
+): KeySounds => {
+  if (!keyCodes.some((code) => keySounds.has(code))) return keySounds;
+  const next = new Map(keySounds);
+  for (const code of keyCodes) next.delete(code);
   return next;
 };
 

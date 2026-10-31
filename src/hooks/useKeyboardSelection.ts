@@ -1,262 +1,306 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { getKeyCode } from '@/components/editor/keyboardLayouts';
+import type React from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  keysInRect,
+  type LayoutRect,
+  marqueeSelection,
+  selectKey as nextSelection,
+  rectFromPoints,
+  type SelectModifiers,
+  sameSelection,
+  toLayoutPoint,
+} from '@/components/editor/key-selection';
+import type { LayoutKey } from '@/components/editor/keyboardLayouts';
+import { shouldIgnoreShortcut } from '@/lib/shortcuts';
+
+/** Screen pixels a press must travel before it becomes a marquee. */
+const DRAG_THRESHOLD = 5;
 
 interface UseKeyboardSelectionProps {
-  keys: any[];
-  /** Called with the key code when a plain click leaves one key selected. */
+  keys: LayoutKey[];
+  getKeyId: (key: LayoutKey, index: number) => string;
+  /** Called with the key code when a click or Enter leaves only that key selected. */
   onSingleKeySelect: (keyCode: string) => void;
-  getKeyId: (key: any, index: number) => string;
+  /** Delete or Backspace with keys selected. */
+  onClearSelected: () => void;
+  /** False while preview or a dialog owns the keyboard. */
+  enabled: boolean;
 }
+
+type DragState = {
+  pointerId: number;
+  startClient: { x: number; y: number };
+  /** Where the press began, in unscaled keyboard pixels. */
+  start: { x: number; y: number };
+  /** The key pressed, or null for empty space. */
+  keyId: string | null;
+  modifiers: SelectModifiers;
+  /** The selection when the press began; Esc puts it back. */
+  base: ReadonlySet<string>;
+  /** Shift, Ctrl or Cmd held: the marquee adds to `base` instead of replacing it. */
+  additive: boolean;
+  /** Moved past the threshold, so this is a marquee rather than a click. */
+  active: boolean;
+  /** The selection the marquee last set. */
+  current: ReadonlySet<string>;
+};
 
 export function useKeyboardSelection({
   keys,
-  onSingleKeySelect,
   getKeyId,
+  onSingleKeySelect,
+  onClearSelected,
+  enabled,
 }: UseKeyboardSelectionProps) {
-  // Selection states
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [dragSelectedKeys, setDragSelectedKeys] = useState<Set<string>>(
-    new Set(),
-  );
-
-  // Drag selection states
-  const [isDragSelecting, setIsDragSelecting] = useState(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(
-    null,
-  );
-  const [mouseDownKeyId, setMouseDownKeyId] = useState<string | null>(null);
-  const [hasDraggedFromKey, setHasDraggedFromKey] = useState(false);
+  const [selectedKeys, setSelectedKeysState] = useState<Set<string>>(new Set());
+  // The marquee being dragged, in unscaled keyboard pixels.
+  const [marquee, setMarquee] = useState<LayoutRect | null>(null);
+  const [focusKeyId, setFocusKeyId] = useState<string | null>(null);
 
   const keyboardRef = useRef<HTMLDivElement>(null);
+  // Where Shift+click ranges start. Not rendered, so a ref.
+  const anchorRef = useRef<string | null>(null);
+  const dragRef = useRef<DragState | null>(null);
 
-  // Handle key mouse down
-  const handleKeyMouseDown = useCallback(
-    (keyId: string, e: React.MouseEvent) => {
-      setMouseDownKeyId(keyId);
-      setHasDraggedFromKey(false);
+  const order = useMemo(() => keys.map(getKeyId), [keys, getKeyId]);
 
-      // Set drag start position for potential drag selection
-      const rect = keyboardRef.current?.getBoundingClientRect();
-      if (rect) {
-        const dragPos = {
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        };
-        setDragStart(dragPos);
+  // Event handlers and document listeners read the latest values from here,
+  // so none of them sees a selection from an older render.
+  const latest = useRef({
+    selectedKeys,
+    order,
+    keys,
+    onSingleKeySelect,
+    onClearSelected,
+  });
+  useEffect(() => {
+    latest.current = {
+      selectedKeys,
+      order,
+      keys,
+      onSingleKeySelect,
+      onClearSelected,
+    };
+  });
+
+  // Quick select, Deselect and a layout change set the selection from outside,
+  // so a later Shift+click starts a new range.
+  const setSelectedKeys = useCallback<
+    React.Dispatch<React.SetStateAction<Set<string>>>
+  >((value) => {
+    anchorRef.current = null;
+    setSelectedKeysState(value);
+  }, []);
+
+  // The one key in the Tab order: the last focused, else the first selected,
+  // else the first key. Checked against `order`, so a layout change heals it.
+  const tabStopId =
+    focusKeyId && order.includes(focusKeyId)
+      ? focusKeyId
+      : (order.find((id) => selectedKeys.has(id)) ?? order[0] ?? null);
+
+  const selectKey = useCallback(
+    (
+      keyId: string | null,
+      modifiers: SelectModifiers,
+      via: 'pointer' | 'keyboard',
+    ) => {
+      const { selectedKeys, order, keys, onSingleKeySelect } = latest.current;
+      const next = nextSelection(
+        { selected: selectedKeys, anchor: anchorRef.current },
+        keyId,
+        order,
+        modifiers,
+      );
+      anchorRef.current = next.anchor;
+      if (next.selected !== selectedKeys) {
+        setSelectedKeysState(new Set(next.selected));
       }
-
-      if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
-        // Clear selection when starting a potential drag without modifiers
-        setSelectedKeys(new Set());
+      if (keyId === null) return;
+      // A plain click or Enter that leaves only this key shows its sound;
+      // Ctrl+click and ranges do not.
+      if (
+        !modifiers.range &&
+        (via === 'keyboard' || !modifiers.toggle) &&
+        next.selected.size === 1 &&
+        next.selected.has(keyId)
+      ) {
+        const key = keys[order.indexOf(keyId)];
+        if (key) onSingleKeySelect(key.code);
       }
-
-      e.stopPropagation();
     },
     [],
   );
 
-  // Handle mouse move for drag selection detection
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!dragStart) return;
+  // Stop a marquee and put back the selection it started from. True when a
+  // marquee was showing.
+  const cancelDrag = useCallback(() => {
+    const drag = dragRef.current;
+    if (!drag) return false;
+    dragRef.current = null;
+    if (!drag.active) return false;
+    setSelectedKeysState(new Set(drag.base));
+    setMarquee(null);
+    return true;
+  }, []);
 
-      const rect = keyboardRef.current?.getBoundingClientRect();
-      if (!rect) return;
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Right and middle clicks leave the selection alone.
+    if (e.button !== 0) return;
+    const el = e.currentTarget;
+    const start = toLayoutPoint(
+      e.clientX,
+      e.clientY,
+      el.getBoundingClientRect(),
+      el.offsetWidth,
+      el.clientLeft,
+    );
+    if (!start) return;
+    const keyId =
+      (e.target as Element)
+        .closest('[data-key-id]')
+        ?.getAttribute('data-key-id') ?? null;
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startClient: { x: e.clientX, y: e.clientY },
+      start,
+      keyId,
+      modifiers: { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey },
+      base: selectedKeys,
+      additive,
+      active: false,
+      current: selectedKeys,
+    };
+  };
 
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      // Track if we've dragged more than a small threshold
-      const dragDistance = Math.sqrt(
-        (x - dragStart.x) ** 2 + (y - dragStart.y) ** 2,
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (!drag.active) {
+      // The button came up outside the keyboard before the drag started.
+      if ((e.buttons & 1) === 0) {
+        dragRef.current = null;
+        return;
+      }
+      const moved = Math.hypot(
+        e.clientX - drag.startClient.x,
+        e.clientY - drag.startClient.y,
       );
-
-      // Start drag selection if we've moved enough and started on a key
-      if (
-        !isDragSelecting &&
-        dragDistance > 5 &&
-        mouseDownKeyId &&
-        !e.shiftKey &&
-        !e.ctrlKey &&
-        !e.metaKey
-      ) {
-        setIsDragSelecting(true);
-        setHasDraggedFromKey(true);
-        // Add the initial key to the drag selection
-        setDragSelectedKeys(new Set([mouseDownKeyId]));
-      }
-
-      // If we're drag selecting, find which key is under the mouse
-      if (isDragSelecting) {
-        const unitSize = 54;
-        const gap = 3;
-        const padding = gap;
-
-        // Find which key is under the mouse position
-        for (let i = 0; i < keys.length; i++) {
-          const key = keys[i];
-          const keyId = getKeyId(key, i);
-
-          const keyLeft = key.x * unitSize + key.x * gap + padding;
-          const keyTop = key.y * unitSize + key.y * gap + padding;
-          const keyRight =
-            keyLeft + (key.width * unitSize + (key.width - 1) * gap);
-          const keyBottom =
-            keyTop + (key.height * unitSize + (key.height - 1) * gap);
-
-          if (x >= keyLeft && x <= keyRight && y >= keyTop && y <= keyBottom) {
-            setDragSelectedKeys((prev) => {
-              const newSet = new Set(prev);
-              newSet.add(keyId);
-              return newSet;
-            });
-            break;
-          }
-        }
-      }
-    },
-    [dragStart, isDragSelecting, mouseDownKeyId, keys, getKeyId],
-  );
-
-  // Handle mouse entering a key during drag
-  const handleKeyMouseEnter = useCallback(
-    (keyId: string, _e: React.MouseEvent) => {
-      if (isDragSelecting) {
-        // Add to drag selection during drag
-        setDragSelectedKeys((prev) => {
-          const newSet = new Set(prev);
-          newSet.add(keyId);
-          return newSet;
-        });
-      }
-    },
-    [isDragSelecting],
-  );
-
-  // Handle mouse up on a key
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dependency list kept as in the website editor; changing it changes when the hook re-runs
-  const handleKeyMouseUp = useCallback(
-    (keyId: string, e: React.MouseEvent) => {
-      // If we started on this key and haven't dragged, treat it as a click
-      if (mouseDownKeyId === keyId && !hasDraggedFromKey) {
-        handleKeyClick(keyId, e);
-      }
-
-      // If we were drag selecting, apply the selection
-      if (isDragSelecting) {
-        setSelectedKeys(dragSelectedKeys);
-      }
-
-      // Reset states
-      setMouseDownKeyId(null);
-      setHasDraggedFromKey(false);
-      setIsDragSelecting(false);
-      setDragSelectedKeys(new Set());
-    },
-    [mouseDownKeyId, hasDraggedFromKey, isDragSelecting, dragSelectedKeys],
-  );
-
-  // Handle mouse up to finish selection
-  const handleMouseUp = useCallback(() => {
-    // If we were drag selecting, apply the selection
-    if (isDragSelecting) {
-      setSelectedKeys(dragSelectedKeys);
+      if (moved <= DRAG_THRESHOLD) return;
+      drag.active = true;
+      // Captured only now, so a plain click keeps its target and focus.
+      e.currentTarget.setPointerCapture(e.pointerId);
     }
-
-    setDragStart(null);
-    setMouseDownKeyId(null);
-    setHasDraggedFromKey(false);
-    setIsDragSelecting(false);
-    setDragSelectedKeys(new Set());
-  }, [isDragSelecting, dragSelectedKeys]);
-
-  // Handle individual key click
-  const handleKeyClick = useCallback(
-    (keyId: string, e: React.MouseEvent) => {
-      const newSelected = new Set(selectedKeys);
-
-      if (e.ctrlKey || e.metaKey) {
-        // Toggle selection with Ctrl/Cmd
-        if (newSelected.has(keyId)) {
-          newSelected.delete(keyId);
-        } else {
-          newSelected.add(keyId);
-        }
-      } else if (e.shiftKey) {
-        // Add to selection with Shift
-        newSelected.add(keyId);
-      } else {
-        // Toggle selection on single click
-        if (newSelected.has(keyId)) {
-          newSelected.delete(keyId);
-        } else {
-          newSelected.add(keyId);
-        }
-      }
-
-      setSelectedKeys(newSelected);
-
-      // Show the key's sound when a plain click leaves exactly this key selected
-      if (
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.shiftKey &&
-        newSelected.size === 1 &&
-        newSelected.has(keyId)
-      ) {
-        const key = keys.find((k, i) => getKeyId(k, i) === keyId);
-        if (key) onSingleKeySelect(getKeyCode(key.label));
-      }
-    },
-    [selectedKeys, keys, getKeyId, onSingleKeySelect],
-  );
-
-  // Handle mouse down on keyboard area
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = keyboardRef.current?.getBoundingClientRect();
-    if (rect) {
-      const dragPos = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      };
-      setDragStart(dragPos);
+    const el = e.currentTarget;
+    const point = toLayoutPoint(
+      e.clientX,
+      e.clientY,
+      el.getBoundingClientRect(),
+      el.offsetWidth,
+      el.clientLeft,
+    );
+    if (!point) return;
+    // Past the edge, the box stops at the keyboard.
+    const rect = rectFromPoints(drag.start, {
+      x: Math.min(Math.max(point.x, 0), el.clientWidth),
+      y: Math.min(Math.max(point.y, 0), el.clientHeight),
+    });
+    setMarquee(rect);
+    const next = marqueeSelection(
+      drag.base,
+      keysInRect(keys, order, rect),
+      drag.additive,
+    );
+    // Only a change in the keys covered re-renders the panel.
+    if (!sameSelection(next, drag.current)) {
+      drag.current = next;
+      setSelectedKeysState(next);
     }
-  }, []);
+  };
 
-  // Add global mouse up listener
-  useEffect(() => {
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [handleMouseUp]);
+  const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    // Cleared first, so the lostpointercapture that follows does nothing.
+    dragRef.current = null;
+    if (drag.active) {
+      // The marquee's selection stays, and the anchor does not move.
+      setMarquee(null);
+      return;
+    }
+    selectKey(drag.keyId, drag.modifiers, 'pointer');
+    if (drag.keyId !== null) {
+      setFocusKeyId(drag.keyId);
+      // Safari does not focus buttons on click.
+      e.currentTarget
+        .querySelector<HTMLElement>(`[data-key-id="${CSS.escape(drag.keyId)}"]`)
+        ?.focus({ preventScroll: true });
+    }
+  };
 
-  // Add keyboard event listener for Esc key to clear selection
+  const onPointerCancel = () => {
+    cancelDrag();
+  };
+
+  const onLostPointerCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    // A key losing the touch's implicit capture to the keyboard is not a cancel.
+    if (e.target === e.currentTarget) cancelDrag();
+  };
+
+  // Esc, Ctrl/Cmd+A, Delete and Backspace, while nothing else owns the keyboard.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setSelectedKeys(new Set());
+    if (!enabled) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (shouldIgnoreShortcut(event)) return;
+      const { selectedKeys, order, onClearSelected } = latest.current;
+      const command = event.ctrlKey || event.metaKey;
+      if (event.key === 'Escape') {
+        if (cancelDrag()) {
+          event.preventDefault();
+          return;
+        }
+        if (selectedKeys.size > 0) setSelectedKeys(new Set());
+        return;
+      }
+      if (
+        command &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'a'
+      ) {
+        event.preventDefault();
+        setSelectedKeys(new Set(order));
+        return;
+      }
+      if (
+        (event.key === 'Delete' || event.key === 'Backspace') &&
+        !command &&
+        !event.altKey &&
+        selectedKeys.size > 0
+      ) {
+        event.preventDefault();
+        onClearSelected();
       }
     };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, []);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [enabled, cancelDrag, setSelectedKeys]);
 
   return {
     selectedKeys,
     setSelectedKeys,
-    dragSelectedKeys,
-    isDragSelecting,
+    marquee,
+    tabStopId,
+    setFocusKeyId,
+    selectKey,
     keyboardRef,
-    handleKeyMouseDown,
-    handleMouseMove,
-    handleKeyMouseEnter,
-    handleKeyMouseUp,
-    handleMouseUp,
-    handleKeyClick,
-    handleMouseDown,
+    pointerHandlers: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onLostPointerCapture,
+    },
   };
 }

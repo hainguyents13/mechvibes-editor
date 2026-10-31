@@ -1,4 +1,6 @@
 // Keyboard layout data for different sizes
+// A { code } prop names the next key's KeyboardEvent.code where its legend
+// cannot: numpad keys, right-hand modifiers, Pause.
 export const keyboardLayouts = {
   fullsize: [
     [
@@ -21,6 +23,7 @@ export const keyboardLayouts = {
       { x: 0.25 },
       'PrtSc',
       'Scroll Lock',
+      { code: 'Pause' },
       'Pause\nBreak',
     ],
     [
@@ -46,8 +49,11 @@ export const keyboardLayouts = {
       'PgUp',
       { x: 0.25 },
       'Num Lock',
+      { code: 'NumpadDivide' },
       '/',
+      { code: 'NumpadMultiply' },
       '*',
+      { code: 'NumpadSubtract' },
       '-',
     ],
     [
@@ -72,10 +78,13 @@ export const keyboardLayouts = {
       'End',
       'PgDn',
       { x: 0.25 },
+      { code: 'Numpad7' },
       '7\nHome',
+      { code: 'Numpad8' },
       '8\n↑',
+      { code: 'Numpad9' },
       '9\nPgUp',
-      { h: 2 },
+      { h: 2, code: 'NumpadAdd' },
       '+',
     ],
     [
@@ -95,8 +104,11 @@ export const keyboardLayouts = {
       { w: 2.25 },
       'Enter',
       { x: 3.5 },
+      { code: 'Numpad4' },
       '4\n←',
+      { code: 'Numpad5' },
       '5',
+      { code: 'Numpad6' },
       '6\n→',
     ],
     [
@@ -112,15 +124,18 @@ export const keyboardLayouts = {
       '<\n,',
       '>\n.',
       '?\n/',
-      { w: 2.75 },
+      { w: 2.75, code: 'ShiftRight' },
       'Shift',
       { x: 1.25 },
       '↑',
       { x: 1.25 },
+      { code: 'Numpad1' },
       '1\nEnd',
+      { code: 'Numpad2' },
       '2\n↓',
+      { code: 'Numpad3' },
       '3\nPgDn',
-      { h: 2 },
+      { h: 2, code: 'NumpadEnter' },
       'Enter',
     ],
     [
@@ -132,20 +147,21 @@ export const keyboardLayouts = {
       'Alt',
       { a: 7, w: 6.25 },
       '',
-      { a: 4, w: 1.25 },
+      { a: 4, w: 1.25, code: 'AltRight' },
       'Alt',
-      { w: 1.25 },
+      { w: 1.25, code: 'MetaRight' },
       'Win',
       { w: 1.25 },
       'Menu',
-      { w: 1.25 },
+      { w: 1.25, code: 'ControlRight' },
       'Ctrl',
       { x: 0.25 },
       '←',
       '↓',
       '→',
-      { x: 0.25, w: 2 },
+      { x: 0.25, w: 2, code: 'Numpad0' },
       '0\nIns',
+      { code: 'NumpadDecimal' },
       '.\nDel',
     ],
   ],
@@ -170,6 +186,7 @@ export const keyboardLayouts = {
       { x: 0.25 },
       'PrtSc',
       'Scroll Lock',
+      { code: 'Pause' },
       'Pause\nBreak',
     ],
     [
@@ -246,7 +263,7 @@ export const keyboardLayouts = {
       '<\n,',
       '>\n.',
       '?\n/',
-      { w: 2.75 },
+      { w: 2.75, code: 'ShiftRight' },
       'Shift',
       { x: 1.25 },
       '↑',
@@ -260,13 +277,13 @@ export const keyboardLayouts = {
       'Alt',
       { a: 7, w: 6.25 },
       '',
-      { a: 4, w: 1.25 },
+      { a: 4, w: 1.25, code: 'AltRight' },
       'Alt',
-      { w: 1.25 },
+      { w: 1.25, code: 'MetaRight' },
       'Win',
       { w: 1.25 },
       'Menu',
-      { w: 1.25 },
+      { w: 1.25, code: 'ControlRight' },
       'Ctrl',
       { x: 0.25 },
       '←',
@@ -340,7 +357,7 @@ export const keyboardLayouts = {
       '<\n,',
       '>\n.',
       '?\n/',
-      { w: 2.75 },
+      { w: 2.75, code: 'ShiftRight' },
       'Shift',
     ],
     [
@@ -352,35 +369,60 @@ export const keyboardLayouts = {
       'Alt',
       { a: 7, w: 6.25 },
       '',
-      { a: 4, w: 1.25 },
+      { a: 4, w: 1.25, code: 'AltRight' },
       'Alt',
-      { w: 1.25 },
+      { w: 1.25, code: 'MetaRight' },
       'Win',
       { w: 1.25 },
       'Menu',
-      { w: 1.25 },
+      { w: 1.25, code: 'ControlRight' },
       'Ctrl',
     ],
   ],
   // Mouse packs: the buttons and wheel the app listens for (MouseLeft…Mouse8).
+  // MouseDisplay draws them as a mouse, not as this grid, in this order: the
+  // arrow keys and Shift ranges follow it, and the wheel comes after the main
+  // buttons so it is drawn on top of them.
   mouse: [
-    [{ w: 2, h: 2 }, 'Left button', 'Wheel up', { w: 2, h: 2 }, 'Right button'],
-    [{ x: 2 }, 'Middle button'],
-    [{ x: 2 }, 'Wheel down'],
-    ['Button 4', 'Button 5', 'Button 6', 'Button 7', 'Button 8'],
+    ['Left button', 'Right button', 'Wheel up', 'Middle button', 'Wheel down'],
+    // Forward sits above back on the left side.
+    ['Button 5', 'Button 4', 'Button 6', 'Button 7', 'Button 8'],
   ],
 };
 
 export type LayoutName = keyof typeof keyboardLayouts;
 
+export type KeyboardSize = Exclude<LayoutName, 'mouse'>;
+
+export type LayoutKey = {
+  label: string;
+  /** KeyboardEvent.code (or Mouse… code) the key plays under. */
+  code: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  align: number;
+};
+
 // Function to parse keyboard layout and render keys
-export function parseKeyboardLayout(layout: any[], _unitSize: number = 54) {
-  const keys: any[] = [];
+export function parseKeyboardLayout(
+  layout: any[],
+  _unitSize: number = 54,
+): LayoutKey[] {
+  const keys: LayoutKey[] = [];
   let currentY = 0;
 
   layout.forEach((row) => {
     let currentX = 0;
-    let currentProps = { w: 1, h: 1, x: 0, y: 0, a: 4 };
+    let currentProps: {
+      w: number;
+      h: number;
+      x: number;
+      y: number;
+      a: number;
+      code?: string;
+    } = { w: 1, h: 1, x: 0, y: 0, a: 4 };
 
     row.forEach((item: any) => {
       if (typeof item === 'object' && !Array.isArray(item)) {
@@ -392,6 +434,7 @@ export function parseKeyboardLayout(layout: any[], _unitSize: number = 54) {
         // Create key with current properties
         keys.push({
           label: item,
+          code: currentProps.code ?? codeForLabel(item),
           x: currentX,
           y: currentY,
           width: currentProps.w || 1,
@@ -399,9 +442,10 @@ export function parseKeyboardLayout(layout: any[], _unitSize: number = 54) {
           align: currentProps.a || 4,
         });
         currentX += currentProps.w || 1;
-        // Reset width and height after use
+        // Width, height and code apply to one key only
         currentProps.w = 1;
         currentProps.h = 1;
+        currentProps.code = undefined;
       }
     });
     currentY += 1;
@@ -410,110 +454,110 @@ export function parseKeyboardLayout(layout: any[], _unitSize: number = 54) {
   return keys;
 }
 
-// Map label to Web API keycode
-export const getKeyCode = (label: string): string => {
-  // Remove shift indicator for multi-line labels
-  const key = label.includes('\n') ? label.split('\n')[1] : label;
-
-  const keyCodeMap: { [key: string]: string } = {
-    Esc: 'Escape',
-    '`': 'Backquote',
-    '1': 'Digit1',
-    '2': 'Digit2',
-    '3': 'Digit3',
-    '4': 'Digit4',
-    '5': 'Digit5',
-    '6': 'Digit6',
-    '7': 'Digit7',
-    '8': 'Digit8',
-    '9': 'Digit9',
-    '0': 'Digit0',
-    '-': 'Minus',
-    '=': 'Equal',
-    Backspace: 'Backspace',
-    Tab: 'Tab',
-    Q: 'KeyQ',
-    W: 'KeyW',
-    E: 'KeyE',
-    R: 'KeyR',
-    T: 'KeyT',
-    Y: 'KeyY',
-    U: 'KeyU',
-    I: 'KeyI',
-    O: 'KeyO',
-    P: 'KeyP',
-    '[': 'BracketLeft',
-    ']': 'BracketRight',
-    '\\': 'Backslash',
-    'Caps Lock': 'CapsLock',
-    A: 'KeyA',
-    S: 'KeyS',
-    D: 'KeyD',
-    F: 'KeyF',
-    G: 'KeyG',
-    H: 'KeyH',
-    J: 'KeyJ',
-    K: 'KeyK',
-    L: 'KeyL',
-    ';': 'Semicolon',
-    "'": 'Quote',
-    Enter: 'Enter',
-    Shift: 'ShiftLeft',
-    Z: 'KeyZ',
-    X: 'KeyX',
-    C: 'KeyC',
-    V: 'KeyV',
-    B: 'KeyB',
-    N: 'KeyN',
-    M: 'KeyM',
-    ',': 'Comma',
-    '.': 'Period',
-    '/': 'Slash',
-    Ctrl: 'ControlLeft',
-    Win: 'MetaLeft',
-    Alt: 'AltLeft',
-    ' ': 'Space',
-    '': 'Space',
-    Menu: 'ContextMenu',
-    F1: 'F1',
-    F2: 'F2',
-    F3: 'F3',
-    F4: 'F4',
-    F5: 'F5',
-    F6: 'F6',
-    F7: 'F7',
-    F8: 'F8',
-    F9: 'F9',
-    F10: 'F10',
-    F11: 'F11',
-    F12: 'F12',
-    Insert: 'Insert',
-    Home: 'Home',
-    PgUp: 'PageUp',
-    Delete: 'Delete',
-    End: 'End',
-    PgDn: 'PageDown',
-    '↑': 'ArrowUp',
-    '↓': 'ArrowDown',
-    '←': 'ArrowLeft',
-    '→': 'ArrowRight',
-    'Num Lock': 'NumLock',
-    '*': 'NumpadMultiply',
-    '+': 'NumpadAdd',
-    PrtSc: 'PrintScreen',
-    'Scroll Lock': 'ScrollLock',
-    'Pause\nBreak': 'Pause',
-    'Left button': 'MouseLeft',
-    'Right button': 'MouseRight',
-    'Middle button': 'MouseMiddle',
-    'Wheel up': 'MouseWheelUp',
-    'Wheel down': 'MouseWheelDown',
-    'Button 4': 'Mouse4',
-    'Button 5': 'Mouse5',
-    'Button 6': 'Mouse6',
-    'Button 7': 'Mouse7',
-    'Button 8': 'Mouse8',
-  };
-
-  return keyCodeMap[key] || key;
+// Web API key codes by legend, for keys whose legend names one key only.
+const CODE_BY_LABEL: { [legend: string]: string } = {
+  Esc: 'Escape',
+  '`': 'Backquote',
+  '1': 'Digit1',
+  '2': 'Digit2',
+  '3': 'Digit3',
+  '4': 'Digit4',
+  '5': 'Digit5',
+  '6': 'Digit6',
+  '7': 'Digit7',
+  '8': 'Digit8',
+  '9': 'Digit9',
+  '0': 'Digit0',
+  '-': 'Minus',
+  '=': 'Equal',
+  Backspace: 'Backspace',
+  Tab: 'Tab',
+  Q: 'KeyQ',
+  W: 'KeyW',
+  E: 'KeyE',
+  R: 'KeyR',
+  T: 'KeyT',
+  Y: 'KeyY',
+  U: 'KeyU',
+  I: 'KeyI',
+  O: 'KeyO',
+  P: 'KeyP',
+  '[': 'BracketLeft',
+  ']': 'BracketRight',
+  '\\': 'Backslash',
+  'Caps Lock': 'CapsLock',
+  A: 'KeyA',
+  S: 'KeyS',
+  D: 'KeyD',
+  F: 'KeyF',
+  G: 'KeyG',
+  H: 'KeyH',
+  J: 'KeyJ',
+  K: 'KeyK',
+  L: 'KeyL',
+  ';': 'Semicolon',
+  "'": 'Quote',
+  Enter: 'Enter',
+  Shift: 'ShiftLeft',
+  Z: 'KeyZ',
+  X: 'KeyX',
+  C: 'KeyC',
+  V: 'KeyV',
+  B: 'KeyB',
+  N: 'KeyN',
+  M: 'KeyM',
+  ',': 'Comma',
+  '.': 'Period',
+  '/': 'Slash',
+  Ctrl: 'ControlLeft',
+  Win: 'MetaLeft',
+  Alt: 'AltLeft',
+  ' ': 'Space',
+  '': 'Space',
+  // The app does not capture this key yet; kept so the code is the browser's.
+  Menu: 'ContextMenu',
+  F1: 'F1',
+  F2: 'F2',
+  F3: 'F3',
+  F4: 'F4',
+  F5: 'F5',
+  F6: 'F6',
+  F7: 'F7',
+  F8: 'F8',
+  F9: 'F9',
+  F10: 'F10',
+  F11: 'F11',
+  F12: 'F12',
+  Insert: 'Insert',
+  Home: 'Home',
+  PgUp: 'PageUp',
+  Delete: 'Delete',
+  End: 'End',
+  PgDn: 'PageDown',
+  '↑': 'ArrowUp',
+  '↓': 'ArrowDown',
+  '←': 'ArrowLeft',
+  '→': 'ArrowRight',
+  'Num Lock': 'NumLock',
+  PrtSc: 'PrintScreen',
+  'Scroll Lock': 'ScrollLock',
+  'Left button': 'MouseLeft',
+  'Right button': 'MouseRight',
+  'Middle button': 'MouseMiddle',
+  'Wheel up': 'MouseWheelUp',
+  'Wheel down': 'MouseWheelDown',
+  'Button 4': 'Mouse4',
+  'Button 5': 'Mouse5',
+  'Button 6': 'Mouse6',
+  'Button 7': 'Mouse7',
+  'Button 8': 'Mouse8',
 };
+
+/**
+ * The code of a key whose legend names one key only. Dual-legend keys are read
+ * by their lower legend ("!\n1" is Digit1).
+ */
+function codeForLabel(label: string): string {
+  const legend = label.includes('\n') ? label.split('\n')[1] : label;
+  return CODE_BY_LABEL[legend] ?? legend;
+}

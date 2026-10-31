@@ -1,5 +1,6 @@
 import { type DriveStep, driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
+import { MOD_LABEL } from '@/lib/utils';
 
 // A guided tour of the editor: where to start and in what order. Steps point
 // at elements marked with data-tour="…"; a step whose element is not on the
@@ -55,8 +56,7 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       element: target('keyboard'),
       popover: {
         title: '2. Pick keys',
-        description:
-          'Click a key to select it, drag across keys to select several, or Ctrl+click to add one. A dot marks a key that already has a sound.',
+        description: `Click a key to select it and click it again to deselect it. Drag across keys to select several, Shift+click to select a range, or ${MOD_LABEL}+click to add or remove one. Delete clears the sound of the selected keys. A dot marks a key that already has a sound, in the colour of its file.`,
       },
     },
     {

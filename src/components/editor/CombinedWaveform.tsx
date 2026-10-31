@@ -6,6 +6,38 @@ import {
   useRef,
   useState,
 } from 'react';
+import type { Region } from 'wavesurfer.js/dist/plugins/regions.esm.js';
+import {
+  isSameSpan,
+  type SelectionMs,
+  type SpanSec,
+  scrollLeftToReveal,
+  toRegionSpan,
+} from '@/components/editor/waveform-selection';
+
+/** Id of the one region the user edits. It always mirrors waveformSelection. */
+const SELECTION_REGION_ID = 'selection';
+const SELECTION_COLOR = 'rgba(79, 70, 229, 0.25)';
+/** Auto-detected regions are click targets only and are never edited. */
+const AUTO_REGION_PREFIX = 'sound-region-';
+const isAutoRegion = (region: Region) =>
+  region.id.startsWith(AUTO_REGION_PREFIX);
+const autoRegionColor = (index: number, hovered = false) => {
+  const hue = (index * 137.508) % 360;
+  return hovered
+    ? `hsla(${hue}, 60%, 60%, 0.5)`
+    : `hsla(${hue}, 40%, 70%, 0.25)`;
+};
+const autoRegionIndex = (region: Region) =>
+  Number(region.id.slice(AUTO_REGION_PREFIX.length));
+/**
+ * Lift the selection above the auto regions so its edges stay draggable. A
+ * z-index rather than DOM order, because the plugin re-appends region elements
+ * while scrolling.
+ */
+const raiseSelectionRegion = (region: Region) => {
+  if (region.element) region.element.style.zIndex = '1';
+};
 
 interface CombinedWaveformProps {
   audioUrl: string;
@@ -14,9 +46,8 @@ interface CombinedWaveformProps {
   zoomLevel: number;
   soundOnlyMode: boolean;
   silenceThreshold: number;
-  waveformSelection: { start: number; end: number };
-  onSelectionChange: (selection: { start: number; end: number }) => void;
-  onRegionSelect: (regionId: string) => void;
+  waveformSelection: SelectionMs;
+  onSelectionChange: (selection: SelectionMs) => void;
   onReady: (duration: number) => void;
   /** The element that actually scrolls horizontally, used to keep zoom anchored. */
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
@@ -26,13 +57,6 @@ interface CombinedWaveformProps {
 
 export interface CombinedWaveformRef {
   wavesurfer: any;
-  regions: any;
-  zoom: (level: number) => void;
-  play: () => void;
-  pause: () => void;
-  playRegion: (regionId: string) => void;
-  setTime: (time: number) => void;
-  getCurrentTime: () => number;
 }
 
 export const CombinedWaveform = forwardRef<
@@ -49,7 +73,6 @@ export const CombinedWaveform = forwardRef<
       silenceThreshold,
       waveformSelection,
       onSelectionChange,
-      onRegionSelect,
       onReady,
       scrollContainerRef,
       height = 200,
@@ -59,6 +82,8 @@ export const CombinedWaveform = forwardRef<
     const containerRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<any>(null);
     const regionsRef = useRef<any>(null);
+    // The region drawn for waveformSelection, if any.
+    const selectionRegionRef = useRef<Region | null>(null);
     const [isReady, setIsReady] = useState(false);
     // Read at init time so a height change does not rebuild the waveform.
     const heightRef = useRef(height);
@@ -180,8 +205,8 @@ export const CombinedWaveform = forwardRef<
       [],
     );
 
-    // Create and update regions based on mode
-    const updateRegions = useCallback(() => {
+    // Rebuild the auto-detected regions. The selection region is left alone.
+    const updateAutoRegions = useCallback(() => {
       if (!regionsRef.current || !wavesurferRef.current || !isReady) {
         return;
       }
@@ -196,73 +221,36 @@ export const CombinedWaveform = forwardRef<
           return;
         }
 
-        if (soundOnlyMode) {
-          // Sound-only mode: clear and show auto-detected regions
-          regions.clearRegions();
-          const decodedData = ws.getDecodedData();
-          if (decodedData) {
-            const soundRegions = extractRegions(
-              decodedData.getChannelData(0),
-              duration,
-              silenceThreshold,
-            );
+        for (const region of [...regions.getRegions()]) {
+          if (isAutoRegion(region)) region.remove();
+        }
+        if (!soundOnlyMode) return;
 
-            soundRegions.forEach((region: any, index: number) => {
-              regions.addRegion({
-                start: region.start,
-                end: region.end,
-                content: (index + 1).toString(),
-                color: `hsla(${(index * 137.508) % 360}, 40%, 70%, 0.25)`,
-                drag: false,
-                resize: false,
-                id: `sound-region-${index}`,
-              });
-            });
-          }
-        } else {
-          // Free selection mode: only clear regions if switching modes
-          // Don't recreate user selections to avoid infinite loops
-          const existingRegions = regions.getRegions();
-          const hasUserRegion = existingRegions.some(
-            (r: any) =>
-              r.id === 'user-selection' || r.id?.startsWith('user-selection'),
+        const decodedData = ws.getDecodedData();
+        if (decodedData) {
+          const soundRegions = extractRegions(
+            decodedData.getChannelData(0),
+            duration,
+            silenceThreshold,
           );
 
-          // Only clear regions if we don't have any user regions (mode switch)
-          if (existingRegions.length > 0 && !hasUserRegion) {
-            regions.clearRegions();
-          }
+          soundRegions.forEach((span, index) => {
+            regions.addRegion({
+              ...span,
+              id: `${AUTO_REGION_PREFIX}${index}`,
+              content: String(index + 1),
+              color: autoRegionColor(index),
+              drag: false,
+              resize: false,
+            });
+          });
         }
       } catch (error) {
         console.warn('Error updating regions:', error);
       }
     }, [soundOnlyMode, silenceThreshold, extractRegions, isReady]);
 
-    useImperativeHandle(ref, () => ({
-      wavesurfer: wavesurferRef.current,
-      regions: regionsRef.current,
-      zoom: (level: number) => {
-        const ws = wavesurferRef.current;
-        if (ws && ws.getDecodedData()) {
-          ws.zoom(level);
-        }
-      },
-      play: () => wavesurferRef.current?.play(),
-      pause: () => wavesurferRef.current?.pause(),
-      playRegion: (regionId: string) => {
-        const region = regionsRef.current
-          ?.getRegions()
-          ?.find((r: any) => r.id === regionId);
-        if (region) {
-          region.play();
-        }
-      },
-      setTime: (time: number) => {
-        wavesurferRef.current?.setTime(time);
-        syncVideoTime(time);
-      },
-      getCurrentTime: () => wavesurferRef.current?.getCurrentTime() || 0,
-    }));
+    useImperativeHandle(ref, () => ({ wavesurfer: wavesurferRef.current }));
 
     // Initialize WaveSurfer
     // biome-ignore lint/correctness/useExhaustiveDependencies: dependency list kept as in the website editor; changing it changes when the hook re-runs
@@ -312,9 +300,8 @@ export const CombinedWaveform = forwardRef<
             normalize: true,
             backend: 'WebAudio',
             plugins: [regions, timeline],
-            minPxPerSec: Math.max(100, zoomLevel),
+            minPxPerSec: zoomLevel,
             interact: true,
-            scrollParent: true, // Enable scrolling
             fillParent: false, // Don't fill parent, allow scrolling
           };
 
@@ -330,119 +317,79 @@ export const CombinedWaveform = forwardRef<
 
           wavesurferRef.current = ws;
 
-          // Set up drag selection for free mode only
+          // A drag draws a new selection in free mode only
           if (!soundOnlyMode) {
-            regions.enableDragSelection({
-              color: 'rgba(79, 70, 229, 0.25)',
-            });
+            regions.enableDragSelection({ color: SELECTION_COLOR });
           }
 
-          // Event handlers based on mode
-          if (soundOnlyMode) {
-            // Sound-only mode: only handle region clicks
-            let selectedRegion: any = null;
-
-            regions.on('region-clicked', (region: any, e: MouseEvent) => {
-              e.stopPropagation();
-
-              // Reset previous selected region to normal color
-              if (selectedRegion && selectedRegion !== region) {
-                selectedRegion.setOptions({
-                  color: `hsla(${(selectedRegion.id.match(/\d+/)?.[0] * 137.508) % 360}, 40%, 70%, 0.25)`,
-                });
-              }
-
-              // Highlight the newly selected region
-              region.setOptions({
-                color: `hsla(${(region.id.match(/\d+/)?.[0] * 137.508) % 360}, 80%, 45%, 0.6)`,
-              });
-
-              selectedRegion = region;
-              onRegionSelect(region.id || '');
-              onSelectionChange({
-                start: region.start * 1000,
-                end: region.end * 1000,
-              });
-              // Sync video time for video files
-              syncVideoTime(region.start);
+          // Report a region as the new selection and park the cursor at its start.
+          const selectRegion = (region: Region) => {
+            onSelectionChange({
+              start: region.start * 1000,
+              end: region.end * 1000,
             });
+            ws.setTime(region.start);
+            syncVideoTime(region.start);
+          };
 
-            // Add hover effects for sound regions using individual region event listeners
-            regions.on('region-created', (region: any) => {
-              // Add mouse event listeners to each region
-              region.element.addEventListener('mouseenter', () => {
-                // Don't change color if this is the selected region
-                if (selectedRegion === region) return;
+          regions.on('region-created', (region: Region) => {
+            if (region.id === SELECTION_REGION_ID) return; // drawn from the prop
+            if (isAutoRegion(region)) {
+              const index = autoRegionIndex(region);
+              if (region.element) region.element.style.cursor = 'pointer';
+              region.element?.addEventListener('mouseenter', () =>
+                region.setOptions({ color: autoRegionColor(index, true) }),
+              );
+              region.element?.addEventListener('mouseleave', () =>
+                region.setOptions({ color: autoRegionColor(index) }),
+              );
+              return;
+            }
+            // A drag on the waveform: it becomes the selection region.
+            const previous = selectionRegionRef.current;
+            if (previous && previous !== region) previous.remove();
+            region.setOptions({ id: SELECTION_REGION_ID });
+            raiseSelectionRegion(region);
+            selectionRegionRef.current = region;
+            selectRegion(region);
+          });
 
-                region.setOptions({
-                  color: `hsla(${(region.id.match(/\d+/)?.[0] * 137.508) % 360}, 60%, 60%, 0.5)`,
-                });
-              });
+          regions.on('region-removed', (region: Region) => {
+            if (region === selectionRegionRef.current) {
+              selectionRegionRef.current = null;
+            }
+          });
 
-              region.element.addEventListener('mouseleave', () => {
-                // Don't change color if this is the selected region
-                if (selectedRegion === region) return;
-
-                // Reset to default color
-                region.setOptions({
-                  color: `hsla(${(region.id.match(/\d+/)?.[0] * 137.508) % 360}, 40%, 70%, 0.4)`,
-                });
-              });
+          // Only the selection can be dragged or resized.
+          regions.on('region-updated', (region: Region) => {
+            if (region.id !== SELECTION_REGION_ID) return;
+            onSelectionChange({
+              start: region.start * 1000,
+              end: region.end * 1000,
             });
-          } else {
-            // Free selection mode: handle region updates and clicks
-            regions.on('region-updated', (region: any) => {
-              onSelectionChange({
-                start: region.start * 1000,
-                end: region.end * 1000,
-              });
-              // Move cursor to start position after update is complete
-              setTimeout(() => {
-                ws.setTime(region.start);
-                syncVideoTime(region.start);
-              }, 0);
-            });
-
-            regions.on('region-clicked', (region: any, e: MouseEvent) => {
-              e.stopPropagation();
-              onSelectionChange({
-                start: region.start * 1000,
-                end: region.end * 1000,
-              });
-              // Move cursor to start position on click
+            // Move the cursor once the drag has fully ended.
+            setTimeout(() => {
               ws.setTime(region.start);
               syncVideoTime(region.start);
-            });
+            }, 0);
+          });
 
-            // Limit to single selection: clear existing regions when creating new one
-            regions.on('region-created', (region: any) => {
-              const allRegions = regions.getRegions();
-              // Remove all other regions except the newly created one
-              allRegions.forEach((r: any) => {
-                if (r !== region) {
-                  r.remove();
-                }
-              });
+          regions.on('region-clicked', (region: Region, e: MouseEvent) => {
+            e.stopPropagation();
+            // A click on an auto region picks its sound; the selection then
+            // moves over it.
+            if (isAutoRegion(region)) {
+              selectRegion(region);
+              return;
+            }
+            ws.setTime(region.start);
+            syncVideoTime(region.start);
+          });
 
-              onSelectionChange({
-                start: region.start * 1000,
-                end: region.end * 1000,
-              });
-              // Move cursor to start position after drag selection
-              ws.setTime(region.start);
-              syncVideoTime(region.start);
-            });
-          }
-
-          // Ready event
+          // Ready event. The effects below draw the regions once isReady is set.
           ws.once('decode', (duration: number) => {
             setIsReady(true);
             onReady(duration);
-
-            // Update regions after state is set and component is ready
-            setTimeout(() => {
-              updateRegions();
-            }, 0);
           });
         } catch (error) {
           console.error('Error initializing CombinedWaveform:', error);
@@ -453,6 +400,7 @@ export const CombinedWaveform = forwardRef<
 
       return () => {
         setIsReady(false);
+        selectionRegionRef.current = null;
         if (wavesurferRef.current) {
           try {
             wavesurferRef.current.destroy();
@@ -525,6 +473,69 @@ export const CombinedWaveform = forwardRef<
       });
     }, [zoomLevel, isReady, scrollContainerRef]);
 
+    // Scroll the outer scroller (it owns the scroll position, see the zoom
+    // effect) just enough to show a span. Runs after layout, like the zoom
+    // re-anchor, and is declared after it so that, when isReady turns true, the
+    // zoom centring runs first.
+    const revealSpan = useCallback(
+      (span: SpanSec) => {
+        const scroller = scrollContainerRef?.current;
+        const ws = wavesurferRef.current;
+        if (!scroller || !ws) return;
+        requestAnimationFrame(() => {
+          const duration = ws.getDuration?.() ?? 0;
+          if (!(duration > 0)) return;
+          const target = scrollLeftToReveal(span, {
+            pxPerSec: scroller.scrollWidth / duration,
+            scrollLeft: scroller.scrollLeft,
+            clientWidth: scroller.clientWidth,
+            scrollWidth: scroller.scrollWidth,
+          });
+          if (target !== null) scroller.scrollLeft = target;
+        });
+      },
+      [scrollContainerRef],
+    );
+
+    // Draw the selection as the one editable region: create, move or remove it.
+    // setOptions emits no update event, so this never calls onSelectionChange back.
+    const syncSelectionRegion = useCallback(
+      (selection: SelectionMs) => {
+        const ws = wavesurferRef.current;
+        const regions = regionsRef.current;
+        if (!ws || !regions) return;
+        const span = toRegionSpan(selection, ws.getDuration());
+        const region = selectionRegionRef.current;
+        if (!span) {
+          // Clears the ref through the region-removed handler.
+          region?.remove();
+          return;
+        }
+        if (region) {
+          if (isSameSpan(region, span)) return; // the change came from this region
+          region.setOptions(span);
+        } else {
+          const created = regions.addRegion({
+            id: SELECTION_REGION_ID,
+            ...span,
+            color: SELECTION_COLOR,
+          });
+          raiseSelectionRegion(created);
+          selectionRegionRef.current = created;
+        }
+        revealSpan(span);
+      },
+      [revealSpan],
+    );
+
+    const { start: selectionStart, end: selectionEnd } = waveformSelection;
+    // Key selection, typed times, Whole file and a source switch all arrive here.
+    useEffect(() => {
+      if (isReady) {
+        syncSelectionRegion({ start: selectionStart, end: selectionEnd });
+      }
+    }, [isReady, selectionStart, selectionEnd, syncSelectionRegion]);
+
     // Sync the video preview to the selected start time (ms) whenever it changes,
     // e.g. via the time-segment Start input or keyboard key selection.
     useEffect(() => {
@@ -577,35 +588,13 @@ export const CombinedWaveform = forwardRef<
       };
     }, [isVideo, videoElement, isReady, scrollContainerRef]);
 
-    // Update regions when threshold or selection changes
+    // Rebuild the auto regions when the threshold or the mode changes
     // biome-ignore lint/correctness/useExhaustiveDependencies: dependency list kept as in the website editor; changing it changes when the hook re-runs
     useEffect(() => {
       if (isReady) {
-        updateRegions();
+        updateAutoRegions();
       }
-    }, [isReady, soundOnlyMode, silenceThreshold, updateRegions]);
-
-    // Add CSS for region hover effects
-    useEffect(() => {
-      const style = document.createElement('style');
-      style.id = 'combined-waveform-style';
-      style.textContent = `
-        [data-id*="region"] {
-          cursor: pointer !important;
-          transition: opacity 0.2s ease;
-        }
-      `;
-      document.head.appendChild(style);
-
-      return () => {
-        const existingStyle = document.getElementById(
-          'combined-waveform-style',
-        );
-        if (existingStyle) {
-          existingStyle.remove();
-        }
-      };
-    }, []);
+    }, [isReady, soundOnlyMode, silenceThreshold, updateAutoRegions]);
 
     return (
       <div>
