@@ -38,11 +38,13 @@ export function ConfirmPackTypeModal({
   const them = n === 1 ? 'it' : 'them';
 
   return (
-    // Esc closes it, which counts as Cancel.
+    // Esc closes it, which counts as Cancel. The cancel event comes with the
+    // key press, so the page owns the keyboard again before the next one.
     <dialog
       ref={dialogRef}
       className="modal"
       aria-labelledby={titleId}
+      onCancel={onCancel}
       onClose={onCancel}
     >
       {packType && (

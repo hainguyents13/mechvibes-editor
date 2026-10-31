@@ -63,7 +63,8 @@ export function KeyboardShortcuts({
     const box = toggle.getBoundingClientRect();
     const viewport = document.documentElement;
     const style = event.currentTarget.style;
-    style.right = `${viewport.clientWidth - box.right}px`;
+    // Kept 1rem off the left edge on narrow screens; the width matches w-80 max-w-[calc(100vw-2rem)].
+    style.right = `min(${viewport.clientWidth - box.right}px, calc(100% - 1rem - min(20rem, 100% - 2rem)))`;
     // Above the link, or below it when there is more room there; scrolls when neither fits.
     const roomAbove = box.top - 16;
     const roomBelow = viewport.clientHeight - box.bottom - 16;
@@ -75,15 +76,6 @@ export function KeyboardShortcuts({
       style.top = `${box.bottom + 8}px`;
     }
     style.maxHeight = `${Math.max(roomAbove, roomBelow)}px`;
-  };
-  // Once open it has a width: keep it off the left edge on narrow screens.
-  const keepOnScreen = (event: React.ToggleEvent<HTMLDivElement>) => {
-    if (event.newState !== 'open') return;
-    const popover = event.currentTarget;
-    const overflow = 16 - popover.getBoundingClientRect().left;
-    if (overflow > 0) {
-      popover.style.right = `${parseFloat(popover.style.right) - overflow}px`;
-    }
   };
 
   return (
@@ -139,7 +131,6 @@ export function KeyboardShortcuts({
             id={popoverId}
             popover="auto"
             onBeforeToggle={placePopover}
-            onToggle={keepOnScreen}
             className="fixed inset-auto m-0 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-box bg-base-100 p-3 text-xs text-base-content shadow-lg border border-base-content/10"
           >
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
