@@ -2,7 +2,6 @@ import React from 'react';
 import type { KeySounds } from '@/utils/soundPack';
 import { KeyButton } from './KeyButton';
 import {
-  getKeyCode,
   keyboardLayouts,
   type LayoutName,
   parseKeyboardLayout,
@@ -87,7 +86,7 @@ export function KeyboardDisplay({
       >
         {keys.map((key, index) => {
           const keyId = getKeyId(key, index);
-          const keyCode = getKeyCode(key.label);
+          const keyCode = key.code;
           return (
             <KeyButton
               // biome-ignore lint/suspicious/noArrayIndexKey: key kept as in the website editor

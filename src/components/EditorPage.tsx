@@ -15,7 +15,6 @@ import { AudioFileSelector } from '@/components/editor/AudioFileSelector';
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
 import { KeyboardShortcuts } from '@/components/editor/KeyboardShortcuts';
 import {
-  getKeyCode,
   keyboardLayouts,
   parseKeyboardLayout,
 } from '@/components/editor/keyboardLayouts';
@@ -185,10 +184,16 @@ function isDefaultPackInfo(info: PackInfo) {
 
 /** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
 type Notice = {
-  tone: 'error' | 'success';
+  tone: 'error' | 'success' | 'info';
   message: string;
   details?: string[];
   link?: { href: string; label: string };
+};
+
+const NOTICE_TONE_CLASSES: Record<Notice['tone'], string> = {
+  error: 'border-error/30 bg-error/10',
+  success: 'border-success/30 bg-success/10',
+  info: 'border-info/30 bg-info/10',
 };
 
 /** The library pack open in the editor; Update publishes to it. */
@@ -439,11 +444,11 @@ export function EditorPage() {
     return `${key.label || 'key'}-${index}-${key.x}-${key.y}`;
   }, []);
 
-  // Selection ids to key codes. Two keys can share a code (both Shift keys).
+  // Selection ids to key codes.
   const keyCodeById = useMemo(() => {
     const codes = new Map<string, string>();
     keys.forEach((key, index) => {
-      codes.set(getKeyId(key, index), getKeyCode(key.label));
+      codes.set(getKeyId(key, index), key.code);
     });
     return codes;
   }, [keys, getKeyId]);
@@ -596,8 +601,14 @@ export function EditorPage() {
     if (imported.warnings.length > 0) {
       setNotice({
         tone: 'error',
-        message: 'Some of this pack could not be opened:',
-        details: imported.warnings,
+        message: 'Opened the pack, with some problems:',
+        details: [...imported.warnings, ...imported.notes],
+      });
+    } else if (imported.notes.length > 0) {
+      setNotice({
+        tone: 'info',
+        message: 'Opened the pack. Good to know:',
+        details: imported.notes,
       });
     }
   };
@@ -984,7 +995,7 @@ export function EditorPage() {
             scale only accounts for its own rows. */}
         {notice && (
           <div
-            className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${notice.tone === 'error' ? 'border-error/30 bg-error/10' : 'border-success/30 bg-success/10'}`}
+            className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${NOTICE_TONE_CLASSES[notice.tone]}`}
           >
             <div className="min-w-0">
               <p>
