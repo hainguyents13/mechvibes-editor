@@ -60,12 +60,16 @@ export function TimeSegmentControls({
   getKeyId,
 }: TimeSegmentControlsProps) {
   const hasValidSelection = isValidWaveformSelection(waveformSelection);
+  // Whole file ends at the exact length; typed ends are whole milliseconds.
+  const fileLengthMs = Math.ceil(audioDuration * 1000);
+  const endsPastFile =
+    audioDuration > 0 && waveformSelection.end > fileLengthMs;
   // A release sound needs a press sound from the same file on the key.
   const targetCodes =
     slot === 'press'
       ? selectedCodes
       : keysAcceptingRelease(selectedCodes, activeSourceId, keySounds);
-  const canApply = targetCodes.length > 0 && hasValidSelection;
+  const canApply = targetCodes.length > 0 && hasValidSelection && !endsPastFile;
   const codesWithRelease = selectedCodes.filter(
     (code) => keySounds.get(code)?.release,
   );
@@ -114,6 +118,8 @@ export function TimeSegmentControls({
       'A release sound plays when the key comes up. Give the selected keys a press sound from this file first.';
   } else if (!hasValidSelection) {
     hint = 'Drag on the waveform to pick the sound first.';
+  } else if (endsPastFile) {
+    hint = `The sound ends after the file does. This file is ${fileLengthMs} ms long.`;
   }
 
   return (
