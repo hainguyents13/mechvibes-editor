@@ -31,8 +31,10 @@ import { canOpenPack, MyPacksModal } from '@/components/MyPacksModal';
 import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
+import { usePackHistory } from '@/hooks/usePackHistory';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { hasSeenEditorTour, startEditorTour } from '@/lib/editorTour';
+import { shouldIgnoreShortcut } from '@/lib/shortcuts';
 import {
   downloadPackZip,
   type LibraryPackSummary,
@@ -42,9 +44,14 @@ import {
 } from '@/lib/websiteApi';
 import { getAudioDuration } from '@/utils/audioUtils';
 import {
-  type AudioSource,
+  getHistoryShortcut,
+  isSameSnapshot,
+  type PackSnapshot,
+} from '@/utils/packHistory';
+import {
   countKeysBySource,
   createAudioSource,
+  isSamePackInfo,
   type KeySounds,
   type PackExtras,
   type PackInfo,
@@ -174,11 +181,21 @@ function createDefaultPackInfo(): PackInfo {
 
 /** Whether the pack details are still the defaults of a new pack. */
 function isDefaultPackInfo(info: PackInfo) {
-  const defaults = createDefaultPackInfo();
-  return (Object.keys(defaults) as (keyof PackInfo)[]).every((field) =>
-    field === 'tags'
-      ? info.tags.join(',') === defaults.tags.join(',')
-      : info[field] === defaults[field],
+  return isSamePackInfo(info, createDefaultPackInfo());
+}
+
+function createBlankSnapshot(): PackSnapshot {
+  return {
+    keySounds: new Map(),
+    sources: [],
+    packInfo: createDefaultPackInfo(),
+  };
+}
+
+/** Whether a pack holds nothing yet: no files, no sounds and the default details. */
+function isBlankPack({ sources, keySounds, packInfo }: PackSnapshot) {
+  return (
+    sources.length === 0 && keySounds.size === 0 && isDefaultPackInfo(packInfo)
   );
 }
 
@@ -254,14 +271,25 @@ export function EditorPage() {
   const [keyboardSize, setKeyboardSize] = useState<
     'fullsize' | 'tkl' | 'compact'
   >('fullsize');
-  const [keySounds, setKeySounds] = useState<KeySounds>(new Map());
-  const [sources, setSources] = useState<AudioSource[]>([]);
+  const {
+    present,
+    undoLabel,
+    redoLabel,
+    commit,
+    undo,
+    redo,
+    reset: resetHistory,
+  } = usePackHistory(createBlankSnapshot);
+  const { keySounds, sources, packInfo } = present;
+  // What was last imported, opened, exported or updated; leaving loses changes made since.
+  const [savedSnapshot, setSavedSnapshot] = useState(present);
+  // What the library holds for the open pack: set on open and on each successful Update.
+  const publishedSnapshotRef = useRef<PackSnapshot | null>(null);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   // Whether the sound controls assign press or release sounds.
   const [soundSlot, setSoundSlot] = useState<SoundSlot>('press');
   const [defaultDuration, setDefaultDuration] = useState(100);
   const [showEditPackModal, setShowEditPackModal] = useState(false);
-  const [packInfo, setPackInfo] = useState(createDefaultPackInfo);
   // config.id of an imported zip, kept on export. The editor never invents
   // one: the library issues ids, and the app mints imported-<uuid> otherwise.
   const [loadedPackId, setLoadedPackId] = useState<string | null>(null);
@@ -318,9 +346,15 @@ export function EditorPage() {
   const audioFile = activeSource?.file ?? null;
   const audioDuration = activeSource?.duration ?? 0;
   const keyCounts = useMemo(() => countKeysBySource(keySounds), [keySounds]);
-  // Anything New, Import or opening a library pack would throw away.
-  const hasUnsavedWork =
-    sources.length > 0 || keySounds.size > 0 || !isDefaultPackInfo(packInfo);
+  // Changes New, Import, opening a library pack or closing the tab would lose. A blank pack has none.
+  const isDirty =
+    !isSameSnapshot(present, savedSnapshot) && !isBlankPack(present);
+
+  const commitKeySounds = useCallback(
+    (label: string, update: (current: KeySounds) => KeySounds) =>
+      commit(label, (current) => ({ keySounds: update(current.keySounds) })),
+    [commit],
+  );
 
   // A mouse pack shows the mouse buttons instead of a keyboard.
   const layout = packInfo.packType === 'Mouse' ? 'mouse' : keyboardSize;
@@ -507,7 +541,13 @@ export function EditorPage() {
         createAudioSource(file, await getAudioDuration(file)),
       ),
     );
-    setSources((current) => [...current, ...added]);
+    // Appends to the latest files: an Undo can land while durations are read.
+    commit(
+      added.length === 1
+        ? `Add ${added[0].file.name}`
+        : `Add ${added.length} files`,
+      (current) => ({ sources: [...current.sources, ...added] }),
+    );
     setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
   };
@@ -518,47 +558,67 @@ export function EditorPage() {
     setWaveformSelection({ start: 0, end: 0 });
   };
 
-  // Removing a file also removes the sounds cut from it.
+  // Removing a file also removes the sounds cut from it, as one step. Undo
+  // brings back the same file object with its id.
   const handleRemoveSource = (id: string) => {
-    const remaining = sources.filter((source) => source.id !== id);
-    setSources(remaining);
-    setKeySounds((current) => {
-      const next = new Map(current);
-      next.forEach((sound, code) => {
-        if (sound.source === id) next.delete(code);
+    const source = sources.find((s) => s.id === id);
+    if (!source) return;
+    commit(`Remove ${source.file.name}`, (current) => {
+      const nextSounds = new Map(current.keySounds);
+      nextSounds.forEach((sound, code) => {
+        if (sound.source === id) nextSounds.delete(code);
       });
-      return next;
+      return {
+        sources: current.sources.filter((s) => s.id !== id),
+        keySounds: nextSounds,
+      };
     });
     if (activeSourceId === id) {
-      setActiveSourceId(remaining[0]?.id ?? null);
+      setActiveSourceId(sources.filter((s) => s.id !== id)[0]?.id ?? null);
       setWaveformSelection({ start: 0, end: 0 });
     }
   };
 
   const handlePackTypeChange = (packType: PackType) => {
-    setPackInfo((current) => ({ ...current, packType }));
+    if (packType === packInfo.packType) return;
+    commit(`Switch to ${packType} pack`, (current) => ({
+      packInfo: { ...current.packInfo, packType },
+    }));
   };
 
-  // Reset the whole pack back to defaults
-  const resetPack = useCallback(() => {
-    setKeySounds(new Map());
+  // Clear what belongs to the open pack but is not in its history.
+  const resetView = useCallback(() => {
     setSelectedKeys(new Set());
-    setPackInfo(createDefaultPackInfo());
     setLoadedPackId(null);
     setPackExtras(null);
     // New and Import from disk leave the library pack, so Update cannot
     // publish unrelated work to it.
     setLibraryPack(null);
-    setSources([]);
     setActiveSourceId(null);
     setSoundSlot('press');
     setWaveformSelection({ start: 0, end: 0 });
     setNotice(null);
   }, [setSelectedKeys]);
 
+  // Start a new history from `snapshot` with nothing unsaved. `published` is what the library holds.
+  const startFrom = useCallback(
+    (snapshot: PackSnapshot, published: PackSnapshot | null) => {
+      resetHistory(snapshot);
+      setSavedSnapshot(snapshot);
+      publishedSnapshotRef.current = published;
+    },
+    [resetHistory],
+  );
+
+  // Reset the whole pack back to defaults
+  const resetPack = useCallback(() => {
+    resetView();
+    startFrom(createBlankSnapshot(), null);
+  }, [resetView, startFrom]);
+
   // New pack: warn if there are unsaved modifications
   const handleNewPack = () => {
-    if (hasUnsavedWork) {
+    if (isDirty) {
       setConfirmDiscardAction('new');
     } else {
       resetPack();
@@ -567,7 +627,7 @@ export function EditorPage() {
 
   // Import: warn if there are unsaved modifications, then open the file picker
   const handleImportClick = () => {
-    if (hasUnsavedWork) {
+    if (isDirty) {
       setConfirmDiscardAction('import');
     } else {
       importInputRef.current?.click();
@@ -586,18 +646,26 @@ export function EditorPage() {
     }
   };
 
-  // Replace the current pack with a parsed zip.
-  const applyImportedPack = (imported: ImportedSoundPack) => {
-    resetPack();
+  // Replace the current pack with a parsed zip. It opens unchanged, with
+  // renamed key codes already applied, and with nothing to undo.
+  const applyImportedPack = (
+    imported: ImportedSoundPack,
+    fromLibrary: boolean,
+  ) => {
+    resetView();
+    const snapshot: PackSnapshot = {
+      packInfo: {
+        ...imported.info,
+        description:
+          imported.info.description || createDefaultPackInfo().description,
+      },
+      sources: imported.sources,
+      keySounds: imported.keySounds,
+    };
+    startFrom(snapshot, fromLibrary ? snapshot : null);
     setLoadedPackId(imported.id);
-    setPackInfo((prev) => ({
-      ...imported.info,
-      description: imported.info.description || prev.description,
-    }));
     setPackExtras(imported.extras);
-    setSources(imported.sources);
     setActiveSourceId(imported.sources[0]?.id ?? null);
-    setKeySounds(imported.keySounds);
     if (imported.warnings.length > 0) {
       setNotice({
         tone: 'error',
@@ -622,7 +690,7 @@ export function EditorPage() {
     if (!file) return;
 
     try {
-      applyImportedPack(await parseSoundPackZip(file));
+      applyImportedPack(await parseSoundPackZip(file), false);
     } catch (error) {
       setNotice({
         tone: 'error',
@@ -643,7 +711,7 @@ export function EditorPage() {
       const imported = await parseSoundPackZip(
         new File([zip], `${pack.slug}.zip`, { type: 'application/zip' }),
       );
-      applyImportedPack(imported);
+      applyImportedPack(imported, true);
       setLibraryPack({
         id: pack.id,
         name: pack.name,
@@ -664,7 +732,7 @@ export function EditorPage() {
 
   const handleOpenLibraryPack = (pack: LibraryPackSummary) => {
     if (!canOpenPack(pack)) return;
-    if (hasUnsavedWork) {
+    if (isDirty) {
       setShowMyPacks(false);
       setConfirmDiscardAction({ pack });
     } else {
@@ -675,14 +743,16 @@ export function EditorPage() {
   // Publish the current work as the next revision of the open library pack.
   const handleUpdate = async () => {
     if (!libraryPack || isUpdating) return;
+    // The state written to the library; edits are locked while it uploads.
+    const published = present;
     setIsUpdating(true);
     setNotice(null);
     try {
       const zip = await buildSoundPackZip({
         id: libraryPack.id,
-        info: packInfo,
-        sources,
-        keySounds,
+        info: published.packInfo,
+        sources: published.sources,
+        keySounds: published.keySounds,
         extras: packExtras,
       });
       const pack = await updatePackZip(
@@ -693,6 +763,8 @@ export function EditorPage() {
       setLibraryPack((current) =>
         current ? { ...current, revision: pack.revision } : current,
       );
+      setSavedSnapshot(published);
+      publishedSnapshotRef.current = published;
       setNotice({
         tone: 'success',
         message: `Published revision ${pack.revision} of ${libraryPack.name}.`,
@@ -727,16 +799,20 @@ export function EditorPage() {
 
   // Export current settings as a sound pack zip
   const handleExport = async () => {
+    // The state written to the zip; edits are locked while it builds.
+    const exported = present;
     setIsExporting(true);
     setNotice(null);
     try {
       await exportSoundPack({
         id: loadedPackId ?? undefined,
-        info: packInfo,
-        sources,
-        keySounds,
+        info: exported.packInfo,
+        sources: exported.sources,
+        keySounds: exported.keySounds,
         extras: packExtras,
       });
+      // A download cannot tell a cancelled save dialog, so starting it counts as saved.
+      setSavedSnapshot(exported);
       if (!libraryPack) {
         setNotice({
           tone: 'success',
@@ -763,6 +839,20 @@ export function EditorPage() {
   useEffect(() => {
     setSelectedKeys(new Set());
   }, [layout, setSelectedKeys]);
+
+  // Keep the waveform on a file the pack still has: Undo and Redo can take
+  // away the file shown, or bring files back when none is.
+  useEffect(() => {
+    if (
+      activeSourceId !== null &&
+      sources.some((source) => source.id === activeSourceId)
+    )
+      return;
+    const fallback = sources[0]?.id ?? null;
+    if (fallback === activeSourceId) return;
+    setActiveSourceId(fallback);
+    setWaveformSelection({ start: 0, end: 0 });
+  }, [sources, activeSourceId]);
 
   // Preview: play the mapped sound for whichever key the user presses
   const {
@@ -881,6 +971,42 @@ export function EditorPage() {
     };
   }, [isPreview, isMousePack, playKey, exitPreview]);
 
+  // Preview plays the real keyboard, and a dialog or a busy overlay holds a
+  // copy of the pack, so page-wide shortcuts stay off meanwhile.
+  const isKeyboardOwnedElsewhere =
+    isPreview ||
+    showEditPackModal ||
+    confirmDiscardAction !== null ||
+    showMyPacks ||
+    isExporting ||
+    isUpdating ||
+    openingPackId !== null;
+
+  useEffect(() => {
+    if (isKeyboardOwnedElsewhere) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const command = getHistoryShortcut(event);
+      if (!command || shouldIgnoreShortcut(event)) return;
+      event.preventDefault();
+      if (command === 'undo') undo();
+      else redo();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isKeyboardOwnedElsewhere, undo, redo]);
+
+  // Ask before closing or reloading the tab over unsaved changes.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older Safari and Firefox only ask when returnValue is set.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
   return (
     <>
       <div className="flex flex-col h-full min-h-0">
@@ -917,7 +1043,7 @@ export function EditorPage() {
             canPreview={sources.length > 0 && keySounds.size > 0}
             session={session}
             signInHref={signInUrl(window.location.href)}
-            signInInNewTab={hasUnsavedWork}
+            signInInNewTab={isDirty}
             onOpenMyPacks={() => {
               setShowMyPacks(true);
               refreshSession();
@@ -929,6 +1055,10 @@ export function EditorPage() {
             }
             isUpdating={isUpdating}
             onStartTour={startTour}
+            undoLabel={undoLabel}
+            redoLabel={redoLabel}
+            onUndo={undo}
+            onRedo={redo}
           />
         )}
 
@@ -985,7 +1115,10 @@ export function EditorPage() {
             isLibraryPack={libraryPack !== null}
             onClose={() => setShowEditPackModal(false)}
             onSave={(updatedPackInfo) => {
-              setPackInfo(updatedPackInfo);
+              // A Save that changes nothing adds no step.
+              if (!isSamePackInfo(updatedPackInfo, packInfo)) {
+                commit('Edit pack details', { packInfo: updatedPackInfo });
+              }
               setShowEditPackModal(false);
             }}
           />
@@ -1300,7 +1433,7 @@ export function EditorPage() {
                       setSelectedKeys={setSelectedKeys}
                       selectedCodes={selectedCodes}
                       keySounds={keySounds}
-                      setKeySounds={setKeySounds}
+                      commitKeySounds={commitKeySounds}
                       activeSourceId={activeSourceId}
                       audioDuration={audioDuration}
                       slot={soundSlot}

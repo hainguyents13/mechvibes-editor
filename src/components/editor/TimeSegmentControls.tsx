@@ -1,7 +1,7 @@
 import { Info, Play, RotateCcw, Square } from 'lucide-react';
 import React from 'react';
 import { KEY_GROUPS } from '@/components/editor/key-groups';
-import { cn } from '@/lib/utils';
+import { cn, plural } from '@/lib/utils';
 import {
   applyPressToKeys,
   applyReleaseToKeys,
@@ -26,7 +26,11 @@ interface TimeSegmentControlsProps {
   /** Key codes of the selected keys. */
   selectedCodes: string[];
   keySounds: KeySounds;
-  setKeySounds: React.Dispatch<React.SetStateAction<KeySounds>>;
+  /** Change the key sounds as one undoable step named `label`. */
+  commitKeySounds: (
+    label: string,
+    update: (keySounds: KeySounds) => KeySounds,
+  ) => void;
   /** The source shown in the waveform; applied sounds are cut from it. */
   activeSourceId: string;
   /** Length of the active source in seconds. */
@@ -39,9 +43,6 @@ interface TimeSegmentControlsProps {
   getKeyId?: (key: any, index: number) => string;
 }
 
-const plural = (count: number, word: string) =>
-  `${count} ${word}${count !== 1 ? 's' : ''}`;
-
 export function TimeSegmentControls({
   waveformSelection,
   setWaveformSelection,
@@ -51,7 +52,7 @@ export function TimeSegmentControls({
   setSelectedKeys,
   selectedCodes,
   keySounds,
-  setKeySounds,
+  commitKeySounds,
   activeSourceId,
   audioDuration,
   slot,
@@ -82,10 +83,12 @@ export function TimeSegmentControls({
       waveformSelection.start,
       waveformSelection.end,
     ];
-    setKeySounds(
-      slot === 'press'
-        ? applyPressToKeys(targetCodes, activeSourceId, segment, keySounds)
-        : applyReleaseToKeys(targetCodes, activeSourceId, segment, keySounds),
+    commitKeySounds(
+      `${slot === 'press' ? 'Apply' : 'Apply release'} to ${plural(targetCodes.length, 'key')}`,
+      (current) =>
+        slot === 'press'
+          ? applyPressToKeys(targetCodes, activeSourceId, segment, current)
+          : applyReleaseToKeys(targetCodes, activeSourceId, segment, current),
     );
   };
 
@@ -298,8 +301,10 @@ export function TimeSegmentControls({
                 type="button"
                 className="btn btn-sm rounded-box"
                 onClick={() =>
-                  setKeySounds(
-                    removeReleaseFromKeys(codesWithRelease, keySounds),
+                  commitKeySounds(
+                    `Remove release from ${plural(codesWithRelease.length, 'key')}`,
+                    (current) =>
+                      removeReleaseFromKeys(codesWithRelease, current),
                   )
                 }
                 disabled={codesWithRelease.length === 0}
@@ -342,7 +347,7 @@ export function TimeSegmentControls({
             <p className="py-3 text-sm text-base-content/70">
               This clears the sound on all{' '}
               {plural(keySounds.size, 'mapped key')}. The audio files themselves
-              are kept. This cannot be undone.
+              are kept. You can undo this.
             </p>
             <div className="modal-action">
               <button
@@ -356,7 +361,11 @@ export function TimeSegmentControls({
                 type="button"
                 className="btn btn-sm btn-error rounded-box"
                 onClick={() => {
-                  setKeySounds(new Map());
+                  // An empty pack has nothing to reset, so no step.
+                  commitKeySounds(
+                    `Reset all ${plural(keySounds.size, 'key')}`,
+                    (current) => (current.size === 0 ? current : new Map()),
+                  );
                   setShowResetConfirm(false);
                 }}
               >

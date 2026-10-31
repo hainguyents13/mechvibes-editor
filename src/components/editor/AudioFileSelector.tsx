@@ -235,7 +235,7 @@ export function AudioFileSelector({
               {keyCounts.get(pendingRemoval.id) === 1
                 ? '1 key uses this file and loses its sound.'
                 : `${keyCounts.get(pendingRemoval.id)} keys use this file and lose their sound.`}{' '}
-              This cannot be undone.
+              You can undo this.
             </p>
             <div className="modal-action">
               <button

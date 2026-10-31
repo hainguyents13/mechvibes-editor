@@ -85,6 +85,16 @@ export function createAudioSource(file: File, duration: number): AudioSource {
   return { id: `source-${lastSourceId}`, file, duration };
 }
 
+/** Whether two pack details hold the same values. The icon File is compared by reference. */
+export function isSamePackInfo(a: PackInfo, b: PackInfo) {
+  return (Object.keys(a) as (keyof PackInfo)[]).every((field) =>
+    // Joining is safe: tags are split on commas when edited.
+    field === 'tags'
+      ? a.tags.join(',') === b.tags.join(',')
+      : a[field] === b[field],
+  );
+}
+
 /** How many keys use each source. */
 export function countKeysBySource(keySounds: KeySounds) {
   const counts = new Map<string, number>();

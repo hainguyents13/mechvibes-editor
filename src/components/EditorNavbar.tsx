@@ -13,10 +13,13 @@ import {
   Pencil,
   Play,
   Plus,
+  Redo2,
+  Undo2,
 } from 'lucide-react';
 import { useState } from 'react';
 import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
+import { IS_MAC } from '@/lib/utils';
 import type { LibraryUser } from '@/lib/websiteApi';
 import type { PackType } from '@/utils/soundPack';
 import { Logo } from './Logo';
@@ -28,6 +31,9 @@ const WEBSITE_LINKS = [
   { label: 'Download app', href: `${websiteUrl}/download`, Icon: MonitorDown },
   { label: 'Guide', href: `${websiteUrl}/guides/editor`, Icon: BookOpen },
 ];
+
+const UNDO_SHORTCUT = IS_MAC ? '⌘Z' : 'Ctrl+Z';
+const REDO_SHORTCUT = IS_MAC ? '⇧⌘Z' : 'Ctrl+Y';
 
 interface EditorNavbarProps {
   packName: string;
@@ -50,6 +56,12 @@ interface EditorNavbarProps {
   isUpdating?: boolean;
   /** Show the guided tour of the editor. */
   onStartTour: () => void;
+  /** Name of the action Undo reverts, or null when there is nothing to undo. */
+  undoLabel: string | null;
+  /** Name of the action Redo applies again, or null when there is nothing to redo. */
+  redoLabel: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
 }
 
 function Avatar({ user }: { user: LibraryUser }) {
@@ -89,6 +101,10 @@ export function EditorNavbar({
   onUpdate,
   isUpdating = false,
   onStartTour,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
 }: EditorNavbarProps) {
   return (
     <div className="sticky top-0 z-50 w-full bg-base-200 border-b border-base-300">
@@ -153,6 +169,45 @@ export function EditorNavbar({
 
         {/* Right Section */}
         <div className="flex items-center gap-1 lg:gap-2 shrink-0">
+          {/* Icon-only at every width; the wrapper keeps the tooltip on a disabled button */}
+          <div className="flex items-center">
+            <div
+              className="tooltip tooltip-bottom"
+              data-tip={
+                undoLabel
+                  ? `Undo ${undoLabel} (${UNDO_SHORTCUT})`
+                  : 'Nothing to undo'
+              }
+            >
+              <button
+                type="button"
+                onClick={onUndo}
+                disabled={!undoLabel}
+                aria-label={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
+                className="btn btn-sm btn-ghost btn-square rounded-box"
+              >
+                <Undo2 className="h-4 w-4" />
+              </button>
+            </div>
+            <div
+              className="tooltip tooltip-bottom"
+              data-tip={
+                redoLabel
+                  ? `Redo ${redoLabel} (${REDO_SHORTCUT})`
+                  : 'Nothing to redo'
+              }
+            >
+              <button
+                type="button"
+                onClick={onRedo}
+                disabled={!redoLabel}
+                aria-label={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
+                className="btn btn-sm btn-ghost btn-square rounded-box"
+              >
+                <Redo2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
           <div
             className="tooltip tooltip-bottom"
             data-tip="Show where to start"
