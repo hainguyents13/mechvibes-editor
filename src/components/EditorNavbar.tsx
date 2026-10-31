@@ -5,15 +5,14 @@ import {
   Download,
   FolderOpen,
   House,
-  Import,
   Library,
   LogIn,
   Menu,
   MonitorDown,
   Pencil,
   Play,
-  Plus,
   Redo2,
+  RotateCcw,
   Undo2,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -35,22 +34,18 @@ const WEBSITE_LINKS = [
 const UNDO_SHORTCUT = IS_MAC ? '⌘Z' : 'Ctrl+Z';
 const REDO_SHORTCUT = IS_MAC ? '⇧⌘Z' : 'Ctrl+Y';
 
-interface EditorNavbarProps {
+/** The controls for the open pack. */
+interface WorkspaceControls {
   packName: string;
   packType: PackType;
   onEditPack: () => void;
-  onNewPack: () => void;
-  onImport: () => void;
+  /** Back to the start screen; asks first when there are unsaved changes. */
+  onStartOver: () => void;
   onExport: () => void;
   isExporting?: boolean;
   onPreview: () => void;
   /** Preview needs a loaded file and at least one mapped key to be useful. */
   canPreview?: boolean;
-  session: LibrarySession;
-  signInHref: string;
-  /** Sign in in a new tab, so the work in this one survives the round trip. */
-  signInInNewTab: boolean;
-  onOpenMyPacks: () => void;
   /** Set while a library pack is open and the visitor is signed in. */
   onUpdate?: () => void;
   isUpdating?: boolean;
@@ -62,6 +57,16 @@ interface EditorNavbarProps {
   redoLabel: string | null;
   onUndo: () => void;
   onRedo: () => void;
+}
+
+interface EditorNavbarProps {
+  session: LibrarySession;
+  signInHref: string;
+  /** Sign in in a new tab, so the work in this one survives the round trip. */
+  signInInNewTab: boolean;
+  onOpenMyPacks: () => void;
+  /** Left out before a pack is open: the start screens show only the logo, the website menu and the account. */
+  workspace?: WorkspaceControls;
 }
 
 function Avatar({ user }: { user: LibraryUser }) {
@@ -84,27 +89,158 @@ function Avatar({ user }: { user: LibraryUser }) {
   );
 }
 
-export function EditorNavbar({
-  packName,
-  packType,
-  onEditPack,
-  onNewPack,
-  onImport,
-  onExport,
-  isExporting = false,
-  onPreview,
-  canPreview = false,
-  session,
-  signInHref,
-  signInInNewTab,
-  onOpenMyPacks,
-  onUpdate,
-  isUpdating = false,
-  onStartTour,
+function PackControls({
   undoLabel,
   redoLabel,
   onUndo,
   onRedo,
+  onStartTour,
+  onStartOver,
+  onPreview,
+  canPreview = false,
+  onUpdate,
+  isUpdating = false,
+  onExport,
+  isExporting = false,
+}: WorkspaceControls) {
+  return (
+    <>
+      {/* Icon-only; left out on phones, which cannot edit, so the account button keeps its room. The wrapper keeps the tooltip on a disabled button */}
+      <div className="hidden sm:flex items-center">
+        <div
+          className="tooltip tooltip-bottom"
+          data-tip={
+            undoLabel
+              ? `Undo ${undoLabel} (${UNDO_SHORTCUT})`
+              : 'Nothing to undo'
+          }
+        >
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!undoLabel}
+            aria-label={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
+            className="btn btn-sm btn-ghost btn-square rounded-box"
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+        </div>
+        <div
+          className="tooltip tooltip-bottom"
+          data-tip={
+            redoLabel
+              ? `Redo ${redoLabel} (${REDO_SHORTCUT})`
+              : 'Nothing to redo'
+          }
+        >
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!redoLabel}
+            aria-label={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
+            className="btn btn-sm btn-ghost btn-square rounded-box"
+          >
+            <Redo2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      <div className="tooltip tooltip-bottom" data-tip="Show where to start">
+        <button
+          type="button"
+          onClick={onStartTour}
+          aria-label="Tour"
+          className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
+        >
+          <CircleHelp className="h-4 w-4 xl:mr-2" />
+          <span className="hidden xl:inline">Tour</span>
+        </button>
+      </div>
+      <div
+        className="tooltip tooltip-bottom"
+        data-tip="Open another pack or make a new one"
+        data-tour="start-over"
+      >
+        <button
+          type="button"
+          onClick={onStartOver}
+          aria-label="Start over"
+          className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
+        >
+          <RotateCcw className="h-4 w-4 xl:mr-2" />
+          {/* Labelled from xl, so the pack name keeps room at lg */}
+          <span className="hidden xl:inline">Start over</span>
+        </button>
+      </div>
+      <div
+        className="tooltip tooltip-bottom"
+        data-tour="preview"
+        data-tip={
+          canPreview
+            ? 'Try the pack on your keyboard'
+            : 'Assign a sound to at least one key first'
+        }
+      >
+        <button
+          type="button"
+          onClick={onPreview}
+          aria-label="Preview"
+          disabled={!canPreview}
+          className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
+        >
+          <Play className="h-4 w-4 lg:mr-2" />
+          <span className="hidden lg:inline">Preview</span>
+        </button>
+      </div>
+      {onUpdate && (
+        <div
+          className="tooltip tooltip-bottom"
+          data-tip="Publish these changes as the pack's next revision"
+        >
+          <button
+            type="button"
+            onClick={onUpdate}
+            aria-label="Update"
+            disabled={isUpdating || isExporting}
+            className="btn btn-sm btn-primary rounded-box flex items-center space-x-1 px-2 lg:px-3"
+          >
+            {isUpdating ? (
+              <span className="loading loading-spinner loading-xs"></span>
+            ) : (
+              <CloudUpload className="h-4 w-4 lg:mr-2" />
+            )}
+            <span className="hidden lg:inline">
+              {isUpdating ? 'Updating…' : 'Update'}
+            </span>
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onExport}
+        aria-label="Export"
+        data-tour="export"
+        disabled={isExporting || isUpdating}
+        className="btn btn-sm btn-neutral rounded-box flex items-center space-x-1 px-2 lg:px-3"
+      >
+        {isExporting ? (
+          <span className="loading loading-spinner loading-xs"></span>
+        ) : (
+          <Download className="h-4 w-4 lg:mr-2" />
+        )}
+        <span className="hidden lg:inline">
+          {isExporting ? 'Exporting…' : 'Export'}
+        </span>
+      </button>
+    </>
+  );
+}
+
+export function EditorNavbar({
+  session,
+  signInHref,
+  signInInNewTab,
+  onOpenMyPacks,
+  workspace,
 }: EditorNavbarProps) {
   return (
     <div className="sticky top-0 z-50 w-full bg-base-200 border-b border-base-300">
@@ -153,161 +289,26 @@ export function EditorNavbar({
 
         {/* Middle Section - Pack Name & Edit */}
         <div className="flex flex-1 items-center justify-center min-w-0">
-          <button
-            type="button"
-            onClick={onEditPack}
-            data-tour="pack-details"
-            className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 max-w-full px-2 sm:px-3"
-          >
-            <span className="font-medium truncate">{packName}</span>
-            {/* Shown from xl only: below that the buttons on the right leave the name little room */}
-            <span className="badge badge-xs badge-neutral hidden xl:inline-flex shrink-0">
-              {packType}
-            </span>
-            <Pencil className="h-3 w-3 shrink-0" />
-          </button>
+          {workspace && (
+            <button
+              type="button"
+              onClick={workspace.onEditPack}
+              data-tour="pack-details"
+              className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 max-w-full px-2 sm:px-3"
+            >
+              <span className="font-medium truncate">{workspace.packName}</span>
+              {/* Shown from xl only: below that the buttons on the right leave the name little room */}
+              <span className="badge badge-xs badge-neutral hidden xl:inline-flex shrink-0">
+                {workspace.packType}
+              </span>
+              <Pencil className="h-3 w-3 shrink-0" />
+            </button>
+          )}
         </div>
 
         {/* Right Section */}
         <div className="flex items-center gap-1 lg:gap-2 shrink-0">
-          {/* Icon-only; left out on phones, which cannot edit, so the account button keeps its room. The wrapper keeps the tooltip on a disabled button */}
-          <div className="hidden sm:flex items-center">
-            <div
-              className="tooltip tooltip-bottom"
-              data-tip={
-                undoLabel
-                  ? `Undo ${undoLabel} (${UNDO_SHORTCUT})`
-                  : 'Nothing to undo'
-              }
-            >
-              <button
-                type="button"
-                onClick={onUndo}
-                disabled={!undoLabel}
-                aria-label={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
-                className="btn btn-sm btn-ghost btn-square rounded-box"
-              >
-                <Undo2 className="h-4 w-4" />
-              </button>
-            </div>
-            <div
-              className="tooltip tooltip-bottom"
-              data-tip={
-                redoLabel
-                  ? `Redo ${redoLabel} (${REDO_SHORTCUT})`
-                  : 'Nothing to redo'
-              }
-            >
-              <button
-                type="button"
-                onClick={onRedo}
-                disabled={!redoLabel}
-                aria-label={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
-                className="btn btn-sm btn-ghost btn-square rounded-box"
-              >
-                <Redo2 className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          <div
-            className="tooltip tooltip-bottom"
-            data-tip="Show where to start"
-          >
-            <button
-              type="button"
-              onClick={onStartTour}
-              aria-label="Tour"
-              className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
-            >
-              <CircleHelp className="h-4 w-4 xl:mr-2" />
-              <span className="hidden xl:inline">Tour</span>
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={onNewPack}
-            aria-label="New pack"
-            className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
-          >
-            <Plus className="h-3 w-3" />
-            {/* New and Import are labelled from xl, so the pack name keeps room at lg */}
-            <span className="hidden xl:inline">New</span>
-          </button>
-          <div
-            className="tooltip tooltip-bottom"
-            data-tip="Open a sound pack zip to change it"
-            data-tour="import"
-          >
-            <button
-              type="button"
-              onClick={onImport}
-              aria-label="Import"
-              className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
-            >
-              <Import className="h-4 w-4 xl:mr-2" />
-              <span className="hidden xl:inline">Import</span>
-            </button>
-          </div>
-          <div
-            className="tooltip tooltip-bottom"
-            data-tour="preview"
-            data-tip={
-              canPreview
-                ? 'Try the pack on your keyboard'
-                : 'Assign a sound to at least one key first'
-            }
-          >
-            <button
-              type="button"
-              onClick={onPreview}
-              aria-label="Preview"
-              disabled={!canPreview}
-              className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
-            >
-              <Play className="h-4 w-4 lg:mr-2" />
-              <span className="hidden lg:inline">Preview</span>
-            </button>
-          </div>
-          {onUpdate && (
-            <div
-              className="tooltip tooltip-bottom"
-              data-tip="Publish these changes as the pack's next revision"
-            >
-              <button
-                type="button"
-                onClick={onUpdate}
-                aria-label="Update"
-                disabled={isUpdating || isExporting}
-                className="btn btn-sm btn-primary rounded-box flex items-center space-x-1 px-2 lg:px-3"
-              >
-                {isUpdating ? (
-                  <span className="loading loading-spinner loading-xs"></span>
-                ) : (
-                  <CloudUpload className="h-4 w-4 lg:mr-2" />
-                )}
-                <span className="hidden lg:inline">
-                  {isUpdating ? 'Updating…' : 'Update'}
-                </span>
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={onExport}
-            aria-label="Export"
-            data-tour="export"
-            disabled={isExporting || isUpdating}
-            className="btn btn-sm btn-neutral rounded-box flex items-center space-x-1 px-2 lg:px-3"
-          >
-            {isExporting ? (
-              <span className="loading loading-spinner loading-xs"></span>
-            ) : (
-              <Download className="h-4 w-4 lg:mr-2" />
-            )}
-            <span className="hidden lg:inline">
-              {isExporting ? 'Exporting…' : 'Export'}
-            </span>
-          </button>
+          {workspace && <PackControls {...workspace} />}
 
           {/* Library account: signing in and out happens on the website */}
           {session.status === 'signed-out' && (

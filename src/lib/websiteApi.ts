@@ -1,4 +1,4 @@
-import { websiteUrl } from '@/config/siteIdentity';
+import { websiteHost, websiteUrl } from '@/config/siteIdentity';
 
 // Client for the website's editor API (docs/editor-api.md in the website repo).
 // Requests carry the visitor's own website session cookie; the editor never
@@ -45,8 +45,6 @@ export class WebsiteApiError extends Error {
     this.retryAfter = extra.retryAfter ?? null;
   }
 }
-
-const websiteHost = new URL(websiteUrl).host;
 
 /** The website's sign-in page, returning to `returnTo` afterwards. */
 export function signInUrl(returnTo: string) {

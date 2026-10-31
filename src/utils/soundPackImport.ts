@@ -172,7 +172,12 @@ function readPackType(explicit: unknown, codes: string[]): PackType {
 export async function parseSoundPackZip(
   file: File,
 ): Promise<ImportedSoundPack> {
-  const zip = await JSZip.loadAsync(file);
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(file);
+  } catch {
+    throw new Error('This file is not a .zip, or it is damaged.');
+  }
   const entries = Object.values(zip.files).filter((entry) => !entry.dir);
   const findEntry = (path: string) => {
     const name = normalizePath(path);
@@ -184,7 +189,9 @@ export async function parseSoundPackZip(
 
   const configEntry = entries.find((entry) => entry.name === 'config.json');
   if (!configEntry) {
-    throw new Error('Sound pack must include config.json.');
+    throw new Error(
+      'This .zip has no config.json, so it is not a Mechvibes pack.',
+    );
   }
 
   let config: unknown;
@@ -199,13 +206,11 @@ export async function parseSoundPackZip(
 
   if ('defines' in config && !('definitions' in config || 'defs' in config)) {
     throw new Error(
-      'This is a classic Mechvibes (V1) pack. The editor opens V2 packs only.',
+      'This is a classic Mechvibes (V1) pack. The editor opens new packs only. Open it in the Mechvibes app instead.',
     );
   }
   if (Number(config.config_version) > 2) {
-    throw new Error(
-      `This pack uses config version ${config.config_version}, which is newer than the editor knows.`,
-    );
+    throw new Error('This pack was made for a newer editor.');
   }
 
   // The app reads `definitions` whenever the key exists, and only then `defs`.
