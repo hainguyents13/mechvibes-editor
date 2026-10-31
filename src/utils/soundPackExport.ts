@@ -30,6 +30,10 @@ const KEPT_EXTENSIONS = new Set(['.ogg', '.mp3']);
 // Formats the app plays, kept as they are when encoding to OGG fails.
 const APP_PLAYABLE_EXTENSIONS = new Set(['.ogg', '.mp3', '.wav', '.flac']);
 
+// A recording whose keys play less than this share of it is cut down to the
+// parts they play, so a long take does not ship mostly unused audio.
+const TRIM_WHEN_USED_BELOW = 0.5;
+
 // Vorbis quality in the -0.1..1 range; 0.4 is a good size/quality balance.
 const VORBIS_QUALITY = 0.4;
 
@@ -203,10 +207,21 @@ type PackedAudio = {
   moved?: Map<string, Segment>;
 };
 
+/** Milliseconds of the source the segments play, each distinct segment once. */
+function usedMs(segments: Segment[]) {
+  const unique = new Map(
+    segments.map((segment) => [segmentKey(segment), segment]),
+  );
+  return [...unique.values()].reduce(
+    (total, [start, end]) => total + Math.max(0, end - start),
+    0,
+  );
+}
+
 /**
- * - Video: the audio is extracted, everything but the used segments is cut
- *   out, and the result is encoded to OGG.
- * - OGG and MP3 are kept. Anything else is encoded to OGG.
+ * - Video, and audio whose keys play less than half of it: everything but the
+ *   used segments is cut out, and the result is encoded to OGG.
+ * - Otherwise OGG and MP3 are kept, and anything else is encoded to OGG.
  */
 async function packAudio(
   source: AudioSource,
@@ -214,21 +229,32 @@ async function packAudio(
 ): Promise<PackedAudio> {
   const { file } = source;
   const ext = getExtension(file.name);
+  const isVideo = file.type.startsWith('video/');
+  const mostlyUnused =
+    source.duration > 0 &&
+    usedMs(segments) < source.duration * 1000 * TRIM_WHEN_USED_BELOW;
 
-  if (file.type.startsWith('video/')) {
-    let decoded: DecodedPcm;
+  if (isVideo || mostlyUnused) {
+    let decoded: DecodedPcm | null = null;
     try {
       decoded = await decodeFileToPcm(file);
     } catch (err) {
-      console.warn('[editor] video audio extraction failed:', err);
-      throw new Error(`Could not extract audio from ${file.name} for export.`);
+      console.warn('[editor] decoding for trimming failed:', err);
+      // A video has no audio file to fall back to; audio is kept whole below.
+      if (isVideo) {
+        throw new Error(
+          `Could not extract audio from ${file.name} for export.`,
+        );
+      }
     }
-    const trimmed = trimAndConcat(decoded, segments);
-    return {
-      blob: await encodePcmToOgg(trimmed.channels, trimmed.sampleRate),
-      ext: '.ogg',
-      moved: trimmed.moved,
-    };
+    if (decoded) {
+      const trimmed = trimAndConcat(decoded, segments);
+      return {
+        blob: await encodePcmToOgg(trimmed.channels, trimmed.sampleRate),
+        ext: '.ogg',
+        moved: trimmed.moved,
+      };
+    }
   }
 
   if (KEPT_EXTENSIONS.has(ext)) return { blob: file, ext };

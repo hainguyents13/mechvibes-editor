@@ -42,6 +42,7 @@ import {
   WebsiteApiError,
 } from '@/lib/websiteApi';
 import { getAudioDuration } from '@/utils/audioUtils';
+import { libraryKeyProblems } from '@/utils/libraryRules';
 import {
   type AudioSource,
   countKeysBySource,
@@ -185,7 +186,7 @@ function isDefaultPackInfo(info: PackInfo) {
 
 /** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
 type Notice = {
-  tone: 'error' | 'success';
+  tone: 'error' | 'warning' | 'success';
   message: string;
   details?: string[];
   link?: { href: string; label: string };
@@ -727,12 +728,22 @@ export function EditorPage() {
         extras: packExtras,
       });
       if (!libraryPack) {
-        setNotice({
-          tone: 'success',
-          message:
-            'Exported. To share it in the library, create a pack from this zip on the website.',
-          link: { href: NEW_PACK_URL, label: 'Create a pack' },
-        });
+        const problems = libraryKeyProblems(packInfo.packType, keySounds);
+        setNotice(
+          problems.length > 0
+            ? {
+                tone: 'warning',
+                message:
+                  'Exported. The app can play it, but the library will refuse it until you fix this:',
+                details: problems,
+              }
+            : {
+                tone: 'success',
+                message:
+                  'Exported. To share it in the library, create a pack from this zip on the website.',
+                link: { href: NEW_PACK_URL, label: 'Create a pack' },
+              },
+        );
       }
     } catch (error) {
       setNotice({
@@ -984,7 +995,7 @@ export function EditorPage() {
             scale only accounts for its own rows. */}
         {notice && (
           <div
-            className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${notice.tone === 'error' ? 'border-error/30 bg-error/10' : 'border-success/30 bg-success/10'}`}
+            className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${notice.tone === 'error' ? 'border-error/30 bg-error/10' : notice.tone === 'warning' ? 'border-warning/30 bg-warning/10' : 'border-success/30 bg-success/10'}`}
           >
             <div className="min-w-0">
               <p>
