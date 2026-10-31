@@ -1,3 +1,6 @@
+import { websiteHost } from '@/config/siteIdentity';
+import { canOpenPack, type LibraryPackSummary } from '@/lib/websiteApi';
+
 // The screens before the workspace, and how they map to browser history.
 //
 // The start screen, the list of library packs and the Keyboard-or-Mouse
@@ -84,11 +87,69 @@ export function backToStart(state: unknown): 'history-back' | 'replace' {
   return readScreenState(state)?.pushed ? 'history-back' : 'replace';
 }
 
-/** The editor at `editorHref`, opening on the list of the visitor's library packs. */
-export function myPacksStartUrl(editorHref: string) {
+/**
+ * Where a link into the editor asks it to begin:
+ * - `?open=<pack id>` opens one of the visitor's library packs (the website's
+ *   Edit sounds button);
+ * - `?start=my-packs` shows the list of their library packs (signing in from
+ *   the start screens comes back to it).
+ */
+export type StartLink = { kind: 'open'; packId: string } | { kind: 'my-packs' };
+
+const START_PARAMS = ['open', 'start'];
+
+/** The start link in a query string, or null. `open` wins when both are there. */
+export function parseStartLink(search: string): StartLink | null {
+  const params = new URLSearchParams(search);
+  const packId = params.get('open')?.trim();
+  if (packId) return { kind: 'open', packId };
+  if (params.get('start') === 'my-packs') return { kind: 'my-packs' };
+  return null;
+}
+
+/** The editor at `editorHref`, beginning as `link` asks. */
+export function startLinkUrl(editorHref: string, link: StartLink) {
   const url = new URL(editorHref);
   url.search = '';
   url.hash = '';
-  url.searchParams.set('start', 'my-packs');
+  if (link.kind === 'open') {
+    url.searchParams.set('open', link.packId);
+  } else {
+    url.searchParams.set('start', 'my-packs');
+  }
+  return url.toString();
+}
+
+/**
+ * The signed-in visitor's pack that an open link names, or why it cannot be
+ * opened. The website's own download answers 404 and 403 for the same cases.
+ */
+export function findLinkedPack(
+  packs: LibraryPackSummary[],
+  packId: string,
+): { pack: LibraryPackSummary } | { problem: string } {
+  const pack = packs.find((candidate) => candidate.id === packId);
+  if (!pack) {
+    return {
+      problem: `The pack in this link is not in your account on ${websiteHost}.`,
+    };
+  }
+  if (pack.status === 'REMOVED') {
+    return {
+      problem: `${pack.name} was removed from ${websiteHost}${pack.removedReason ? `: ${pack.removedReason}` : '.'}`,
+    };
+  }
+  if (!canOpenPack(pack)) {
+    return {
+      problem: `${pack.name} has no .zip yet. Add one on ${websiteHost}, then open it here.`,
+    };
+  }
+  return { pack };
+}
+
+/** `editorHref` without the start link, keeping any other parameter and the hash. */
+export function withoutStartLink(editorHref: string) {
+  const url = new URL(editorHref);
+  for (const param of START_PARAMS) url.searchParams.delete(param);
   return url.toString();
 }

@@ -1,6 +1,6 @@
 import { Package } from 'lucide-react';
 import { useState } from 'react';
-import type { LibraryPackSummary } from '@/lib/websiteApi';
+import { canOpenPack, type LibraryPackSummary } from '@/lib/websiteApi';
 
 /** The pack's icon, or a placeholder when it has none or it fails to load. */
 function PackIcon({ url }: { url: string | null }) {
@@ -20,11 +20,6 @@ function PackIcon({ url }: { url: string | null }) {
       <Package className="h-5 w-5 text-base-content/40" />
     </div>
   );
-}
-
-/** Only a published pack has a zip to open; a removed one is off limits. */
-export function canOpenPack(pack: LibraryPackSummary) {
-  return pack.status === 'PUBLISHED' && pack.revision > 0;
 }
 
 function statusLabel(pack: LibraryPackSummary) {

@@ -439,6 +439,51 @@ describe('import then export', () => {
     },
   );
 
+  it('opens a pack zipped inside its folder and saves it flat', async () => {
+    const pack = {
+      'config.json': packConfig({
+        definition_method: 'multi',
+        audio_file: 'sounds/a.ogg',
+        icon: 'img/logo.png',
+        definitions: {
+          KeyA: { audio_file: 'sounds/a.ogg', timing: [[0, 40]] },
+          KeyB: { audio_file: './sounds/b.ogg', timing: [[0, 40]] },
+        },
+      }),
+      'sounds/a.ogg': fakeAudio('a'),
+      'sounds/b.ogg': fakeAudio('b'),
+      'img/logo.png': PNG_BYTES,
+      LICENSE: 'MIT',
+    };
+    const nested = Object.fromEntries(
+      Object.entries(pack).map(([path, content]) => [
+        `Cherry MX Blue/${path}`,
+        content,
+      ]),
+    );
+    const flat = await reexport(await makePackZip(pack));
+
+    const { out } = await roundTrip({
+      ...nested,
+      // Left behind by macOS, and a stray file outside the pack folder.
+      '__MACOSX/Cherry MX Blue/._config.json': 'fork',
+      'readme.ogg': fakeAudio('not part of the pack'),
+    });
+
+    expect(out.names).toEqual([
+      'LICENSE',
+      'config.json',
+      'icon.png',
+      'sounds-a.ogg',
+      'sounds-b.ogg',
+    ]);
+    expect(out.configText).toBe(flat.out.configText);
+    expect(out.names).toEqual(flat.out.names);
+    for (const name of out.names) {
+      expect(await out.bytes(name)).toEqual(await flat.out.bytes(name));
+    }
+  });
+
   it('keeps a key without timing when the length of its file is unknown', async () => {
     vi.mocked(getAudioDuration).mockResolvedValue(0);
     const files = {

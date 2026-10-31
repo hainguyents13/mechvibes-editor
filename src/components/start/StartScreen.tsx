@@ -13,7 +13,11 @@ interface StartScreenProps {
   onRetrySession: () => Promise<void>;
   /** The website's sign-in page, coming back to the list of the visitor's packs. */
   signInHref: string;
+  /** The sign-in button's label when the link the editor was opened with names a pack. */
+  signInLabel: string | null;
   onShowMyPacks: () => void;
+  /** Why the library pack the editor was linked to did not open. */
+  libraryOpenError: string | null;
   /** Open the file picker for a pack .zip. */
   onChoosePackFile: () => void;
   isOpeningFile: boolean;
@@ -55,7 +59,9 @@ export function StartScreen({
   session,
   onRetrySession,
   signInHref,
+  signInLabel,
   onShowMyPacks,
+  libraryOpenError,
   onChoosePackFile,
   isOpeningFile,
   openFileError,
@@ -121,7 +127,7 @@ export function StartScreen({
           body: <p>A pack you shared on {websiteHost}</p>,
           action: (
             <a href={signInHref} className={ACTION_CLASS}>
-              Sign in to see them
+              {signInLabel ?? 'Sign in to see them'}
             </a>
           ),
         };
@@ -193,18 +199,25 @@ export function StartScreen({
       </div>
 
       <div className="mt-10 grid gap-4 md:grid-cols-3 md:items-start">
-        <StartCard
-          Icon={Globe}
-          title="Edit my pack"
-          action={editMyPack.action}
-          crossLink={
-            !editMyPack.hideCrossLink && (
-              <>Only on your computer? {openPackFileLink}</>
-            )
-          }
-        >
-          {editMyPack.body}
-        </StartCard>
+        <div>
+          <StartCard
+            Icon={Globe}
+            title="Edit my pack"
+            action={editMyPack.action}
+            crossLink={
+              !editMyPack.hideCrossLink && (
+                <>Only on your computer? {openPackFileLink}</>
+              )
+            }
+          >
+            {editMyPack.body}
+          </StartCard>
+          {libraryOpenError && (
+            <div className="mt-2">
+              <ErrorLine message={libraryOpenError} />
+            </div>
+          )}
+        </div>
 
         <div>
           <StartCard

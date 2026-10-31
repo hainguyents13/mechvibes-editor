@@ -66,6 +66,34 @@ function normalizePath(path: string) {
   return path.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
+const CONFIG_NAME = 'config.json';
+
+/**
+ * The folder that holds config.json, as a prefix of zip entry names: '' when
+ * it is at the top, 'My Pack/' when the pack was zipped inside its folder, as
+ * downloads from elsewhere often are. The shallowest config.json wins; two at
+ * that depth are two packs. Null when there is none.
+ */
+function findPackFolder(names: string[]) {
+  const folders = names
+    .filter(
+      (name) =>
+        !name.startsWith('__MACOSX/') &&
+        (name === CONFIG_NAME || name.endsWith(`/${CONFIG_NAME}`)),
+    )
+    .map((name) => name.slice(0, -CONFIG_NAME.length));
+  if (folders.length === 0) return null;
+  const depth = (folder: string) => folder.split('/').length;
+  const shallowest = Math.min(...folders.map(depth));
+  const top = folders.filter((folder) => depth(folder) === shallowest);
+  if (top.length > 1) {
+    throw new Error(
+      'This .zip holds more than one pack. Zip each pack folder on its own, then open it.',
+    );
+  }
+  return top[0];
+}
+
 /** A [start, end] pair in ms that plays something: not negative, not reversed. */
 function isTimingPair(value: unknown): value is [number, number] {
   return (
@@ -178,7 +206,18 @@ export async function parseSoundPackZip(
   } catch {
     throw new Error('This file is not a .zip, or it is damaged.');
   }
-  const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+  const files = Object.values(zip.files).filter((entry) => !entry.dir);
+  const folder = findPackFolder(files.map((entry) => entry.name));
+  if (folder === null) {
+    throw new Error(
+      'This .zip has no config.json, so it is not a Mechvibes pack.',
+    );
+  }
+  // The pack's files, named by their path inside its folder: config.json
+  // resolves paths against it, and the names carry over into an export.
+  const entries = files
+    .filter((entry) => entry.name.startsWith(folder))
+    .map((entry) => ({ name: entry.name.slice(folder.length), zipped: entry }));
   const findEntry = (path: string) => {
     const name = normalizePath(path);
     return (
@@ -186,17 +225,12 @@ export async function parseSoundPackZip(
       entries.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
     );
   };
-
-  const configEntry = entries.find((entry) => entry.name === 'config.json');
-  if (!configEntry) {
-    throw new Error(
-      'This .zip has no config.json, so it is not a Mechvibes pack.',
-    );
-  }
+  const configEntry = findEntry(CONFIG_NAME);
+  if (!configEntry) throw new Error('config.json could not be read.');
 
   let config: unknown;
   try {
-    config = JSON.parse(await configEntry.async('text'));
+    config = JSON.parse(await configEntry.zipped.async('text'));
   } catch {
     throw new Error('config.json is not valid JSON.');
   }
@@ -232,7 +266,7 @@ export async function parseSoundPackZip(
     const entry = path ? findEntry(path) : undefined;
     if (!entry || !isAudioEntry(entry.name)) return null;
     if (!sourcesByEntry.has(entry.name)) {
-      const blob = await entry.async('blob');
+      const blob = await entry.zipped.async('blob');
       const audioFile = new File([blob], entry.name, {
         type: getAudioMimeType(entry.name),
       });
@@ -425,7 +459,7 @@ export async function parseSoundPackZip(
   const iconType = iconEntry ? ICON_TYPES[getExtension(iconEntry.name)] : '';
   const icon =
     iconEntry && iconType
-      ? new File([await iconEntry.async('blob')], iconEntry.name, {
+      ? new File([await iconEntry.zipped.async('blob')], iconEntry.name, {
           type: iconType,
         })
       : null;
@@ -447,7 +481,7 @@ export async function parseSoundPackZip(
       .filter((entry) => LICENSE_FILE_NAMES.has(entry.name.toLowerCase()))
       .map(
         async (entry) =>
-          new File([await entry.async('blob')], entry.name, {
+          new File([await entry.zipped.async('blob')], entry.name, {
             type: 'text/plain',
           }),
       ),

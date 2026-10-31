@@ -19,6 +19,11 @@ export type LibraryPackSummary = {
   updatedAt: string;
 };
 
+/** Only a published pack has a zip to open; a removed one is off limits. */
+export function canOpenPack(pack: LibraryPackSummary) {
+  return pack.status === 'PUBLISHED' && pack.revision > 0;
+}
+
 export class WebsiteApiError extends Error {
   /** HTTP status, or 0 when the website could not be reached. */
   readonly status: number;

@@ -34,7 +34,6 @@ import {
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
 import { WaveformEditor } from '@/components/editor/WaveformEditor';
-import { canOpenPack } from '@/components/MyPacksList';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
@@ -49,12 +48,16 @@ import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
   backToStart,
   type EditorScreen,
-  myPacksStartUrl,
+  findLinkedPack,
+  parseStartLink,
   resolvePopState,
   screenState,
+  startLinkUrl,
+  withoutStartLink,
 } from '@/lib/startFlow';
 import { plural } from '@/lib/utils';
 import {
+  canOpenPack,
   downloadPackZip,
   type LibraryPackSummary,
   signInUrl,
@@ -288,6 +291,11 @@ export function EditorPage() {
   // The editor opens on the start screen; the pack controls show in the workspace.
   const [screen, setScreen] = useState<EditorScreen>('start');
   const isWorkspace = screen === 'workspace';
+  // What the link the editor was opened with asks for, until it is acted on
+  // or the visitor goes elsewhere from the start screen.
+  const [startLink, setStartLink] = useState(() =>
+    parseStartLink(window.location.search),
+  );
   // Files that go into the new pack once Keyboard or Mouse is chosen.
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   // Why a pack file or a library pack did not open, shown where it was asked for.
@@ -712,6 +720,7 @@ export function EditorPage() {
   const showScreen = (next: EditorScreen) => {
     if (isWorkspace && next !== 'workspace') clearPack();
     if (next !== 'pack-type') setPendingFiles([]);
+    if (next !== 'start') setStartLink(null);
     setOpenFileError(null);
     setLibraryOpenError(null);
     setScreen(next);
@@ -728,6 +737,7 @@ export function EditorPage() {
   const enterWorkspace = () => {
     window.history.replaceState(screenState('workspace'), '');
     setScreen('workspace');
+    setStartLink(null);
   };
 
   const startOver = () => {
@@ -754,8 +764,11 @@ export function EditorPage() {
   };
 
   // Signing in from the start screens loses nothing, so it happens in this
-  // tab and comes back to the list of the visitor's packs.
-  const startSignInHref = signInUrl(myPacksStartUrl(window.location.href));
+  // tab and comes back to the link the editor was opened with, or else to the
+  // list of the visitor's packs.
+  const startSignInHref = signInUrl(
+    startLinkUrl(window.location.href, startLink ?? { kind: 'my-packs' }),
+  );
 
   const showMyPacksScreen = () => {
     if (screen === 'my-packs') return;
@@ -1050,6 +1063,37 @@ export function EditorPage() {
     window.history.replaceState(screenState('start'), '');
   }, []);
 
+  // A link into the editor waits on the start screen until the account is
+  // known. Its parameters then leave the address bar; the link itself stays
+  // for signing in, and is acted on once the visitor is signed in, also when
+  // they sign in from another tab.
+  useEffect(() => {
+    if (!startLink || screen !== 'start' || session.status === 'loading') {
+      return;
+    }
+    if (parseStartLink(window.location.search)) {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        withoutStartLink(window.location.href),
+      );
+    }
+    if (session.status !== 'signed-in') return;
+    setStartLink(null);
+    if (startLink.kind === 'my-packs') {
+      // Reached directly, so its Back replaces the entry instead of leaving.
+      window.history.replaceState(screenState('my-packs'), '');
+      showScreen('my-packs');
+      return;
+    }
+    const linked = findLinkedPack(session.packs, startLink.packId);
+    if ('problem' in linked) {
+      setLibraryOpenError(linked.problem);
+    } else {
+      openLibraryPack(linked.pack);
+    }
+  });
+
   // The browser's Back and Forward move between the start screens. Leaving
   // the workspace that way asks first when there is work to lose.
   useEffect(() => {
@@ -1322,7 +1366,8 @@ export function EditorPage() {
         {(isExporting ||
           isUpdating ||
           isOpeningFile ||
-          (openingPackId && isWorkspace && !showMyPacks)) && (
+          (openingPackId &&
+            (screen === 'start' || (isWorkspace && !showMyPacks)))) && (
           <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center">
             <div className="bg-base-100 rounded-lg shadow-xl p-8 flex flex-col items-center gap-4">
               <span className="loading loading-spinner loading-lg text-primary"></span>
@@ -1363,7 +1408,11 @@ export function EditorPage() {
             session={session}
             onRetrySession={refreshSession}
             signInHref={startSignInHref}
+            signInLabel={
+              startLink?.kind === 'open' ? 'Sign in to open your pack' : null
+            }
             onShowMyPacks={showMyPacksScreen}
+            libraryOpenError={libraryOpenError}
             onChoosePackFile={choosePackFile}
             isOpeningFile={isOpeningFile}
             openFileError={openFileError}
