@@ -1,38 +1,81 @@
+import { useEffect, useId, useRef } from 'react';
+
+/**
+ * Asks before work is lost. A modal dialog: the page behind it cannot be
+ * reached until it closes, focus starts on the safe choice, and Esc cancels.
+ */
 export function ConfirmDiscardModal({
   isOpen,
   onCancel,
   onConfirm,
+  title = 'Discard changes?',
+  message = 'Changes you have not exported or updated will be lost.',
+  cancelLabel = 'Cancel',
+  confirmLabel = 'Discard',
 }: {
   isOpen: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  title?: string;
+  message?: string;
+  cancelLabel?: string;
+  confirmLabel?: string;
 }) {
-  if (!isOpen) return null;
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const messageId = useId();
+
+  // Stays in the page, so closing it hands focus back to where it was.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (isOpen && !dialog.open) dialog.showModal();
+    else if (!isOpen && dialog.open) dialog.close();
+  }, [isOpen]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-      <div className="bg-base-100 rounded-lg shadow-xl w-full max-w-sm mx-4 p-6">
-        <h2 className="text-lg font-semibold">Discard changes?</h2>
-        <p className="text-sm text-base-content/70 mt-2">
-          Changes you have not exported or updated will be lost.
-        </p>
-        <div className="flex justify-end space-x-2 mt-6">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn btn-sm btn-ghost rounded-box"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="btn btn-sm btn-error rounded-box"
-          >
-            Discard
-          </button>
+    // Esc closes it, which counts as the safe choice.
+    <dialog
+      ref={dialogRef}
+      className="modal"
+      aria-labelledby={titleId}
+      aria-describedby={messageId}
+      onCancel={onCancel}
+      onClose={onCancel}
+    >
+      {isOpen && (
+        <div className="modal-box max-w-sm">
+          <h2 id={titleId} className="text-lg font-semibold">
+            {title}
+          </h2>
+          <p id={messageId} className="text-sm text-base-content/70 mt-2">
+            {message}
+          </p>
+          {/* The safe choice comes first, so it takes the focus. */}
+          <div className="modal-action">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="btn btn-sm btn-ghost rounded-box"
+            >
+              {cancelLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="btn btn-sm btn-error rounded-box"
+            >
+              {confirmLabel}
+            </button>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+      <button
+        type="button"
+        className="modal-backdrop"
+        aria-label="Close"
+        onClick={onCancel}
+      />
+    </dialog>
   );
 }

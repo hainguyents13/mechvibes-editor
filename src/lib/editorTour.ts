@@ -2,28 +2,9 @@ import { type DriveStep, driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import { MOD_LABEL } from '@/lib/utils';
 
-// A guided tour of the editor: where to start and in what order. Steps point
-// at elements marked with data-tour="…"; a step whose element is not on the
-// page is left out.
-
-const SEEN_STORAGE_KEY = 'mechvibes-editor:tour-seen';
-
-/** Whether this browser has seen the tour. Unreadable storage counts as seen, so the tour never repeats on every visit. */
-export function hasSeenEditorTour() {
-  try {
-    return localStorage.getItem(SEEN_STORAGE_KEY) === '1';
-  } catch {
-    return true;
-  }
-}
-
-function markEditorTourSeen() {
-  try {
-    localStorage.setItem(SEEN_STORAGE_KEY, '1');
-  } catch {
-    // Storage is unavailable; the tour can still be opened from the navbar.
-  }
-}
+// A guided tour of the workspace: where each step happens and in what order.
+// It opens only from the navbar. Steps point at elements marked with
+// data-tour="…"; a step whose element is not on the page is left out.
 
 const target = (name: string) => `[data-tour="${name}"]`;
 
@@ -92,11 +73,11 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       },
     },
     {
-      element: target('import'),
+      element: target('start-over'),
       popover: {
-        title: 'Change a pack you have',
+        title: 'Start over',
         description:
-          'Import opens a sound pack zip, so you can change it and export it again.',
+          'Go back to the first screen to open a pack file, open one of your packs or make a new one. It asks first when you have changes you have not exported. To open a pack file, you can also drop its .zip anywhere on the page.',
       },
     },
     {
@@ -111,11 +92,7 @@ function buildSteps(signedIn: boolean): DriveStep[] {
   ];
 }
 
-/**
- * Start the tour. It counts as seen as soon as it opens: driver.js skips its
- * destroy callback when the tour closes mid-animation, so marking it on close
- * would bring it back on the next visit.
- */
+/** Start the tour. */
 export function startEditorTour({ signedIn }: { signedIn: boolean }) {
   const steps = buildSteps(signedIn).filter(
     (step) =>
@@ -136,6 +113,5 @@ export function startEditorTour({ signedIn }: { signedIn: boolean }) {
     smoothScroll: true,
   });
   tour.drive();
-  markEditorTourSeen();
   return tour;
 }

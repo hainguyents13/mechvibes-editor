@@ -36,7 +36,9 @@ docker run -p 8080:80 mechvibes-editor
 
 1. Build the pack here and export the zip.
 2. On the Mechvibes website, create a pack from that zip. The website fills in the pack details from `config.json`, and from then on it owns them: it writes the pack's id, name, description and author into `config.json` when it publishes.
-3. To change a published pack, sign in (the editor uses your website session), open it from **My packs**, edit, and press **Update** to publish the next revision. Importing its zip, exporting and uploading on the pack's page works too.
+3. To change a published pack, sign in (the editor uses your website session), open it from **Edit my pack** on the start screen, edit, and press **Update** to publish the next revision. Opening its zip with **Open a pack file**, exporting and uploading on the pack's page works too.
+
+Links into the editor: `/?open=<pack id>` opens one of your library packs (the website's **Edit sounds** button), and `/?start=my-packs` shows the list of them. Signed out, the editor stays on its start screen and signing in comes back to the same link. The editor removes the parameter from the address bar once it has read it.
 
 The editor never invents an `id`. It keeps the `id` of an imported zip, so a published pack's zip still matches its pack; otherwise it writes none. The website API the editor uses is documented in the website repo (`docs/editor-api.md`).
 
@@ -51,7 +53,7 @@ Exported packs follow the `config.json` v2 format documented in the app repo: [s
 - Keyboard and mouse packs (`soundpack_type`), tags, an icon, and the `recommended_volume` and `random_pitch` options.
 - Files other than OGG and MP3 are encoded to OGG. A video keeps only the parts its keys use.
 
-Opening a pack and exporting it again keeps what the editor does not edit, such as `version`, `created_at`, unknown fields and the license file. Classic (V1) packs cannot be opened.
+Opening a pack and exporting it again keeps what the editor does not edit, such as `version`, `created_at`, unknown fields and the license file. A zip whose pack sits inside a folder opens too, and exports flat. Classic (V1) packs cannot be opened.
 
 ## License
 

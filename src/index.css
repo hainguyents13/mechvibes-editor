@@ -7,6 +7,13 @@
     dark --prefersdark;
 }
 
+/* Error text on a plain background. The theme's error colour is a light pink
+   that reads at about 2.9:1 on white, so it is pulled toward the text colour:
+   darker on light, lighter on dark. */
+@utility text-error-strong {
+  color: color-mix(in oklab, var(--color-error) 60%, var(--color-base-content));
+}
+
 body {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;

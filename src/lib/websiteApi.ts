@@ -1,4 +1,4 @@
-import { websiteUrl } from '@/config/siteIdentity';
+import { websiteHost, websiteUrl } from '@/config/siteIdentity';
 
 // Client for the website's editor API (docs/editor-api.md in the website repo).
 // Requests carry the visitor's own website session cookie; the editor never
@@ -18,6 +18,11 @@ export type LibraryPackSummary = {
   removedReason: string | null;
   updatedAt: string;
 };
+
+/** Only a published pack has a zip to open; a removed one is off limits. */
+export function canOpenPack(pack: LibraryPackSummary) {
+  return pack.status === 'PUBLISHED' && pack.revision > 0;
+}
 
 export class WebsiteApiError extends Error {
   /** HTTP status, or 0 when the website could not be reached. */
@@ -45,8 +50,6 @@ export class WebsiteApiError extends Error {
     this.retryAfter = extra.retryAfter ?? null;
   }
 }
-
-const websiteHost = new URL(websiteUrl).host;
 
 /** The website's sign-in page, returning to `returnTo` afterwards. */
 export function signInUrl(returnTo: string) {

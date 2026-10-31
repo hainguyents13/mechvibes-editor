@@ -399,6 +399,77 @@ describe('opening a pack with files no key uses', () => {
   });
 });
 
+describe('opening a pack zipped inside a folder', () => {
+  const config = (name: string) => ({
+    config_version: '2',
+    name,
+    definition_method: 'single',
+    audio_file: 'sound.ogg',
+    definitions: { KeyA: [[0, 50]] },
+  });
+
+  it('reads the pack from its folder and leaves out files outside it', async () => {
+    const pack = await parseSoundPackZip(
+      await makePackZip({
+        'downloads/Blue/config.json': config('Blue'),
+        'downloads/Blue/sound.ogg': fakeAudio('blue'),
+        'downloads/Blue/extra.ogg': fakeAudio('extra'),
+        'downloads/other.ogg': fakeAudio('outside'),
+        '__MACOSX/downloads/Blue/._config.json': 'fork',
+      }),
+    );
+
+    expect(pack.info.name).toBe('Blue');
+    expect(pack.sources.map((source) => source.file.name)).toEqual([
+      'sound.ogg',
+      'extra.ogg',
+    ]);
+    expect(pack.keySounds.get('KeyA')?.source).toBe(pack.sources[0].id);
+    expect(pack.warnings).toEqual([]);
+  });
+
+  it('takes the config.json nearest the top', async () => {
+    const pack = await parseSoundPackZip(
+      await makePackZip({
+        'Blue/config.json': config('Blue'),
+        'Blue/sound.ogg': fakeAudio('blue'),
+        'Blue/old/config.json': config('Old copy'),
+        'Blue/old/sound.ogg': fakeAudio('old'),
+      }),
+    );
+
+    expect(pack.info.name).toBe('Blue');
+    expect(pack.sources.map((source) => source.file.name)).toEqual([
+      'sound.ogg',
+      'old/sound.ogg',
+    ]);
+  });
+
+  it('refuses a zip of several packs', async () => {
+    const zip = await makePackZip({
+      'Blue/config.json': config('Blue'),
+      'Blue/sound.ogg': fakeAudio('blue'),
+      'Red/config.json': config('Red'),
+      'Red/sound.ogg': fakeAudio('red'),
+    });
+
+    await expect(parseSoundPackZip(zip)).rejects.toThrow(
+      'This .zip holds more than one pack. Zip each pack folder on its own, then open it.',
+    );
+  });
+
+  it('says a zip without config.json anywhere is not a pack', async () => {
+    const zip = await makePackZip({
+      'Blue/sound.ogg': fakeAudio('blue'),
+      '__MACOSX/Blue/config.json': 'fork',
+    });
+
+    await expect(parseSoundPackZip(zip)).rejects.toThrow(
+      'This .zip has no config.json, so it is not a Mechvibes pack.',
+    );
+  });
+});
+
 describe('opening a pack whose sounds run past their file', () => {
   it('warns about a sound that starts after the end and notes one cut short', async () => {
     vi.mocked(getAudioDuration).mockResolvedValue(1);

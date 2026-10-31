@@ -7,7 +7,9 @@ import {
   isMediaFile,
   isValidWaveformSelection,
   keysAcceptingRelease,
+  mediaTypeOf,
   removeReleaseFromKeys,
+  withMediaType,
 } from '@/utils/audioUtils';
 import { type KeySound, type KeySounds, WHOLE_FILE } from '@/utils/soundPack';
 
@@ -195,5 +197,52 @@ describe('isMediaFile', () => {
     ['application/zip', false],
   ])('treats type "%s" as media: %s', (type, isMedia) => {
     expect(isMediaFile(new File([], 'file', { type }))).toBe(isMedia);
+  });
+
+  it.each([
+    ['take.FLAC', true],
+    ['clip.mov', true],
+    ['typing.m4a', true],
+    ['notes.txt', false],
+    ['pack.zip', false],
+  ])('falls back on the extension of %s: %s', (name, isMedia) => {
+    expect(isMediaFile({ name, type: '' })).toBe(isMedia);
+    expect(isMediaFile({ name, type: 'application/octet-stream' })).toBe(
+      isMedia,
+    );
+  });
+});
+
+describe('mediaTypeOf', () => {
+  it('keeps a declared audio or video type', () => {
+    expect(mediaTypeOf({ name: 'a.bin', type: 'audio/x-wav' })).toBe(
+      'audio/x-wav',
+    );
+    expect(mediaTypeOf({ name: 'a.wav', type: 'Video/MP4' })).toBe('video/mp4');
+  });
+
+  it('infers the type from the extension when none is declared', () => {
+    expect(mediaTypeOf({ name: 'space.wav', type: '' })).toBe('audio/wav');
+    expect(mediaTypeOf({ name: 'clip.MOV', type: '' })).toBe('video/quicktime');
+    expect(mediaTypeOf({ name: 'cover.png', type: 'image/png' })).toBeNull();
+    expect(mediaTypeOf({ name: 'README', type: '' })).toBeNull();
+  });
+});
+
+describe('withMediaType', () => {
+  it('fills in a missing type and keeps the name and contents', async () => {
+    const file = new File(['abc'], 'clip.mov', { lastModified: 42 });
+    const typed = withMediaType(file);
+    expect(typed.type).toBe('video/quicktime');
+    expect(typed.name).toBe('clip.mov');
+    expect(typed.lastModified).toBe(42);
+    expect(await typed.text()).toBe('abc');
+  });
+
+  it('returns the same file when its type is already right or unknown', () => {
+    const typed = new File([], 'a.wav', { type: 'audio/wav' });
+    const other = new File([], 'notes.txt');
+    expect(withMediaType(typed)).toBe(typed);
+    expect(withMediaType(other)).toBe(other);
   });
 });

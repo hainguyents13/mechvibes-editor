@@ -34,28 +34,53 @@ import {
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
 import { WaveformEditor } from '@/components/editor/WaveformEditor';
-import { canOpenPack, MyPacksModal } from '@/components/MyPacksModal';
-import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
+import { FileDropOverlay } from '@/components/FileDropOverlay';
+import { MyPacksModal } from '@/components/MyPacksModal';
+import { MyPacksScreen } from '@/components/start/MyPacksScreen';
+import { PackTypeScreen } from '@/components/start/PackTypeScreen';
+import { PhoneScreen } from '@/components/start/PhoneScreen';
+import { SCREEN_HEADING_ID, ScreenHeading } from '@/components/start/StartPage';
+import { StartScreen } from '@/components/start/StartScreen';
+import { websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePackHistory } from '@/hooks/usePackHistory';
+import { usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
-import { hasSeenEditorTour, startEditorTour } from '@/lib/editorTour';
+import type { DropRoute } from '@/lib/dropRouting';
+import { startEditorTour } from '@/lib/editorTour';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
+import {
+  backToStart,
+  type EditorScreen,
+  findLinkedPack,
+  parseStartLink,
+  readScreenState,
+  resolvePopState,
+  screenState,
+  startLinkUrl,
+  withoutStartLink,
+} from '@/lib/startFlow';
 import { plural } from '@/lib/utils';
 import {
+  canOpenPack,
   downloadPackZip,
   type LibraryPackSummary,
   signInUrl,
   updatePackZip,
   WebsiteApiError,
 } from '@/lib/websiteApi';
-import { clearKeySounds, getAudioDuration } from '@/utils/audioUtils';
 import {
-  getHistoryShortcut,
-  isSameSnapshot,
-  type PackSnapshot,
-} from '@/utils/packHistory';
+  clearKeySounds,
+  getAudioDuration,
+  withMediaType,
+} from '@/utils/audioUtils';
+import {
+  createBlankSnapshot,
+  createDefaultPackInfo,
+  hasUnsavedChanges,
+} from '@/utils/blankPack';
+import { getHistoryShortcut, type PackSnapshot } from '@/utils/packHistory';
 import {
   addSources,
   countKeysBySource,
@@ -64,7 +89,6 @@ import {
   isWholeFile,
   type KeySounds,
   type PackExtras,
-  type PackInfo,
   type PackType,
 } from '@/utils/soundPack';
 import { buildSoundPackZip, exportSoundPack } from '@/utils/soundPackExport';
@@ -83,8 +107,6 @@ const MOUSE_BUTTON_CODES = [
 ];
 /** The app plays at most one wheel sound per 120 ms. */
 const WHEEL_SOUND_INTERVAL_MS = 120;
-const TOUR_AUTO_START_MIN_WIDTH = 768;
-const TOUR_AUTO_START_DELAY_MS = 600;
 
 // Sound editing panel on wide (lg) screens. By default it takes half the
 // viewport, up to the original 524px, and never less than what its controls need
@@ -173,40 +195,6 @@ function storePanelHeight(height: number | null) {
 
 function readViewport() {
   return { width: window.innerWidth, height: window.innerHeight };
-}
-
-/** Defaults for a new pack. */
-function createDefaultPackInfo(): PackInfo {
-  return {
-    name: 'My Sound Pack',
-    author: '',
-    description: `A custom sound pack created with the ${siteIdentity.productName} editor.`,
-    tags: [],
-    packType: 'Keyboard',
-    recommendedVolume: 1,
-    randomPitch: false,
-    icon: null,
-  };
-}
-
-/** Whether the pack details are still the defaults of a new pack. */
-function isDefaultPackInfo(info: PackInfo) {
-  return isSamePackInfo(info, createDefaultPackInfo());
-}
-
-function createBlankSnapshot(): PackSnapshot {
-  return {
-    keySounds: new Map(),
-    sources: [],
-    packInfo: createDefaultPackInfo(),
-  };
-}
-
-/** Whether a pack holds nothing yet: no files, no sounds and the default details. */
-function isBlankPack({ sources, keySounds, packInfo }: PackSnapshot) {
-  return (
-    sources.length === 0 && keySounds.size === 0 && isDefaultPackInfo(packInfo)
-  );
 }
 
 /** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
@@ -308,8 +296,25 @@ export function EditorPage() {
     new Set(),
   );
   const [confirmDiscardAction, setConfirmDiscardAction] = useState<
-    null | 'new' | 'import' | { pack: LibraryPackSummary }
+    null | 'start-over' | { pack: LibraryPackSummary } | { file: File }
   >(null);
+  // The editor opens on the start screen; the pack controls show in the workspace.
+  const [screen, setScreen] = useState<EditorScreen>('start');
+  const isWorkspace = screen === 'workspace';
+  // A phone gets a page of its own instead of the editor. The pack stays in
+  // state, so a window narrowed for a moment loses nothing.
+  const isPhone = usePhoneScreen();
+  // What the link the editor was opened with asks for, until it is acted on
+  // or the visitor goes elsewhere from the start screen.
+  const [startLink, setStartLink] = useState(() =>
+    parseStartLink(window.location.search),
+  );
+  // Files that go into the new pack once Keyboard or Mouse is chosen.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Why a pack file or a library pack did not open, shown where it was asked for.
+  const [openFileError, setOpenFileError] = useState<string | null>(null);
+  const [libraryOpenError, setLibraryOpenError] = useState<string | null>(null);
+  const [isOpeningFile, setIsOpeningFile] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   // The pack type a switch is waiting on, while its dialog asks about the
   // sounds that type would not show.
@@ -320,7 +325,7 @@ export function EditorPage() {
   const [showMyPacks, setShowMyPacks] = useState(false);
   const [openingPackId, setOpeningPackId] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const importInputRef = useRef<HTMLInputElement>(null);
+  const packFileInputRef = useRef<HTMLInputElement>(null);
 
   // Waveform state
   const [waveformSelection, setWaveformSelection] = useState({
@@ -359,9 +364,8 @@ export function EditorPage() {
     () => new Map(sources.map((source) => [source.id, source])),
     [sources],
   );
-  // Changes New, Import, opening a library pack or closing the tab would lose. A blank pack has none.
-  const isDirty =
-    !isSameSnapshot(present, savedSnapshot) && !isBlankPack(present);
+  // Changes Start over, opening a library pack or closing the tab would lose.
+  const isDirty = hasUnsavedChanges(present, savedSnapshot);
 
   const commitKeySounds = useCallback(
     (label: string, update: (current: KeySounds) => KeySounds) =>
@@ -443,6 +447,9 @@ export function EditorPage() {
   const [keyboardScale, setKeyboardScale] = useState(1);
 
   useEffect(() => {
+    // The keyboard is on the page only in the workspace, and the phone page
+    // takes it off: coming back mounts a new container to observe.
+    if (!isWorkspace || isPhone) return;
     const el = keyboardAreaRef.current;
     // Measure the parent, not the keyboard wrapper: the wrapper now shrinks to the
     // scaled keyboard, so observing it would feed its own output back in as input.
@@ -469,6 +476,8 @@ export function EditorPage() {
 
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
+      // A container taken off the page measures 0x0; that is no size to fit.
+      if (width === 0 && height === 0) return;
       rescale(width, height);
     });
     observer.observe(target);
@@ -504,7 +513,14 @@ export function EditorPage() {
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [keyboardNaturalWidth, keyboardNaturalHeight, isPreview, hasHiddenKeys]);
+  }, [
+    isWorkspace,
+    isPhone,
+    keyboardNaturalWidth,
+    keyboardNaturalHeight,
+    isPreview,
+    hasHiddenKeys,
+  ]);
 
   // Create unique key IDs — stable identity so consumers can memoise on it
   const getKeyId = useCallback((key: LayoutKey, index: number) => {
@@ -529,8 +545,11 @@ export function EditorPage() {
   }, []);
 
   // Preview plays the real keyboard, and a dialog or a busy overlay holds a
-  // copy of the pack, so page-wide shortcuts stay off meanwhile.
+  // copy of the pack, so page-wide shortcuts stay off meanwhile. The start
+  // screens have no pack to edit, and the phone page shows none.
   const isKeyboardOwnedElsewhere =
+    !isWorkspace ||
+    isPhone ||
     isPreview ||
     showEditPackModal ||
     confirmDiscardAction !== null ||
@@ -538,6 +557,7 @@ export function EditorPage() {
     showMyPacks ||
     isExporting ||
     isUpdating ||
+    isOpeningFile ||
     openingPackId !== null;
 
   // Keyboard selection hook
@@ -598,11 +618,14 @@ export function EditorPage() {
   };
 
   // Add audio or video files; the first one added opens in the waveform.
+  // Files without a type get one from their extension first.
   const handleAddSources = async (files: File[]) => {
     const added = await Promise.all(
-      files.map(async (file) =>
-        createAudioSource(file, await getAudioDuration(file)),
-      ),
+      files
+        .map(withMediaType)
+        .map(async (file) =>
+          createAudioSource(file, await getAudioDuration(file)),
+        ),
     );
     // Appends to the latest files, and picks colours against them: an Undo
     // can land while durations are read.
@@ -682,8 +705,8 @@ export function EditorPage() {
     setSelectedKeys(new Set());
     setLoadedPackId(null);
     setPackExtras(null);
-    // New and Import from disk leave the library pack, so Update cannot
-    // publish unrelated work to it.
+    // Starting over and opening a pack file leave the library pack, so
+    // Update cannot publish unrelated work to it.
     setLibraryPack(null);
     setActiveSourceId(null);
     setSoundSlot('press');
@@ -701,37 +724,126 @@ export function EditorPage() {
     [resetHistory],
   );
 
-  // Reset the whole pack back to defaults
-  const resetPack = useCallback(() => {
+  // Empty the pack and close whatever was open over it.
+  const clearPack = () => {
     resetView();
     startFrom(createBlankSnapshot(), null);
-  }, [resetView, startFrom]);
+    setShowMyPacks(false);
+    setShowEditPackModal(false);
+    setPendingPackType(null);
+    setConfirmDiscardAction(null);
+    exitPreview();
+    tourRef.current?.destroy();
+  };
 
-  // New pack: warn if there are unsaved modifications
-  const handleNewPack = () => {
-    if (isDirty) {
-      setConfirmDiscardAction('new');
-    } else {
-      resetPack();
+  // The visitor went elsewhere than the link asked. It leaves the address bar
+  // too, so a reload or signing in later does not act on it after all.
+  const dropStartLink = () => {
+    setStartLink(null);
+    if (parseStartLink(window.location.search)) {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        withoutStartLink(window.location.href),
+      );
     }
   };
 
-  // Import: warn if there are unsaved modifications, then open the file picker
-  const handleImportClick = () => {
-    if (isDirty) {
-      setConfirmDiscardAction('import');
+  // Show a screen before the workspace. Leaving the workspace empties the
+  // pack, so nothing of it lingers behind the start screen.
+  const showScreen = (next: EditorScreen) => {
+    if (isWorkspace && next !== 'workspace') clearPack();
+    if (next !== 'pack-type') setPendingFiles([]);
+    if (next !== 'start') dropStartLink();
+    setOpenFileError(null);
+    setLibraryOpenError(null);
+    setScreen(next);
+  };
+
+  // A screen of its own in the browser's history, so Back returns from it.
+  // Shown first, so the link leaves the start screen's entry before the new
+  // entry copies its address.
+  const pushScreen = (next: EditorScreen) => {
+    showScreen(next);
+    window.history.pushState(screenState(next, true), '');
+  };
+
+  // The workspace takes over the history entry it was entered from, so Back
+  // never lands on the step that started it. Whether that entry was added on
+  // top of the start screen's carries over, for Start over to step back.
+  const enterWorkspace = () => {
+    dropStartLink();
+    window.history.replaceState(
+      screenState('workspace', readScreenState(window.history.state)?.pushed),
+      '',
+    );
+    setScreen('workspace');
+  };
+
+  // Set while a step back onto the start screen's entry is on its way, so
+  // its popstate is not taken for the visitor's Back.
+  const steppingBackRef = useRef(false);
+
+  // Steps back onto the start screen's entry when it lies right below, rather
+  // than turn this entry into a second one that Back would have to step over.
+  const startOver = () => {
+    if (backToStart(window.history.state) === 'history-back') {
+      steppingBackRef.current = true;
+      window.history.back();
     } else {
-      importInputRef.current?.click();
+      window.history.replaceState(screenState('start'), '');
     }
+    showScreen('start');
+  };
+
+  // Ask first when there is work to lose.
+  const handleStartOver = () => {
+    if (isDirty) {
+      setConfirmDiscardAction('start-over');
+    } else {
+      startOver();
+    }
+  };
+
+  // Signing in from the start screens loses nothing, so it happens in this
+  // tab and comes back to the link the editor was opened with, or else to the
+  // list of the visitor's packs.
+  const startSignInHref = signInUrl(
+    startLinkUrl(window.location.href, startLink ?? { kind: 'my-packs' }),
+  );
+
+  const showMyPacksScreen = () => {
+    if (screen === 'my-packs') return;
+    pushScreen('my-packs');
+    refreshSession();
+  };
+
+  // Ask whether the new pack is for a keyboard or a mouse. `files` go into
+  // it once that is answered.
+  const askPackType = (files: File[] = []) => {
+    pushScreen('pack-type');
+    setPendingFiles(files);
+  };
+
+  // The new pack starts from a blank one of the chosen type, which counts as
+  // saved: choosing Mouse leaves nothing to lose. Waiting files are added on
+  // top as an undoable step, so they do count as changes.
+  const startNewPack = (packType: PackType) => {
+    const files = pendingFiles;
+    setPendingFiles([]);
+    resetView();
+    startFrom(createBlankSnapshot(packType), null);
+    enterWorkspace();
+    if (files.length > 0) handleAddSources(files);
   };
 
   const confirmDiscard = () => {
     const action = confirmDiscardAction;
     setConfirmDiscardAction(null);
-    if (action === 'new') {
-      resetPack();
-    } else if (action === 'import') {
-      importInputRef.current?.click();
+    if (action === 'start-over') {
+      startOver();
+    } else if (action && 'file' in action) {
+      openPackFile(action.file);
     } else if (action) {
       openLibraryPack(action.pack);
     }
@@ -778,31 +890,40 @@ export function EditorPage() {
     }
   };
 
-  // Import a sound pack zip and apply its contents to current settings
-  const handleImportFile = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
+  // Open a pack .zip in place of the current pack. Why it did not open shows
+  // where it was chosen: under its card before the workspace, as a notice in it.
+  const openPackFile = async (file: File) => {
+    setIsOpeningFile(true);
+    setOpenFileError(null);
     try {
       applyImportedPack(await parseSoundPackZip(file), false);
+      enterWorkspace();
     } catch (error) {
-      setNotice({
-        tone: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Could not import sound pack.',
-      });
+      const message =
+        error instanceof Error ? error.message : 'Could not open this pack.';
+      if (isWorkspace) {
+        setNotice({ tone: 'error', message });
+      } else {
+        setOpenFileError(message);
+      }
+    } finally {
+      setIsOpeningFile(false);
     }
   };
 
-  // Open one of the visitor's library packs through the same path as Import.
+  const choosePackFile = () => packFileInputRef.current?.click();
+
+  const handlePackFileChosen = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) openPackFile(file);
+  };
+
+  // Open one of the visitor's library packs through the same path as a pack file.
   const openLibraryPack = async (pack: LibraryPackSummary) => {
     setOpeningPackId(pack.id);
     setNotice(null);
+    setLibraryOpenError(null);
     try {
       const zip = await downloadPackZip(pack.id);
       const imported = await parseSoundPackZip(
@@ -816,9 +937,15 @@ export function EditorPage() {
         revision: pack.revision,
       });
       setShowMyPacks(false);
+      enterWorkspace();
     } catch (error) {
-      setShowMyPacks(false);
-      setNotice(libraryErrorNotice(error, 'Could not open this pack.'));
+      const failure = libraryErrorNotice(error, 'Could not open this pack.');
+      if (isWorkspace) {
+        setShowMyPacks(false);
+        setNotice(failure);
+      } else {
+        setLibraryOpenError(failure.message);
+      }
       if (error instanceof WebsiteApiError && error.status === 401) {
         refreshSession();
       }
@@ -834,6 +961,40 @@ export function EditorPage() {
       setConfirmDiscardAction({ pack });
     } else {
       openLibraryPack(pack);
+    }
+  };
+
+  // Files dropped or pasted on the start screen or in the workspace. Nothing
+  // else may be open over them: a dialog holds a copy of the pack. The phone
+  // page shows neither.
+  const canDrop =
+    !isPhone &&
+    (screen === 'start'
+      ? !isOpeningFile && openingPackId === null
+      : !isKeyboardOwnedElsewhere);
+
+  // Why a drop did nothing shows where a pack file's problem would.
+  const handleDrop = (route: DropRoute<File>) => {
+    switch (route.kind) {
+      case 'open-zip':
+        if (route.confirm) {
+          setConfirmDiscardAction({ file: route.file });
+        } else {
+          openPackFile(route.file);
+        }
+        return;
+      case 'to-type-question':
+        askPackType(route.files);
+        return;
+      case 'add-media':
+        handleAddSources(route.files);
+        return;
+      default:
+        if (isWorkspace) {
+          setNotice({ tone: 'error', message: route.message });
+        } else {
+          setOpenFileError(route.message);
+        }
     }
   };
 
@@ -964,26 +1125,118 @@ export function EditorPage() {
     setPressedKeyCodes(new Set());
   }, []);
 
-  // Guided tour: it opens by itself on a first visit, and from the navbar at
-  // any time.
+  // Guided tour of the workspace, opened from the navbar. The start screen
+  // already says where to begin, so it never opens by itself.
   const tourRef = useRef<ReturnType<typeof startEditorTour> | null>(null);
-  const signedInRef = useRef(false);
-  useEffect(() => {
-    signedInRef.current = session.status === 'signed-in';
-  }, [session.status]);
-  const startTour = useCallback(() => {
+  const startTour = () => {
     tourRef.current?.destroy();
-    tourRef.current = startEditorTour({ signedIn: signedInRef.current });
-  }, []);
-  useEffect(() => {
-    // Phones cannot edit packs, so a first visit there does not start it.
-    if (hasSeenEditorTour() || window.innerWidth < TOUR_AUTO_START_MIN_WIDTH)
-      return;
-    // Let the layout and the keyboard scale settle before measuring targets.
-    const timer = window.setTimeout(startTour, TOUR_AUTO_START_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [startTour]);
+    tourRef.current = startEditorTour({
+      signedIn: session.status === 'signed-in',
+    });
+  };
   useEffect(() => () => tourRef.current?.destroy(), []);
+
+  // The phone page hides the workspace, so nothing of it may go on running:
+  // preview would play the keyboard, and the tour would point at nothing.
+  useEffect(() => {
+    if (!isPhone) return;
+    exitPreview();
+    setIsPlaying(false);
+    tourRef.current?.destroy();
+  }, [isPhone, exitPreview]);
+
+  // The editor opens on the start screen, also after a reload. Reloaded on an
+  // entry added on top of the start screen's, it steps back onto that one.
+  // The ref also keeps a remount in development from stepping back twice.
+  useEffect(() => {
+    if (backToStart(window.history.state) === 'replace') {
+      window.history.replaceState(screenState('start'), '');
+    } else if (!steppingBackRef.current) {
+      steppingBackRef.current = true;
+      window.history.back();
+    }
+  }, []);
+
+  // A link into the editor waits on the start screen until the account is
+  // known. Its parameters then leave the address bar; the link itself stays
+  // for signing in, and is acted on once the visitor is signed in, also when
+  // they sign in from another tab. On a phone the link stays in the address
+  // bar, for Copy link to pass on to a bigger screen.
+  useEffect(() => {
+    if (
+      !startLink ||
+      isPhone ||
+      screen !== 'start' ||
+      session.status === 'loading'
+    ) {
+      return;
+    }
+    if (parseStartLink(window.location.search)) {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        withoutStartLink(window.location.href),
+      );
+    }
+    if (session.status !== 'signed-in') return;
+    setStartLink(null);
+    if (startLink.kind === 'my-packs') {
+      // Reached directly, so its Back replaces the entry instead of leaving.
+      window.history.replaceState(screenState('my-packs'), '');
+      showScreen('my-packs');
+      return;
+    }
+    const linked = findLinkedPack(session.packs, startLink.packId);
+    if ('problem' in linked) {
+      setLibraryOpenError(linked.problem);
+    } else {
+      openLibraryPack(linked.pack);
+    }
+  });
+
+  // A new screen's heading takes the focus, which would otherwise drop to the
+  // page with the control that had it, so a screen reader says where the
+  // visitor now is. Not on load: the page starts with its own focus then.
+  const focusedScreenRef = useRef(screen);
+  useEffect(() => {
+    if (focusedScreenRef.current === screen) return;
+    focusedScreenRef.current = screen;
+    document.getElementById(SCREEN_HEADING_ID)?.focus({ preventScroll: true });
+  }, [screen]);
+
+  // The browser's Back and Forward move between the start screens. Leaving
+  // the workspace that way asks first when there is work to lose.
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (steppingBackRef.current) {
+        // The start screen already shows; the entry now stands for it.
+        steppingBackRef.current = false;
+        window.history.replaceState(
+          screenState('start', readScreenState(event.state)?.pushed),
+          '',
+        );
+        return;
+      }
+      const outcome = resolvePopState(screen, event.state, {
+        hasUnsavedChanges: isDirty,
+        isBusy:
+          isExporting || isUpdating || isOpeningFile || openingPackId !== null,
+      });
+      if (outcome.kind === 'show') {
+        showScreen(outcome.screen);
+      } else if (outcome.kind === 'return-to-workspace') {
+        window.history.pushState(
+          screenState('workspace', outcome.aboveStart),
+          '',
+        );
+        if (outcome.confirm) setConfirmDiscardAction('start-over');
+      } else if (!isWorkspace) {
+        window.history.replaceState(screenState(screen, true), '');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  });
 
   // The site footer is rendered by the layout, so flag the body for it.
   useEffect(() => {
@@ -1118,6 +1371,25 @@ export function EditorPage() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
 
+  // Also on the phone page, where it is off: a file dropped on a narrowed
+  // window must not open in place of the editor and the pack kept behind it.
+  const dropOverlay = (
+    <FileDropOverlay
+      enabled={canDrop}
+      context={{ onStart: screen === 'start', isDirty }}
+      onDrop={handleDrop}
+    />
+  );
+
+  if (isPhone) {
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <PhoneScreen />
+        {dropOverlay}
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="flex flex-col h-full min-h-0">
@@ -1143,48 +1415,67 @@ export function EditorPage() {
           </div>
         ) : (
           <EditorNavbar
-            packName={packInfo.name}
-            packType={packInfo.packType}
-            onEditPack={() => setShowEditPackModal(true)}
-            onNewPack={handleNewPack}
-            onImport={handleImportClick}
-            onExport={handleExport}
-            isExporting={isExporting}
-            onPreview={() => setIsPreview(true)}
-            canPreview={sources.length > 0 && playableCount > 0}
             session={session}
-            signInHref={signInUrl(window.location.href)}
+            signInHref={
+              isWorkspace ? signInUrl(window.location.href) : startSignInHref
+            }
             signInInNewTab={isDirty}
-            onOpenMyPacks={() => {
-              setShowMyPacks(true);
-              refreshSession();
-            }}
-            onUpdate={
-              libraryPack && session.status === 'signed-in'
-                ? handleUpdate
+            onOpenMyPacks={
+              isWorkspace
+                ? () => {
+                    setShowMyPacks(true);
+                    refreshSession();
+                  }
+                : showMyPacksScreen
+            }
+            workspace={
+              isWorkspace
+                ? {
+                    packName: packInfo.name,
+                    packType: packInfo.packType,
+                    onEditPack: () => setShowEditPackModal(true),
+                    onStartOver: handleStartOver,
+                    onExport: handleExport,
+                    isExporting,
+                    onPreview: () => setIsPreview(true),
+                    canPreview: sources.length > 0 && playableCount > 0,
+                    onUpdate:
+                      libraryPack && session.status === 'signed-in'
+                        ? handleUpdate
+                        : undefined,
+                    isUpdating,
+                    onStartTour: startTour,
+                    undoLabel,
+                    redoLabel,
+                    onUndo: undo,
+                    onRedo: redo,
+                  }
                 : undefined
             }
-            isUpdating={isUpdating}
-            onStartTour={startTour}
-            undoLabel={undoLabel}
-            redoLabel={redoLabel}
-            onUndo={undo}
-            onRedo={redo}
           />
         )}
 
         <input
-          ref={importInputRef}
+          ref={packFileInputRef}
           type="file"
           accept=".zip"
           className="hidden"
-          onChange={handleImportFile}
+          onChange={handlePackFileChosen}
         />
+
+        {dropOverlay}
 
         <ConfirmDiscardModal
           isOpen={confirmDiscardAction !== null}
           onCancel={() => setConfirmDiscardAction(null)}
           onConfirm={confirmDiscard}
+          {...(confirmDiscardAction === 'start-over' && {
+            title: 'Start over?',
+            message:
+              'Your changes in this tab will be lost. Download a .zip first to keep them.',
+            cancelLabel: 'Keep editing',
+            confirmLabel: 'Start over',
+          })}
         />
 
         <ConfirmPackTypeModal
@@ -1215,7 +1506,11 @@ export function EditorPage() {
           />
         )}
 
-        {(isExporting || isUpdating || (openingPackId && !showMyPacks)) && (
+        {(isExporting ||
+          isUpdating ||
+          isOpeningFile ||
+          (openingPackId &&
+            (screen === 'start' || (isWorkspace && !showMyPacks)))) && (
           <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center">
             <div className="bg-base-100 rounded-lg shadow-xl p-8 flex flex-col items-center gap-4">
               <span className="loading loading-spinner loading-lg text-primary"></span>
@@ -1251,364 +1546,414 @@ export function EditorPage() {
           />
         )}
 
-        {/* Notices sit outside the keyboard column, whose fit-to-height
-            scale only accounts for its own rows. */}
-        {notice && (
-          <div
-            className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${NOTICE_TONE_CLASSES[notice.tone]}`}
-          >
-            <div className="min-w-0">
-              <p>
-                {notice.message}
-                {notice.link && (
-                  <>
-                    {' '}
-                    <a
-                      href={notice.link.href}
-                      target="_blank"
-                      rel="noopener"
-                      className="link font-medium"
-                    >
-                      {notice.link.label}
-                    </a>
-                  </>
-                )}
-              </p>
-              {notice.details && notice.details.length > 0 && (
-                <ul className="mt-1 list-disc pl-5">
-                  {notice.details.map((detail) => (
-                    <li key={detail}>{detail}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <button
-              type="button"
-              className="btn btn-xs btn-ghost shrink-0"
-              onClick={() => setNotice(null)}
-            >
-              Dismiss
-            </button>
-          </div>
+        {screen === 'start' && (
+          <StartScreen
+            session={session}
+            onRetrySession={refreshSession}
+            signInHref={startSignInHref}
+            signInLabel={
+              startLink?.kind === 'open' ? 'Sign in to open your pack' : null
+            }
+            onShowMyPacks={showMyPacksScreen}
+            libraryOpenError={libraryOpenError}
+            onChoosePackFile={choosePackFile}
+            isOpeningFile={isOpeningFile}
+            openFileError={openFileError}
+            onMakeNewPack={() => askPackType()}
+          />
+        )}
+        {screen === 'my-packs' && (
+          <MyPacksScreen
+            session={session}
+            onRetrySession={refreshSession}
+            signInHref={startSignInHref}
+            onBack={startOver}
+            openingId={openingPackId}
+            onOpen={handleOpenLibraryPack}
+            openError={libraryOpenError}
+            onChoosePackFile={choosePackFile}
+            isOpeningFile={isOpeningFile}
+            openFileError={openFileError}
+          />
+        )}
+        {screen === 'pack-type' && (
+          <PackTypeScreen
+            fileCount={pendingFiles.length}
+            onBack={startOver}
+            onChoose={startNewPack}
+          />
         )}
 
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
-          {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
-          <div
-            className="editor-chrome-vertical editor-chrome-top w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
-            data-hidden={isPreview}
-            style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
-          >
-            <h2 className="sr-only">Keyboard settings</h2>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                {/* soundpack_type: which device the pack is for */}
-                <div className="join" data-tour="pack-type">
-                  {(['Keyboard', 'Mouse'] as const).map((packType) => (
-                    <button
-                      key={packType}
-                      type="button"
-                      className={`btn btn-xs join-item ${packInfo.packType === packType ? 'btn-active' : ''}`}
-                      aria-pressed={packInfo.packType === packType}
-                      onClick={() => handlePackTypeChange(packType)}
-                      title={`Make a ${packType.toLowerCase()} sound pack`}
-                    >
-                      {packType}
-                    </button>
-                  ))}
+        {isWorkspace && (
+          <>
+            <ScreenHeading className="sr-only">
+              Editing {packInfo.name}
+            </ScreenHeading>
+            {/* Notices sit outside the keyboard column, whose fit-to-height
+            scale only accounts for its own rows. */}
+            {notice && (
+              <div
+                className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${NOTICE_TONE_CLASSES[notice.tone]}`}
+              >
+                <div className="min-w-0">
+                  <p>
+                    {notice.message}
+                    {notice.link && (
+                      <>
+                        {' '}
+                        <a
+                          href={notice.link.href}
+                          target="_blank"
+                          rel="noopener"
+                          className="link font-medium"
+                        >
+                          {notice.link.label}
+                        </a>
+                      </>
+                    )}
+                  </p>
+                  {notice.details && notice.details.length > 0 && (
+                    <ul className="mt-1 list-disc pl-5">
+                      {notice.details.map((detail) => (
+                        <li key={detail}>{detail}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                {packInfo.packType === 'Keyboard' && (
-                  <div className="join">
-                    <button
-                      type="button"
-                      className={`btn btn-xs join-item ${keyboardSize === 'fullsize' ? 'btn-active' : ''}`}
-                      onClick={() => setKeyboardSize('fullsize')}
-                    >
-                      Full size
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-xs join-item ${keyboardSize === 'tkl' ? 'btn-active' : ''}`}
-                      onClick={() => setKeyboardSize('tkl')}
-                    >
-                      TKL
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn btn-xs join-item ${keyboardSize === 'compact' ? 'btn-active' : ''}`}
-                      onClick={() => setKeyboardSize('compact')}
-                    >
-                      Compact
-                    </button>
-                  </div>
-                )}
-              </div>
-              {/* Key State Examples */}
-              <div className="flex items-center gap-4 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="btn btn-xs btn-neutral pointer-events-none">
-                    A
-                  </div>
-                  <span className="text-base-content/70">Selected</span>
-                </div>
-                <div
-                  className="flex items-center gap-2"
-                  title="The dot takes the colour of the file the sound comes from"
+                <button
+                  type="button"
+                  className="btn btn-xs btn-ghost shrink-0"
+                  onClick={() => setNotice(null)}
                 >
-                  <div className="btn btn-xs relative pointer-events-none">
-                    Q
-                    <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-base-content/50 rounded-full border-2 border-white shadow-lg ring-2 ring-base-content/20"></div>
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
+              {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
+              <div
+                className="editor-chrome-vertical editor-chrome-top w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+                data-hidden={isPreview}
+                style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+              >
+                <h2 className="sr-only">Keyboard settings</h2>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    {/* soundpack_type: which device the pack is for */}
+                    <div className="join" data-tour="pack-type">
+                      {(['Keyboard', 'Mouse'] as const).map((packType) => (
+                        <button
+                          key={packType}
+                          type="button"
+                          className={`btn btn-xs join-item ${packInfo.packType === packType ? 'btn-active' : ''}`}
+                          aria-pressed={packInfo.packType === packType}
+                          onClick={() => handlePackTypeChange(packType)}
+                          title={`Make a ${packType.toLowerCase()} sound pack`}
+                        >
+                          {packType}
+                        </button>
+                      ))}
+                    </div>
+                    {packInfo.packType === 'Keyboard' && (
+                      <div className="join">
+                        <button
+                          type="button"
+                          className={`btn btn-xs join-item ${keyboardSize === 'fullsize' ? 'btn-active' : ''}`}
+                          onClick={() => setKeyboardSize('fullsize')}
+                        >
+                          Full size
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-xs join-item ${keyboardSize === 'tkl' ? 'btn-active' : ''}`}
+                          onClick={() => setKeyboardSize('tkl')}
+                        >
+                          TKL
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-xs join-item ${keyboardSize === 'compact' ? 'btn-active' : ''}`}
+                          onClick={() => setKeyboardSize('compact')}
+                        >
+                          Compact
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-base-content/70">Has a sound</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="btn btn-xs relative pointer-events-none">
-                    Z
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>
+                  {/* Key State Examples */}
+                  <div className="flex items-center gap-4 text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="btn btn-xs btn-neutral pointer-events-none">
+                        A
+                      </div>
+                      <span className="text-base-content/70">Selected</span>
+                    </div>
+                    <div
+                      className="flex items-center gap-2"
+                      title="The dot takes the colour of the file the sound comes from"
+                    >
+                      <div className="btn btn-xs relative pointer-events-none">
+                        Q
+                        <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-base-content/50 rounded-full border-2 border-white shadow-lg ring-2 ring-base-content/20"></div>
+                      </div>
+                      <span className="text-base-content/70">Has a sound</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="btn btn-xs relative pointer-events-none">
+                        Z
+                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>
+                      </div>
+                      <span className="text-base-content/70">
+                        Release sound
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-base-content/70">Release sound</span>
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* Keyboard Display (scaled to fit) — sits flush between the two rows */}
-          <h2 className="sr-only">Keyboard</h2>
-          <div
-            ref={keyboardAreaRef}
-            className="w-full min-h-0 shrink overflow-hidden flex items-center justify-center"
-          >
-            {/* No CSS transition here: ResizeObserver already re-scales the
+              {/* Keyboard Display (scaled to fit) — sits flush between the two rows */}
+              <h2 className="sr-only">Keyboard</h2>
+              <div
+                ref={keyboardAreaRef}
+                className="w-full min-h-0 shrink overflow-hidden flex items-center justify-center"
+              >
+                {/* No CSS transition here: ResizeObserver already re-scales the
                 keyboard every frame while the panels collapse, and animating
                 the same values on top of that lags behind the layout. */}
-            <div
-              className="shrink-0"
-              data-tour="keyboard"
-              style={{
-                width: keyboardNaturalWidth * keyboardScale,
-                height: keyboardNaturalHeight * keyboardScale,
-              }}
-            >
-              <div
-                style={{
-                  transform: `scale(${keyboardScale})`,
-                  transformOrigin: 'top left',
-                  width: keyboardNaturalWidth,
-                  height: keyboardNaturalHeight,
-                }}
-              >
-                {isMousePack ? (
-                  // Mouse packs answer the real mouse anywhere on the page.
-                  <MouseDisplay
-                    selectedKeys={selectedKeys}
-                    modifiedKeys={keySounds}
-                    sourcesById={sourcesById}
-                    tabStopId={tabStopId}
-                    onSelectKey={selectKey}
-                    onFocusKey={setFocusKeyId}
-                    keyboardRef={keyboardRef}
-                    isPreview={isPreview}
-                    pressedKeyCodes={pressedKeyCodes}
-                  />
-                ) : (
-                  <KeyboardDisplay
-                    layout={layout}
-                    selectedKeys={selectedKeys}
-                    modifiedKeys={keySounds}
-                    sourcesById={sourcesById}
-                    marquee={marquee}
-                    tabStopId={tabStopId}
-                    pointerHandlers={pointerHandlers}
-                    onSelectKey={selectKey}
-                    onFocusKey={setFocusKeyId}
-                    keyboardRef={keyboardRef}
-                    isPreview={isPreview}
-                    pressedKeyCodes={pressedKeyCodes}
-                    onPreviewKeyDown={(code) => playKey(code, 'press')}
-                    onPreviewKeyUp={(code) => playKey(code, 'release')}
-                  />
-                )}
+                <div
+                  className="shrink-0"
+                  data-tour="keyboard"
+                  style={{
+                    width: keyboardNaturalWidth * keyboardScale,
+                    height: keyboardNaturalHeight * keyboardScale,
+                  }}
+                >
+                  <div
+                    style={{
+                      transform: `scale(${keyboardScale})`,
+                      transformOrigin: 'top left',
+                      width: keyboardNaturalWidth,
+                      height: keyboardNaturalHeight,
+                    }}
+                  >
+                    {isMousePack ? (
+                      // Mouse packs answer the real mouse anywhere on the page.
+                      <MouseDisplay
+                        selectedKeys={selectedKeys}
+                        modifiedKeys={keySounds}
+                        sourcesById={sourcesById}
+                        tabStopId={tabStopId}
+                        onSelectKey={selectKey}
+                        onFocusKey={setFocusKeyId}
+                        keyboardRef={keyboardRef}
+                        isPreview={isPreview}
+                        pressedKeyCodes={pressedKeyCodes}
+                      />
+                    ) : (
+                      <KeyboardDisplay
+                        layout={layout}
+                        selectedKeys={selectedKeys}
+                        modifiedKeys={keySounds}
+                        sourcesById={sourcesById}
+                        marquee={marquee}
+                        tabStopId={tabStopId}
+                        pointerHandlers={pointerHandlers}
+                        onSelectKey={selectKey}
+                        onFocusKey={setFocusKeyId}
+                        keyboardRef={keyboardRef}
+                        isPreview={isPreview}
+                        pressedKeyCodes={pressedKeyCodes}
+                        onPreviewKeyDown={(code) => playKey(code, 'press')}
+                        onPreviewKeyUp={(code) => playKey(code, 'release')}
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Keys with a sound that the drawn layout leaves out */}
-          {hasHiddenKeys && (
-            <div
-              className="editor-chrome-vertical w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
-              data-hidden={isPreview}
-              style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
-            >
-              <h2 className="sr-only">Hidden keys</h2>
-              <HiddenKeysTray
-                hiddenKeys={hiddenKeys}
-                keySounds={keySounds}
-                sources={sources}
-                onClear={(code) =>
-                  commitKeySounds(`Clear ${code}`, (current) =>
-                    clearKeySounds([code], current),
-                  )
-                }
-                onFocusLost={focusKeyboard}
-              />
-            </div>
-          )}
+              {/* Keys with a sound that the drawn layout leaves out */}
+              {hasHiddenKeys && (
+                <div
+                  className="editor-chrome-vertical w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+                  data-hidden={isPreview}
+                  style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+                >
+                  <h2 className="sr-only">Hidden keys</h2>
+                  <HiddenKeysTray
+                    hiddenKeys={hiddenKeys}
+                    keySounds={keySounds}
+                    sources={sources}
+                    onClear={(code) =>
+                      commitKeySounds(`Clear ${code}`, (current) =>
+                        clearKeySounds([code], current),
+                      )
+                    }
+                    onFocusLost={focusKeyboard}
+                  />
+                </div>
+              )}
 
-          {/* Shortcuts Bar */}
-          <div
-            className="editor-chrome-vertical w-full flex justify-center shrink-0"
-            data-hidden={isPreview}
-          >
-            <KeyboardShortcuts
-              selectedKeys={selectedKeys}
-              setSelectedKeys={setSelectedKeys}
-              maxWidth={keyboardNaturalWidth * keyboardScale}
-              isMousePack={isMousePack}
-              onFocusLost={focusKeyboard}
-            />
-          </div>
-        </div>
-
-        {/* Drag handle on the panel's top edge (wide screens only) */}
-        {panelHeight !== null && !isPreview && (
-          // biome-ignore lint/a11y/useSemanticElements: a focusable window splitter with a grip; <hr> cannot hold children or take focus
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize the sound editing panel"
-            aria-valuemin={PANEL_DRAG_MIN_HEIGHT}
-            aria-valuemax={panelDragMax}
-            aria-valuenow={panelHeight}
-            tabIndex={0}
-            title="Drag to resize. Double-click to reset."
-            className="group relative z-10 -mb-2 h-3 shrink-0 cursor-row-resize touch-none flex justify-center focus-visible:outline-none"
-            onPointerDown={(event) => {
-              event.currentTarget.setPointerCapture(event.pointerId);
-              panelDragRef.current = {
-                startY: event.clientY,
-                startHeight: panelHeight,
-              };
-            }}
-            onPointerMove={(event) => {
-              const drag = panelDragRef.current;
-              if (!drag) return;
-              resizePanel(drag.startHeight - (event.clientY - drag.startY));
-            }}
-            onPointerUp={() => {
-              panelDragRef.current = null;
-            }}
-            onPointerCancel={() => {
-              panelDragRef.current = null;
-            }}
-            onDoubleClick={() => setChosenPanelHeight(null)}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                event.preventDefault();
-                resizePanel(
-                  panelHeight +
-                    (event.key === 'ArrowUp'
-                      ? PANEL_RESIZE_STEP
-                      : -PANEL_RESIZE_STEP),
-                );
-              }
-            }}
-          >
-            <div className="mt-1 h-1 w-12 rounded-full bg-base-content/25 transition-colors group-hover:bg-primary group-focus-visible:bg-primary" />
-          </div>
-        )}
-
-        {/* Timeline panel — bottom */}
-        <div
-          className="editor-chrome-vertical shrink-0 editor-panel-surface border-t-2 border-base-content/20"
-          data-hidden={isPreview}
-        >
-          {/* Stacked, the panel sizes to its content; capped so the keyboard keeps room */}
-          <div
-            className="max-lg:max-h-[50dvh] max-lg:overflow-y-auto"
-            style={panelHeight === null ? undefined : { height: panelHeight }}
-          >
-            <h2 className="sr-only">Sound editing</h2>
-            {/* Dividers run edge to edge: padding lives inside each column, not on the row */}
-            <div className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20">
-              {/* Left: audio/video import. Stacked, it is a short dropzone, sizes
-                  to the file card once audio is loaded, and keeps room for the
-                  clip when a video is loaded. */}
+              {/* Shortcuts Bar */}
               <div
-                data-tour="sources"
-                className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                className="editor-chrome-vertical w-full flex justify-center shrink-0"
+                data-hidden={isPreview}
               >
-                <AudioFileSelector
-                  sources={sources}
-                  activeSourceId={activeSourceId}
-                  keyCounts={keyCounts}
-                  onSelect={handleSelectSource}
-                  onAdd={handleAddSources}
-                  onRemove={handleRemoveSource}
-                  videoRef={videoPreviewRef}
+                <KeyboardShortcuts
+                  selectedKeys={selectedKeys}
+                  setSelectedKeys={setSelectedKeys}
+                  maxWidth={keyboardNaturalWidth * keyboardScale}
+                  isMousePack={isMousePack}
+                  onFocusLost={focusKeyboard}
                 />
               </div>
+            </div>
 
-              {/* Right: waveform / mode-specific controls — fills the container height.
+            {/* Drag handle on the panel's top edge (wide screens only) */}
+            {panelHeight !== null && !isPreview && (
+              // biome-ignore lint/a11y/useSemanticElements: a focusable window splitter with a grip; <hr> cannot hold children or take focus
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize the sound editing panel"
+                aria-valuemin={PANEL_DRAG_MIN_HEIGHT}
+                aria-valuemax={panelDragMax}
+                aria-valuenow={panelHeight}
+                tabIndex={0}
+                title="Drag to resize. Double-click to reset."
+                className="group relative z-10 -mb-2 h-3 shrink-0 cursor-row-resize touch-none flex justify-center focus-visible:outline-none"
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  panelDragRef.current = {
+                    startY: event.clientY,
+                    startHeight: panelHeight,
+                  };
+                }}
+                onPointerMove={(event) => {
+                  const drag = panelDragRef.current;
+                  if (!drag) return;
+                  resizePanel(drag.startHeight - (event.clientY - drag.startY));
+                }}
+                onPointerUp={() => {
+                  panelDragRef.current = null;
+                }}
+                onPointerCancel={() => {
+                  panelDragRef.current = null;
+                }}
+                onDoubleClick={() => setChosenPanelHeight(null)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    resizePanel(
+                      panelHeight +
+                        (event.key === 'ArrowUp'
+                          ? PANEL_RESIZE_STEP
+                          : -PANEL_RESIZE_STEP),
+                    );
+                  }
+                }}
+              >
+                <div className="mt-1 h-1 w-12 rounded-full bg-base-content/25 transition-colors group-hover:bg-primary group-focus-visible:bg-primary" />
+              </div>
+            )}
+
+            {/* Timeline panel — bottom */}
+            <div
+              className="editor-chrome-vertical shrink-0 editor-panel-surface border-t-2 border-base-content/20"
+              data-hidden={isPreview}
+            >
+              {/* Stacked, the panel sizes to its content; capped so the keyboard keeps room */}
+              <div
+                className="max-lg:max-h-[50dvh] max-lg:overflow-y-auto"
+                style={
+                  panelHeight === null ? undefined : { height: panelHeight }
+                }
+              >
+                <h2 className="sr-only">Sound editing</h2>
+                {/* Dividers run edge to edge: padding lives inside each column, not on the row */}
+                <div className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20">
+                  {/* Left: audio/video import. Stacked, it is a short dropzone, sizes
+                  to the file card once audio is loaded, and keeps room for the
+                  clip when a video is loaded. */}
+                  <div
+                    data-tour="sources"
+                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                  >
+                    <AudioFileSelector
+                      sources={sources}
+                      activeSourceId={activeSourceId}
+                      keyCounts={keyCounts}
+                      onSelect={handleSelectSource}
+                      onAdd={handleAddSources}
+                      onRemove={handleRemoveSource}
+                      videoRef={videoPreviewRef}
+                    />
+                  </div>
+
+                  {/* Right: waveform / mode-specific controls — fills the container height.
                   No horizontal padding here: the waveform runs edge to edge, and the
                   blocks around it carry their own px-4. */}
-              <div
-                data-tour="sound"
-                className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto"
-              >
-                {audioFile && activeSourceId ? (
-                  <div className="min-h-full min-w-0 flex flex-col gap-3">
-                    {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
-                    <WaveformEditor
-                      audioFile={audioFile}
-                      defaultDuration={defaultDuration}
-                      setDefaultDuration={setDefaultDuration}
-                      waveformSelection={waveformSelection}
-                      setWaveformSelection={setWaveformSelectionCallback}
-                      zoomLevel={zoomLevel}
-                      setZoomLevel={setZoomLevelCallback}
-                      isPlaying={isPlaying}
-                      setIsPlaying={setIsPlayingCallback}
-                      onPlaySelectedSegmentReady={(playFn) => {
-                        playSelectedSegmentRef.current = playFn;
-                      }}
-                      keySounds={keySounds}
-                      sourceId={activeSourceId}
-                      videoRef={videoPreviewRef}
-                      waveformHeight={waveformHeight}
-                    />
+                  <div
+                    data-tour="sound"
+                    className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto"
+                  >
+                    {audioFile && activeSourceId ? (
+                      <div className="min-h-full min-w-0 flex flex-col gap-3">
+                        {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
+                        <WaveformEditor
+                          audioFile={audioFile}
+                          defaultDuration={defaultDuration}
+                          setDefaultDuration={setDefaultDuration}
+                          waveformSelection={waveformSelection}
+                          setWaveformSelection={setWaveformSelectionCallback}
+                          zoomLevel={zoomLevel}
+                          setZoomLevel={setZoomLevelCallback}
+                          isPlaying={isPlaying}
+                          setIsPlaying={setIsPlayingCallback}
+                          onPlaySelectedSegmentReady={(playFn) => {
+                            playSelectedSegmentRef.current = playFn;
+                          }}
+                          keySounds={keySounds}
+                          sourceId={activeSourceId}
+                          videoRef={videoPreviewRef}
+                          waveformHeight={waveformHeight}
+                        />
 
-                    {/* Time Segment Controls */}
-                    <TimeSegmentControls
-                      waveformSelection={waveformSelection}
-                      setWaveformSelection={setWaveformSelection}
-                      isPlaying={isPlaying}
-                      playSelectedSegment={playSelectedSegment}
-                      selectedKeys={selectedKeys}
-                      setSelectedKeys={setSelectedKeys}
-                      selectedCodes={selectedCodes}
-                      keySounds={keySounds}
-                      commitKeySounds={commitKeySounds}
-                      onClearSelected={clearSelectedKeySounds}
-                      hiddenCount={hiddenKeys.length}
-                      activeSourceId={activeSourceId}
-                      audioDuration={audioDuration}
-                      slot={soundSlot}
-                      setSlot={setSoundSlot}
-                      keys={keys}
-                      getKeyId={getKeyId}
-                    />
-                    {/* Absorbs leftover height so the blocks above stay pinned to the top */}
-                    <div className="flex-1 min-h-0" />
+                        {/* Time Segment Controls */}
+                        <TimeSegmentControls
+                          waveformSelection={waveformSelection}
+                          setWaveformSelection={setWaveformSelection}
+                          isPlaying={isPlaying}
+                          playSelectedSegment={playSelectedSegment}
+                          selectedKeys={selectedKeys}
+                          setSelectedKeys={setSelectedKeys}
+                          selectedCodes={selectedCodes}
+                          keySounds={keySounds}
+                          commitKeySounds={commitKeySounds}
+                          onClearSelected={clearSelectedKeySounds}
+                          hiddenCount={hiddenKeys.length}
+                          activeSourceId={activeSourceId}
+                          audioDuration={audioDuration}
+                          slot={soundSlot}
+                          setSlot={setSoundSlot}
+                          keys={keys}
+                          getKeyId={getKeyId}
+                        />
+                        {/* Absorbs leftover height so the blocks above stay pinned to the top */}
+                        <div className="flex-1 min-h-0" />
+                      </div>
+                    ) : (
+                      <div className="h-full min-w-0 flex items-center justify-center px-4 py-4 text-center text-xs text-base-content/50">
+                        Import an audio or video file to start editing the
+                        waveform
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="h-full min-w-0 flex items-center justify-center px-4 py-4 text-center text-xs text-base-content/50">
-                    Import an audio or video file to start editing the waveform
-                  </div>
-                )}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </>
   );
