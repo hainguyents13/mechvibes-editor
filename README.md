@@ -8,13 +8,14 @@ The editor runs entirely in the browser. It has no backend and needs no account.
 
 ## Development
 
-Requires Node.js 22+ and pnpm.
+Requires Node.js 22.12+ and pnpm.
 
 ```bash
 pnpm install
 pnpm dev        # start the dev server
 pnpm lint       # biome check
 pnpm typecheck  # tsc
+pnpm test       # unit tests (vitest)
 pnpm build      # typecheck and build to dist/
 ```
 
