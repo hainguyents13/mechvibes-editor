@@ -4,6 +4,7 @@ import {
   isSameSpan,
   scrollLeftToReveal,
   toRegionSpan,
+  USAGE_BADGE_MIN_WIDTH_PX,
 } from '@/components/editor/waveform-selection';
 import { type KeySounds, WHOLE_FILE } from '@/utils/soundPack';
 
@@ -94,34 +95,91 @@ describe('getUsageBadges', () => {
   ]);
 
   it('groups the keys of each segment of the file, at its centre', () => {
-    expect(getUsageBadges(keySounds, 's1', 50)).toEqual([
+    expect(getUsageBadges(keySounds, 's1', 200)).toEqual([
       {
         id: 'press:100-200',
         phase: 'press',
-        start: 100,
-        end: 200,
-        keyNames: ['KeyA', 'KeyB'],
-        centerPx: 7.5,
+        count: 2,
+        segments: [
+          { phase: 'press', start: 100, end: 200, keyNames: ['KeyA', 'KeyB'] },
+        ],
+        tooltip: 'Press sound of 2 keys: KeyA, KeyB (100ms - 200ms)',
+        centerPx: 30,
       },
       {
         id: 'release:300-400',
         phase: 'release',
-        start: 300,
-        end: 400,
-        keyNames: ['KeyB'],
-        centerPx: 17.5,
+        count: 1,
+        segments: [
+          { phase: 'release', start: 300, end: 400, keyNames: ['KeyB'] },
+        ],
+        tooltip: 'Release sound of 1 key: KeyB (300ms - 400ms)',
+        centerPx: 70,
       },
     ]);
   });
 
   it.each([
-    [10, 1.5, 3.5],
     [100, 15, 35],
     [300, 45, 105],
-  ])('places badges at %s px/s, below 100 too', (pxPerSec, press, release) => {
+    [1000, 150, 350],
+  ])('places badges at %s px/s', (pxPerSec, press, release) => {
     expect(
       getUsageBadges(keySounds, 's1', pxPerSec).map((badge) => badge.centerPx),
     ).toEqual([press, release]);
+  });
+
+  it('shares one badge between short neighbouring segments, so they do not overlap', () => {
+    const neighbours: KeySounds = new Map([
+      ['KeyA', { source: 's1', press: [0, 100] }],
+      ['Numpad0', { source: 's1', press: [100, 200] }],
+    ]);
+    const badges = getUsageBadges(neighbours, 's1', 100);
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toMatchObject({
+      id: 'press:0-100 press:100-200',
+      phase: 'press',
+      count: 2,
+      tooltip:
+        'Press sound of 1 key: KeyA (0ms - 100ms); Press sound of 1 key: Numpad0 (100ms - 200ms)',
+    });
+    expect(badges[0].segments.map((segment) => segment.keyNames)).toEqual([
+      ['KeyA'],
+      ['Numpad0'],
+    ]);
+    expect(badges[0].centerPx).toBeGreaterThanOrEqual(
+      USAGE_BADGE_MIN_WIDTH_PX / 2,
+    );
+  });
+
+  it('marks a badge of press and release segments together as mixed', () => {
+    expect(getUsageBadges(keySounds, 's1', 10)).toEqual([
+      expect.objectContaining({ phase: 'mixed', count: 3, centerPx: 10 }),
+    ]);
+  });
+
+  it('keeps a badge at the left edge whole', () => {
+    const early: KeySounds = new Map([
+      ['KeyA', { source: 's1', press: [0, 40] }],
+    ]);
+    expect(getUsageBadges(early, 's1', 100)[0].centerPx).toBe(
+      USAGE_BADGE_MIN_WIDTH_PX / 2,
+    );
+  });
+
+  it('keeps the badges of a run of short segments a badge apart', () => {
+    const run: KeySounds = new Map([
+      ['KeyA', { source: 's1', press: [0, 100] }],
+      ['KeyB', { source: 's1', press: [150, 250] }],
+      ['KeyC', { source: 's1', press: [300, 400] }],
+      ['KeyD', { source: 's1', press: [450, 550] }],
+      ['KeyE', { source: 's1', press: [750, 850] }],
+    ]);
+    const badges = getUsageBadges(run, 's1', 100);
+    expect(badges.map((badge) => badge.count)).toEqual([4, 1]);
+    expect(badges[1].centerPx - badges[0].centerPx).toBeGreaterThanOrEqual(
+      USAGE_BADGE_MIN_WIDTH_PX,
+    );
   });
 
   it('marks nothing for a key that plays its whole file of unknown length', () => {

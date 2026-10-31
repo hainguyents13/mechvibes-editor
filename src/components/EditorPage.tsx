@@ -1522,7 +1522,9 @@ export function EditorPage() {
           className="editor-chrome-vertical shrink-0 editor-panel-surface border-t-2 border-base-content/20"
           data-hidden={isPreview}
         >
+          {/* Stacked, the panel sizes to its content; capped so the keyboard keeps room */}
           <div
+            className="max-lg:max-h-[50dvh] max-lg:overflow-y-auto"
             style={panelHeight === null ? undefined : { height: panelHeight }}
           >
             <h2 className="sr-only">Sound editing</h2>
@@ -1533,7 +1535,7 @@ export function EditorPage() {
                   clip when a video is loaded. */}
               <div
                 data-tour="sources"
-                className={`w-full ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
               >
                 <AudioFileSelector
                   sources={sources}

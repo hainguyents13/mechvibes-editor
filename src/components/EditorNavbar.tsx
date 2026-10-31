@@ -111,8 +111,8 @@ export function EditorNavbar({
       <div className="flex px-2 sm:px-4 py-2 items-center justify-between gap-2">
         {/* Left Section  */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Website links: a menu on narrower screens, inline from 2xl up */}
-          <div className="dropdown 2xl:hidden">
+          {/* Website links: a menu on narrower screens, inline from 1800px up */}
+          <div className="dropdown min-[1800px]:hidden">
             <button
               type="button"
               aria-label="Mechvibes website"
@@ -134,7 +134,7 @@ export function EditorNavbar({
           <Logo text={`${siteIdentity.productName} Editor`} />
           <nav
             aria-label="Mechvibes website"
-            className="hidden 2xl:flex items-center gap-1 ml-2"
+            className="hidden min-[1800px]:flex items-center gap-1 ml-2"
           >
             {WEBSITE_LINKS.map(({ label, href, Icon }) => (
               <a
@@ -160,8 +160,8 @@ export function EditorNavbar({
             className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 max-w-full px-2 sm:px-3"
           >
             <span className="font-medium truncate">{packName}</span>
-            {/* Left out at lg, where the labelled buttons on the right leave the name little room */}
-            <span className="badge badge-xs badge-neutral hidden sm:inline-flex lg:hidden xl:inline-flex">
+            {/* Shown from xl only: below that the buttons on the right leave the name little room */}
+            <span className="badge badge-xs badge-neutral hidden xl:inline-flex shrink-0">
               {packType}
             </span>
             <Pencil className="h-3 w-3 shrink-0" />
@@ -170,8 +170,8 @@ export function EditorNavbar({
 
         {/* Right Section */}
         <div className="flex items-center gap-1 lg:gap-2 shrink-0">
-          {/* Icon-only at every width; the wrapper keeps the tooltip on a disabled button */}
-          <div className="flex items-center">
+          {/* Icon-only; left out on phones, which cannot edit, so the account button keeps its room. The wrapper keeps the tooltip on a disabled button */}
+          <div className="hidden sm:flex items-center">
             <div
               className="tooltip tooltip-bottom"
               data-tip={
@@ -333,11 +333,12 @@ export function EditorNavbar({
               className="btn btn-sm btn-ghost rounded-box flex items-center gap-2 px-2 lg:px-3"
             >
               <Avatar user={session.user} />
-              <span className="hidden xl:inline max-w-[8rem] truncate font-normal">
+              {/* Inline only on the widest screens, so the pack name keeps its room; the title and the My packs dialog name the user too */}
+              <span className="hidden min-[1800px]:inline max-w-[8rem] truncate font-normal">
                 {session.user.name}
               </span>
               <FolderOpen className="h-4 w-4 hidden lg:inline xl:hidden" />
-              <span className="hidden lg:inline">My packs</span>
+              <span className="hidden xl:inline">My packs</span>
             </button>
           )}
         </div>

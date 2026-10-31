@@ -76,7 +76,8 @@ export function KeyButton({
         !isPreview && isSelected ? 'btn-neutral' : '',
         isInert ? 'opacity-30 pointer-events-none' : '',
         isPreview && isModified ? 'btn-primary' : '',
-        isPressed ? 'btn-active scale-95' : '',
+        // An unmapped key plays nothing in preview, so it does not look pressed either.
+        isPressed && !isInert ? 'btn-active scale-95' : '',
       )}
       style={style}
       disabled={isInert}

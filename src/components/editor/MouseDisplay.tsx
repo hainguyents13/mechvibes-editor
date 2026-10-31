@@ -258,7 +258,7 @@ export function MouseDisplay({
           // Opaque fills only: the wheel sits on top of the main buttons.
           let fill = '[&>:first-child]:fill-base-100';
           if (isSelected) fill = '[&>:first-child]:fill-neutral';
-          else if (isPressed)
+          else if (isPressed && !isInert)
             fill =
               '[&>:first-child]:fill-[color-mix(in_oklab,var(--color-primary)_70%,var(--color-base-100))]';
           else if (isPreview && sound) fill = '[&>:first-child]:fill-primary';

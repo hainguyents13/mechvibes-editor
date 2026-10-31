@@ -56,43 +56,58 @@ export function scrollLeftToReveal(
   return Math.max(0, Math.min(target, Math.max(0, scrollWidth - clientWidth)));
 }
 
-export type UsageBadge = {
-  id: string;
+/** The narrowest a usage badge is drawn, in px. */
+export const USAGE_BADGE_MIN_WIDTH_PX = 20;
+
+/** One press or release segment cut from the file, with the keys that play it. */
+export type UsageSegment = {
   phase: 'press' | 'release';
   start: number;
   end: number;
   keyNames: string[];
-  /** Centre of the segment in px at the waveform's scale. */
+};
+
+export type UsageBadge = {
+  id: string;
+  /** 'mixed' when the badge stands for press and release segments together. */
+  phase: UsageSegment['phase'] | 'mixed';
+  /** The keys of all its segments, a key counted once for each segment. */
+  count: number;
+  segments: UsageSegment[];
+  /** One line for each segment, in the order they lie in the file. */
+  tooltip: string;
+  /** Centre of the badge in px at the waveform's scale. */
   centerPx: number;
 };
 
+function describeSegment({ phase, start, end, keyNames }: UsageSegment) {
+  const n = keyNames.length;
+  return `${phase === 'press' ? 'Press' : 'Release'} sound of ${n} key${n > 1 ? 's' : ''}: ${keyNames.join(', ')} (${Math.round(start)}ms - ${Math.round(end)}ms)`;
+}
+
 /**
- * One badge for each distinct press or release segment cut from `sourceId`, with
- * the keys that play it, placed at the segment's centre at `pxPerSec`, which is
- * the zoom value the waveform is drawn at.
+ * The usage badges for the press and release segments cut from `sourceId`,
+ * placed at `pxPerSec`, which is the zoom value the waveform is drawn at. Each
+ * distinct segment has a badge at its centre, kept at least half a badge from
+ * the left edge so none is cut off there. Segments whose badges would lie closer
+ * than a badge's width share one badge, at the mean of their centres, so short
+ * neighbouring segments do not draw badges over each other.
  */
 export function getUsageBadges(
   keySounds: KeySounds,
   sourceId: string,
   pxPerSec: number,
 ): UsageBadge[] {
-  const badges = new Map<string, UsageBadge>();
+  const segments = new Map<string, UsageSegment>();
   const add = (
-    phase: UsageBadge['phase'],
+    phase: UsageSegment['phase'],
     [start, end]: Segment,
     keyName: string,
   ) => {
     const id = `${phase}:${start}-${end}`;
-    const badge = badges.get(id) ?? {
-      id,
-      phase,
-      start,
-      end,
-      keyNames: [],
-      centerPx: ((start + end) / 2 / 1000) * pxPerSec,
-    };
-    badge.keyNames.push(keyName);
-    badges.set(id, badge);
+    const segment = segments.get(id) ?? { phase, start, end, keyNames: [] };
+    segment.keyNames.push(keyName);
+    segments.set(id, segment);
   };
   keySounds.forEach((sound, keyName) => {
     // A key of unknown length has no span to mark.
@@ -100,5 +115,46 @@ export function getUsageBadges(
     add('press', sound.press, keyName);
     if (sound.release) add('release', sound.release, keyName);
   });
-  return [...badges.values()];
+
+  const minCenterPx = USAGE_BADGE_MIN_WIDTH_PX / 2;
+  const placed = [...segments].map(([id, segment]) => ({
+    id,
+    segment,
+    centerPx: Math.max(
+      minCenterPx,
+      ((segment.start + segment.end) / 2 / 1000) * pxPerSec,
+    ),
+  }));
+  // Stable, so segments at one spot keep the order the keys came in.
+  placed.sort((a, b) => a.centerPx - b.centerPx);
+
+  // Measured from the last centre in a group, so groups lie a badge apart.
+  const groups: (typeof placed)[] = [];
+  for (const item of placed) {
+    const group = groups.at(-1);
+    const last = group?.at(-1);
+    if (
+      group &&
+      last &&
+      item.centerPx - last.centerPx < USAGE_BADGE_MIN_WIDTH_PX
+    ) {
+      group.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+
+  return groups.map((group): UsageBadge => {
+    const members = group.map((item) => item.segment);
+    const phases = new Set(members.map((segment) => segment.phase));
+    return {
+      id: group.map((item) => item.id).join(' '),
+      phase: phases.size > 1 ? 'mixed' : members[0].phase,
+      count: members.reduce((sum, segment) => sum + segment.keyNames.length, 0),
+      segments: members,
+      tooltip: members.map(describeSegment).join('; '),
+      centerPx:
+        group.reduce((sum, item) => sum + item.centerPx, 0) / group.length,
+    };
+  });
 }

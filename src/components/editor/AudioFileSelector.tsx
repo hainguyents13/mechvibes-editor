@@ -123,7 +123,7 @@ export function AudioFileSelector({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: drop target for more files; the Add button is the accessible path
     <div
-      className="h-full min-w-0 flex flex-col gap-3"
+      className="flex-1 min-h-0 min-w-0 flex flex-col gap-3"
       onDragOver={stopEvent}
       onDragEnter={stopEvent}
       onDragLeave={stopEvent}

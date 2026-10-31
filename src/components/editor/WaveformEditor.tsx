@@ -4,9 +4,20 @@ import {
   CombinedWaveform,
   type CombinedWaveformRef,
 } from '@/components/editor/CombinedWaveform';
-import { getUsageBadges } from '@/components/editor/waveform-selection';
+import {
+  getUsageBadges,
+  USAGE_BADGE_MIN_WIDTH_PX,
+  type UsageBadge,
+} from '@/components/editor/waveform-selection';
 import { useWaveformEditor } from '@/hooks/useWaveformEditor';
 import type { KeySounds } from '@/utils/soundPack';
+
+// A badge that stands for press and release segments together takes neither colour.
+const BADGE_STYLES: Record<UsageBadge['phase'], string> = {
+  press: 'badge-neutral',
+  release: 'badge-secondary',
+  mixed: 'badge-outline',
+};
 
 interface WaveformEditorProps {
   audioFile: File | null;
@@ -128,8 +139,8 @@ export function WaveformEditor({
     <fieldset className="fieldset py-0 shrink-0 min-h-0 min-w-0 w-full flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2 shrink-0 min-w-0 flex-wrap px-4">
         <h2 className="text-xs font-medium text-base-content">Waveform</h2>
-        {/* Zoom Controls */}
-        <div className="flex items-center gap-2">
+        {/* Zoom Controls: wrap on narrow screens rather than push Auto detect off the edge */}
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
           <span className="text-xs">Zoom</span>
           <input
             type="range"
@@ -138,7 +149,7 @@ export function WaveformEditor({
             step="10"
             value={zoomLevel}
             onChange={(e) => handleZoom(Number(e.target.value))}
-            className="range range-xs w-60"
+            className="range range-xs w-32 sm:w-60"
             title={`${Math.round(zoomLevel)}% zoom`}
           />
           <span className="text-xs w-10 text-center">
@@ -223,18 +234,18 @@ export function WaveformEditor({
               defaultDuration > 0 &&
               // Placed at the zoom value the waveform is drawn at.
               getUsageBadges(keySounds, sourceId, zoomLevel).map(
-                ({ id, phase, start, end, keyNames, centerPx }) => (
+                ({ id, phase, count, tooltip, centerPx }) => (
                   <div
                     key={id}
                     className="absolute top-[8px] transform -translate-y-1/2 -translate-x-1/2 tooltip z-50"
                     style={{ left: `${centerPx}px` }}
-                    data-tip={`${phase === 'press' ? 'Press' : 'Release'} sound of ${keyNames.length} key${keyNames.length > 1 ? 's' : ''}: ${keyNames.join(', ')} (${Math.round(start)}ms - ${Math.round(end)}ms)`}
+                    data-tip={tooltip}
                   >
                     <div
-                      className={`badge badge-xs rounded-none ${phase === 'press' ? 'badge-neutral' : 'badge-secondary'}`}
-                      style={{ minWidth: '20px' }}
+                      className={`badge badge-xs rounded-none ${BADGE_STYLES[phase]}`}
+                      style={{ minWidth: `${USAGE_BADGE_MIN_WIDTH_PX}px` }}
                     >
-                      {keyNames.length}
+                      {count}
                     </div>
                   </div>
                 ),
