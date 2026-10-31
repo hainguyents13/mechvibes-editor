@@ -2,7 +2,16 @@ import React from 'react';
 import type { KeySounds } from '@/utils/soundPack';
 import { KeyButton } from './KeyButton';
 import {
+  ARROW_DIRECTIONS,
+  findNeighbor,
+  KEY_GAP,
+  KEY_UNIT,
+  type LayoutRect,
+  type SelectModifiers,
+} from './key-selection';
+import {
   keyboardLayouts,
+  type LayoutKey,
   type LayoutName,
   parseKeyboardLayout,
 } from './keyboardLayouts';
@@ -10,15 +19,19 @@ import {
 interface KeyboardDisplayProps {
   layout: LayoutName;
   selectedKeys: Set<string>;
-  dragSelectedKeys: Set<string>;
   modifiedKeys: KeySounds;
-  onKeyClick: (keyId: string, e: React.MouseEvent) => void;
-  onKeyMouseDown: (keyId: string, e: React.MouseEvent) => void;
-  onKeyMouseUp: (keyId: string, e: React.MouseEvent) => void;
-  onKeyMouseEnter: (keyId: string, e: React.MouseEvent) => void;
-  onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
-  onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
-  onMouseUp: () => void;
+  /** The marquee being dragged, in unscaled keyboard pixels. */
+  marquee: LayoutRect | null;
+  /** The one key in the Tab order. */
+  tabStopId: string | null;
+  /** Pointer handlers that click keys and draw the marquee. */
+  pointerHandlers: React.HTMLAttributes<HTMLDivElement>;
+  onSelectKey: (
+    keyId: string,
+    modifiers: SelectModifiers,
+    via: 'keyboard',
+  ) => void;
+  onFocusKey: (keyId: string) => void;
   keyboardRef?: React.RefObject<HTMLDivElement | null>;
   /** Preview mode: keys respond to the real keyboard instead of selection. */
   isPreview?: boolean;
@@ -31,15 +44,12 @@ interface KeyboardDisplayProps {
 export function KeyboardDisplay({
   layout,
   selectedKeys,
-  dragSelectedKeys,
   modifiedKeys,
-  onKeyClick,
-  onKeyMouseDown,
-  onKeyMouseUp,
-  onKeyMouseEnter,
-  onMouseDown,
-  onMouseMove,
-  onMouseUp,
+  marquee,
+  tabStopId,
+  pointerHandlers,
+  onSelectKey,
+  onFocusKey,
   keyboardRef,
   isPreview = false,
   pressedKeyCodes,
@@ -50,39 +60,59 @@ export function KeyboardDisplay({
   const refToUse = keyboardRef || internalKeyboardRef;
   const keys = parseKeyboardLayout(keyboardLayouts[layout]);
 
-  // Calculate keyboard dimensions
-  const unitSize = 54;
-  const gap = 3;
-
   // Find the actual rightmost and bottommost positions
   const maxX = Math.max(...keys.map((key) => key.x + key.width));
   const maxY = Math.max(...keys.map((key) => key.y + key.height));
 
   // Calculate exact dimensions with equal padding on all sides
-  const padding = gap;
-  const keyboardWidth = maxX * (unitSize + gap) + padding * 2 - 1;
-  const keyboardHeight = maxY * (unitSize + gap) + padding * 2 - 1;
+  const padding = KEY_GAP;
+  const keyboardWidth = maxX * (KEY_UNIT + KEY_GAP) + padding * 2 - 1;
+  const keyboardHeight = maxY * (KEY_UNIT + KEY_GAP) + padding * 2 - 1;
 
   // Create unique key IDs
-  const getKeyId = (key: any, index: number) => {
+  const getKeyId = (key: LayoutKey, index: number) => {
     return `${key.label || 'key'}-${index}-${key.x}-${key.y}`;
   };
 
+  // Enter selects or deselects the focused key (Shift+Enter for a range), and
+  // the arrows move focus to the nearest key that way. Space is left to the
+  // waveform.
+  const handleKeyKeyDown =
+    (index: number) => (keyId: string, e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!e.repeat) {
+          onSelectKey(keyId, { range: e.shiftKey, toggle: true }, 'keyboard');
+        }
+        return;
+      }
+      const direction = ARROW_DIRECTIONS[e.key];
+      if (!direction || e.altKey || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      const next = findNeighbor(keys, index, direction);
+      refToUse.current
+        ?.querySelector<HTMLElement>(
+          `[data-key-id="${CSS.escape(getKeyId(keys[next], next))}"]`,
+        )
+        ?.focus();
+    };
+
   return (
     <div className="flex mx-auto justify-center">
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: mouse-driven editor surface ported unchanged from the website; keyboard access is a follow-up */}
+      {/* biome-ignore lint/a11y/useSemanticElements: a drawing of keys, not a form; pointer handlers draw the selection marquee and the keys themselves are focusable buttons */}
       <div
         ref={refToUse}
+        role="group"
+        aria-label="Keyboard keys"
         className="keyboard-display overflow-hidden relative bg-base-content/10 border border-base-content/10 rounded"
         style={{
           width: `${keyboardWidth}px`,
           height: `${keyboardHeight}px`,
           userSelect: 'none',
+          // A drag on a tablet draws a marquee instead of scrolling.
+          touchAction: isPreview ? undefined : 'none',
         }}
-        onMouseDown={isPreview ? undefined : onMouseDown}
-        onMouseMove={isPreview ? undefined : onMouseMove}
-        onMouseUp={isPreview ? undefined : onMouseUp}
-        onMouseLeave={isPreview ? undefined : onMouseUp}
+        {...(isPreview ? {} : pointerHandlers)}
       >
         {keys.map((key, index) => {
           const keyId = getKeyId(key, index);
@@ -97,24 +127,31 @@ export function KeyboardDisplay({
               y={key.y}
               width={key.width}
               height={key.height}
-              isSelected={
-                selectedKeys.has(keyId) || dragSelectedKeys.has(keyId)
-              }
+              isSelected={selectedKeys.has(keyId)}
               isModified={modifiedKeys.has(keyCode)}
               hasRelease={Boolean(modifiedKeys.get(keyCode)?.release)}
               isPreview={isPreview}
               isPressed={pressedKeyCodes?.has(keyCode) ?? false}
-              onClick={onKeyClick}
-              onMouseDown={
-                isPreview ? () => onPreviewKeyDown?.(keyCode) : onKeyMouseDown
-              }
-              onMouseUp={
-                isPreview ? () => onPreviewKeyUp?.(keyCode) : onKeyMouseUp
-              }
-              onMouseEnter={onKeyMouseEnter}
+              tabIndex={keyId === tabStopId ? 0 : -1}
+              onKeyDown={handleKeyKeyDown(index)}
+              onFocus={onFocusKey}
+              onPreviewMouseDown={() => onPreviewKeyDown?.(keyCode)}
+              onPreviewMouseUp={() => onPreviewKeyUp?.(keyCode)}
             />
           );
         })}
+        {marquee && !isPreview && (
+          <div
+            aria-hidden
+            className="absolute pointer-events-none rounded-sm border border-primary bg-primary/15"
+            style={{
+              left: marquee.left,
+              top: marquee.top,
+              width: marquee.right - marquee.left,
+              height: marquee.bottom - marquee.top,
+            }}
+          />
+        )}
       </div>
     </div>
   );

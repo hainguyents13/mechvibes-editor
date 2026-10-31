@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { clearKeySounds } from '@/utils/audioUtils';
 import {
   createHistory,
   getHistoryShortcut,
@@ -339,5 +340,39 @@ describe('getHistoryShortcut', () => {
     expect(press('z')).toBeNull();
     expect(press('Z', { shiftKey: true })).toBeNull();
     expect(press('x', { ctrlKey: true })).toBeNull();
+  });
+});
+
+describe('clearing key sounds', () => {
+  const clear = (codes: string[]) =>
+    commit('Clear 2 keys', (present) => ({
+      keySounds: clearKeySounds(codes, present.keySounds),
+    }));
+
+  it('comes back exactly as it was on Undo', () => {
+    const keySounds: KeySounds = new Map([
+      ['KeyA', { source: 's', press: [0, 50], release: [50, 90] }],
+      ['KeyS', { source: 's', press: [100, 150] }],
+      ['KeyD', { source: 's', press: [200, 250] }],
+    ]);
+    const expected = structuredClone(keySounds);
+    const cleared = run(
+      createHistory(snapshot({ keySounds })),
+      clear(['KeyA', 'KeyS']),
+    );
+    expect([...cleared.present.keySounds.keys()]).toEqual(['KeyD']);
+    expect(getUndoLabel(cleared)).toBe('Clear 2 keys');
+    const undone = run(cleared, UNDO);
+    expect(undone.present.keySounds).toBe(keySounds);
+    expect(undone.present.keySounds).toEqual(expected);
+  });
+
+  it('adds no step when none of the keys has a sound', () => {
+    const start = createHistory(
+      snapshot({
+        keySounds: new Map([['KeyD', { source: 's', press: [0, 50] }]]),
+      }),
+    );
+    expect(run(start, clear(['KeyA', 'KeyS']))).toBe(start);
   });
 });

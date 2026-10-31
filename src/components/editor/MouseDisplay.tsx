@@ -1,6 +1,7 @@
 import type React from 'react';
 import { cn } from '@/lib/utils';
 import type { KeySounds } from '@/utils/soundPack';
+import type { SelectModifiers } from './key-selection';
 import { keyboardLayouts, parseKeyboardLayout } from './keyboardLayouts';
 
 /** Natural size of the drawing; the editor scales it like the keyboard. */
@@ -168,8 +169,14 @@ const REGIONS: Record<string, Region> = {
 interface MouseDisplayProps {
   selectedKeys: Set<string>;
   modifiedKeys: KeySounds;
-  onKeyMouseDown: (keyId: string, e: React.MouseEvent) => void;
-  onKeyMouseUp: (keyId: string, e: React.MouseEvent) => void;
+  /** The one button in the Tab order. */
+  tabStopId: string | null;
+  onSelectKey: (
+    keyId: string | null,
+    modifiers: SelectModifiers,
+    via: 'pointer' | 'keyboard',
+  ) => void;
+  onFocusKey: (keyId: string) => void;
   keyboardRef?: React.RefObject<HTMLDivElement | null>;
   /** Preview mode: the real mouse plays the sounds; the drawing only lights up. */
   isPreview?: boolean;
@@ -178,13 +185,15 @@ interface MouseDisplayProps {
 
 /**
  * The mouse layout drawn as a mouse. Buttons select like keys: click to
- * select, Ctrl+click to add or remove.
+ * select, Ctrl or Cmd+click to add or remove, Shift+click for a range, arrow
+ * keys to move between buttons and Enter to select.
  */
 export function MouseDisplay({
   selectedKeys,
   modifiedKeys,
-  onKeyMouseDown,
-  onKeyMouseUp,
+  tabStopId,
+  onSelectKey,
+  onFocusKey,
   keyboardRef,
   isPreview = false,
   pressedKeyCodes,
@@ -201,10 +210,17 @@ export function MouseDisplay({
   );
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: a click beside the buttons deselects, as on the keyboard; Esc does the same from the keyboard
+    // biome-ignore lint/a11y/noStaticElementInteractions: the buttons inside take focus; this only catches clicks that miss them
     <div
       ref={keyboardRef}
       className="flex mx-auto justify-center select-none"
       style={MOUSE_DISPLAY_SIZE}
+      onClick={() => {
+        if (!isPreview) {
+          onSelectKey(null, { range: false, toggle: false }, 'pointer');
+        }
+      }}
     >
       <svg
         viewBox={`0 0 ${MOUSE_DISPLAY_SIZE.width} ${MOUSE_DISPLAY_SIZE.height}`}
@@ -218,7 +234,7 @@ export function MouseDisplay({
           className="fill-base-200 stroke-base-content/25"
           strokeWidth={1.5}
         />
-        {ordered.map(({ label, code, id: keyId }) => {
+        {ordered.map(({ label, code, id: keyId }, index) => {
           const region = REGIONS[label];
           const sound = modifiedKeys.get(code);
           const isSelected = !isPreview && selectedKeys.has(keyId);
@@ -239,7 +255,8 @@ export function MouseDisplay({
             <g
               key={keyId}
               role="button"
-              tabIndex={isPreview ? -1 : 0}
+              data-key-id={keyId}
+              tabIndex={isPreview ? -1 : keyId === tabStopId ? 0 : -1}
               aria-pressed={isSelected}
               aria-label={region.title}
               className={cn(
@@ -256,19 +273,46 @@ export function MouseDisplay({
                 isInert ? 'opacity-30 pointer-events-none' : '',
                 'focus-visible:[&>:first-child]:stroke-primary',
               )}
-              onMouseDown={(e) => {
+              onFocus={() => onFocusKey(keyId)}
+              onClick={(e) => {
                 e.stopPropagation();
-                if (!isPreview) onKeyMouseDown(keyId, e);
-              }}
-              onMouseUp={(e) => {
-                e.stopPropagation();
-                if (!isPreview) onKeyMouseUp(keyId, e);
+                if (isPreview) return;
+                onSelectKey(
+                  keyId,
+                  { range: e.shiftKey, toggle: e.ctrlKey || e.metaKey },
+                  'pointer',
+                );
               }}
               onKeyDown={(e) => {
-                if (isPreview || (e.key !== 'Enter' && e.key !== ' ')) return;
+                if (isPreview) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (!e.repeat) {
+                    onSelectKey(
+                      keyId,
+                      { range: e.shiftKey, toggle: true },
+                      'keyboard',
+                    );
+                  }
+                  return;
+                }
+                // Arrows follow the drawing, which does not match the layout grid.
+                const step =
+                  e.key === 'ArrowRight' || e.key === 'ArrowDown'
+                    ? 1
+                    : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+                      ? -1
+                      : 0;
+                if (!step || e.altKey || e.ctrlKey || e.metaKey) return;
                 e.preventDefault();
-                onKeyMouseDown(keyId, e as unknown as React.MouseEvent);
-                onKeyMouseUp(keyId, e as unknown as React.MouseEvent);
+                const next = ordered[index + step];
+                if (next) {
+                  keyboardRef?.current
+                    ?.querySelector<SVGGElement>(
+                      `[data-key-id="${CSS.escape(next.id)}"]`,
+                    )
+                    ?.focus();
+                }
               }}
             >
               <g className="stroke-base-content/30" strokeWidth={1.5}>

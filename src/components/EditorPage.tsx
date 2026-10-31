@@ -16,6 +16,7 @@ import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
 import { KeyboardShortcuts } from '@/components/editor/KeyboardShortcuts';
 import {
   keyboardLayouts,
+  type LayoutKey,
   parseKeyboardLayout,
 } from '@/components/editor/keyboardLayouts';
 import {
@@ -35,6 +36,7 @@ import { usePackHistory } from '@/hooks/usePackHistory';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { hasSeenEditorTour, startEditorTour } from '@/lib/editorTour';
 import { shouldIgnoreShortcut } from '@/lib/shortcuts';
+import { plural } from '@/lib/utils';
 import {
   downloadPackZip,
   type LibraryPackSummary,
@@ -42,7 +44,7 @@ import {
   updatePackZip,
   WebsiteApiError,
 } from '@/lib/websiteApi';
-import { getAudioDuration } from '@/utils/audioUtils';
+import { clearKeySounds, getAudioDuration } from '@/utils/audioUtils';
 import {
   getHistoryShortcut,
   isSameSnapshot,
@@ -474,7 +476,7 @@ export function EditorPage() {
   }, [keyboardNaturalWidth, keyboardNaturalHeight, isPreview]);
 
   // Create unique key IDs — stable identity so consumers can memoise on it
-  const getKeyId = useCallback((key: any, index: number) => {
+  const getKeyId = useCallback((key: LayoutKey, index: number) => {
     return `${key.label || 'key'}-${index}-${key.x}-${key.y}`;
   }, []);
 
@@ -495,21 +497,33 @@ export function EditorPage() {
     }
   }, []);
 
+  // Preview plays the real keyboard, and a dialog or a busy overlay holds a
+  // copy of the pack, so page-wide shortcuts stay off meanwhile.
+  const isKeyboardOwnedElsewhere =
+    isPreview ||
+    showEditPackModal ||
+    confirmDiscardAction !== null ||
+    showMyPacks ||
+    isExporting ||
+    isUpdating ||
+    openingPackId !== null;
+
   // Keyboard selection hook
   const {
     selectedKeys,
     setSelectedKeys,
-    dragSelectedKeys,
+    marquee,
+    tabStopId,
+    setFocusKeyId,
+    selectKey,
     keyboardRef,
-    handleKeyMouseDown,
-    handleMouseMove,
-    handleKeyMouseEnter,
-    handleKeyMouseUp,
-    handleMouseUp,
-    handleKeyClick,
-    handleMouseDown,
+    pointerHandlers,
   } = useKeyboardSelection({
     keys,
+    getKeyId,
+    enabled: !isKeyboardOwnedElsewhere,
+    // Declared below, once the selected codes are known; called later from events.
+    onClearSelected: () => clearSelectedKeySounds(),
     onSingleKeySelect: (keyCode) => {
       // Show the key's file and the half of its sound being edited.
       const sound = keySounds.get(keyCode);
@@ -519,7 +533,6 @@ export function EditorPage() {
       setActiveSourceId(sound.source);
       setWaveformSelection({ start: segment[0], end: segment[1] });
     },
-    getKeyId,
   });
 
   const selectedCodes = useMemo(
@@ -533,6 +546,16 @@ export function EditorPage() {
       ),
     [selectedKeys, keyCodeById],
   );
+
+  // Delete, Backspace and the Clear button take the whole sound off the
+  // selected keys, as one undo step. Keys without a sound add no step.
+  const clearSelectedKeySounds = () => {
+    const count = selectedCodes.filter((code) => keySounds.has(code)).length;
+    if (count === 0) return;
+    commitKeySounds(`Clear ${plural(count, 'key')}`, (current) =>
+      clearKeySounds(selectedCodes, current),
+    );
+  };
 
   // Add audio or video files; the first one added opens in the waveform.
   const handleAddSources = async (files: File[]) => {
@@ -971,17 +994,6 @@ export function EditorPage() {
     };
   }, [isPreview, isMousePack, playKey, exitPreview]);
 
-  // Preview plays the real keyboard, and a dialog or a busy overlay holds a
-  // copy of the pack, so page-wide shortcuts stay off meanwhile.
-  const isKeyboardOwnedElsewhere =
-    isPreview ||
-    showEditPackModal ||
-    confirmDiscardAction !== null ||
-    showMyPacks ||
-    isExporting ||
-    isUpdating ||
-    openingPackId !== null;
-
   useEffect(() => {
     if (isKeyboardOwnedElsewhere) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1272,8 +1284,9 @@ export function EditorPage() {
                   <MouseDisplay
                     selectedKeys={selectedKeys}
                     modifiedKeys={keySounds}
-                    onKeyMouseDown={handleKeyMouseDown}
-                    onKeyMouseUp={handleKeyMouseUp}
+                    tabStopId={tabStopId}
+                    onSelectKey={selectKey}
+                    onFocusKey={setFocusKeyId}
                     keyboardRef={keyboardRef}
                     isPreview={isPreview}
                     pressedKeyCodes={pressedKeyCodes}
@@ -1282,15 +1295,12 @@ export function EditorPage() {
                   <KeyboardDisplay
                     layout={layout}
                     selectedKeys={selectedKeys}
-                    dragSelectedKeys={dragSelectedKeys}
                     modifiedKeys={keySounds}
-                    onKeyClick={handleKeyClick}
-                    onKeyMouseDown={handleKeyMouseDown}
-                    onKeyMouseUp={handleKeyMouseUp}
-                    onKeyMouseEnter={handleKeyMouseEnter}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
+                    marquee={marquee}
+                    tabStopId={tabStopId}
+                    pointerHandlers={pointerHandlers}
+                    onSelectKey={selectKey}
+                    onFocusKey={setFocusKeyId}
                     keyboardRef={keyboardRef}
                     isPreview={isPreview}
                     pressedKeyCodes={pressedKeyCodes}
@@ -1311,6 +1321,7 @@ export function EditorPage() {
               selectedKeys={selectedKeys}
               setSelectedKeys={setSelectedKeys}
               maxWidth={keyboardNaturalWidth * keyboardScale}
+              isMousePack={isMousePack}
             />
           </div>
         </div>
@@ -1434,6 +1445,7 @@ export function EditorPage() {
                       selectedCodes={selectedCodes}
                       keySounds={keySounds}
                       commitKeySounds={commitKeySounds}
+                      onClearSelected={clearSelectedKeySounds}
                       activeSourceId={activeSourceId}
                       audioDuration={audioDuration}
                       slot={soundSlot}

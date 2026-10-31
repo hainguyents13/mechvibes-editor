@@ -1,5 +1,6 @@
 import type React from 'react';
 import { cn } from '@/lib/utils';
+import { keyRect } from './key-selection';
 
 interface KeyButtonProps {
   label: string;
@@ -12,13 +13,16 @@ interface KeyButtonProps {
   /** The key also plays a sound when it comes up. */
   hasRelease?: boolean;
   keyId: string;
-  onClick: (keyId: string, e: React.MouseEvent) => void;
-  onMouseDown: (keyId: string, e: React.MouseEvent) => void;
-  onMouseUp: (keyId: string, e: React.MouseEvent) => void;
-  onMouseEnter: (keyId: string, e: React.MouseEvent) => void;
+  /** 0 for the one key in the Tab order, -1 for the rest. */
+  tabIndex: number;
+  onKeyDown: (keyId: string, e: React.KeyboardEvent<HTMLButtonElement>) => void;
+  onFocus: (keyId: string) => void;
   /** Preview mode: unmapped keys are inert, mapped ones light up while held. */
   isPreview?: boolean;
   isPressed?: boolean;
+  /** Preview only: play the key while the mouse holds it. */
+  onPreviewMouseDown?: () => void;
+  onPreviewMouseUp?: () => void;
 }
 
 export function KeyButton({
@@ -31,31 +35,34 @@ export function KeyButton({
   isModified,
   hasRelease = false,
   keyId,
-  onMouseDown,
-  onMouseUp,
-  onMouseEnter,
+  tabIndex,
+  onKeyDown,
+  onFocus,
   isPreview = false,
   isPressed = false,
+  onPreviewMouseDown,
+  onPreviewMouseUp,
 }: KeyButtonProps) {
-  const unitSize = 54;
-  const gap = 3;
-  const padding = gap;
-
+  const box = keyRect({ x, y, width, height });
   const style = {
     position: 'absolute' as const,
-    left: x * unitSize + x * gap + padding,
-    top: y * unitSize + y * gap + padding,
-    width: width * unitSize + (width - 1) * gap,
-    height: height * unitSize + (height - 1) * gap,
+    left: box.left,
+    top: box.top,
+    width: box.right - box.left,
+    height: box.bottom - box.top,
   };
 
   // In preview mode a key is only interactive when a sound is mapped to it.
   const isInert = isPreview && !isModified;
 
+  // Clicks and drags in edit mode are handled by the keyboard around the keys.
   return (
-    // biome-ignore lint/a11y/useKeyWithMouseEvents: mouse-driven editor surface ported unchanged from the website; keyboard access is a follow-up
     <button
       type="button"
+      data-key-id={keyId}
+      tabIndex={isPreview ? -1 : tabIndex}
+      aria-pressed={isPreview ? undefined : isSelected}
+      aria-label={label.trim() ? label.replace(/\n/g, ' ') : 'Space'}
       className={cn(
         'btn text-xs flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
         !isPreview && isSelected ? 'btn-neutral' : '',
@@ -65,20 +72,10 @@ export function KeyButton({
       )}
       style={style}
       disabled={isInert}
-      onMouseDown={(e) => {
-        e.stopPropagation();
-        onMouseDown(keyId, e);
-      }}
-      onMouseUp={(e) => {
-        e.stopPropagation();
-        onMouseUp(keyId, e);
-      }}
-      onMouseEnter={(e) => {
-        onMouseEnter(keyId, e);
-      }}
-      onMouseOver={(e) => {
-        onMouseEnter(keyId, e);
-      }}
+      onKeyDown={isPreview ? undefined : (e) => onKeyDown(keyId, e)}
+      onFocus={() => onFocus(keyId)}
+      onMouseDown={isPreview ? onPreviewMouseDown : undefined}
+      onMouseUp={isPreview ? onPreviewMouseUp : undefined}
     >
       {!isPreview && isModified && (
         <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary rounded-full border-2 border-white shadow-lg ring-2 ring-primary/30"></div>

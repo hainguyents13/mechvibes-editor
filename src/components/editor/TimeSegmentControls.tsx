@@ -31,6 +31,8 @@ interface TimeSegmentControlsProps {
     label: string,
     update: (keySounds: KeySounds) => KeySounds,
   ) => void;
+  /** Remove the press and release sounds of the selected keys. */
+  onClearSelected: () => void;
   /** The source shown in the waveform; applied sounds are cut from it. */
   activeSourceId: string;
   /** Length of the active source in seconds. */
@@ -53,6 +55,7 @@ export function TimeSegmentControls({
   selectedCodes,
   keySounds,
   commitKeySounds,
+  onClearSelected,
   activeSourceId,
   audioDuration,
   slot,
@@ -74,6 +77,7 @@ export function TimeSegmentControls({
   const codesWithRelease = selectedCodes.filter(
     (code) => keySounds.get(code)?.release,
   );
+  const codesWithSound = selectedCodes.filter((code) => keySounds.has(code));
 
   const [showResetConfirm, setShowResetConfirm] = React.useState(false);
 
@@ -314,6 +318,17 @@ export function TimeSegmentControls({
               </button>
             </div>
           )}
+          <div>
+            <button
+              type="button"
+              className="btn btn-sm rounded-box"
+              onClick={onClearSelected}
+              disabled={codesWithSound.length === 0}
+              title="Remove the press and release sounds of the selected keys (Delete)"
+            >
+              Clear {plural(codesWithSound.length, 'key')}
+            </button>
+          </div>
           <div className="ml-auto">
             <button
               type="button"

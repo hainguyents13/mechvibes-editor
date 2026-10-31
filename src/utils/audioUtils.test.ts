@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyPressToKeys,
   applyReleaseToKeys,
+  clearKeySounds,
   formatDuration,
   isMediaFile,
   isValidWaveformSelection,
@@ -116,6 +117,30 @@ describe('removeReleaseFromKeys', () => {
     expect(result.get('KeyC')).toBe(input.get('KeyC'));
     expect(result.has('KeyD')).toBe(false);
     expect(result.size).toBe(input.size);
+  });
+});
+
+describe('clearKeySounds', () => {
+  it('takes the press and release off the given keys only', () => {
+    const input = keySounds();
+    const result = updated(input, () =>
+      clearKeySounds(['KeyA', 'KeyB'], input),
+    );
+    expect([...result.keys()]).toEqual(['KeyC']);
+    expect(result.get('KeyC')).toBe(input.get('KeyC'));
+  });
+
+  it('returns the same map when none of the keys has a sound', () => {
+    const input = keySounds();
+    expect(clearKeySounds(['KeyD', 'KeyE'], input)).toBe(input);
+    expect(clearKeySounds([], input)).toBe(input);
+  });
+
+  it('does not mind repeated or unknown codes', () => {
+    const result = updated(keySounds(), (input) =>
+      clearKeySounds(['KeyA', 'KeyA', 'KeyZ'], input),
+    );
+    expect([...result.keys()]).toEqual(['KeyB', 'KeyC']);
   });
 });
 

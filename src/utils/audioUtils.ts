@@ -100,6 +100,21 @@ export const removeReleaseFromKeys = (
 };
 
 /**
+ * Remove the whole sound (press and release) of the given keys; they go back
+ * to silent. Returns `keySounds` itself when none of them had a sound, so
+ * callers can skip recording a change that did nothing.
+ */
+export const clearKeySounds = (
+  keyCodes: string[],
+  keySounds: KeySounds,
+): KeySounds => {
+  if (!keyCodes.some((code) => keySounds.has(code))) return keySounds;
+  const next = new Map(keySounds);
+  for (const code of keyCodes) next.delete(code);
+  return next;
+};
+
+/**
  * Validate waveform selection
  */
 export const isValidWaveformSelection = (selection: {
