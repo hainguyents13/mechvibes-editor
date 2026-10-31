@@ -390,6 +390,8 @@ export const keyboardLayouts = {
 
 export type LayoutName = keyof typeof keyboardLayouts;
 
+export type KeyboardSize = Exclude<LayoutName, 'mouse'>;
+
 export type LayoutKey = {
   label: string;
   /** KeyboardEvent.code (or Mouse… code) the key plays under. */

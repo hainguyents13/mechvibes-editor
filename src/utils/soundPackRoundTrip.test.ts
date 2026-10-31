@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeAudio, makePackZip, readPackZip } from '@/test/packZip';
+import { getAudioDuration } from '@/utils/audioUtils';
+import { WHOLE_FILE } from '@/utils/soundPack';
 import { buildSoundPackZip } from '@/utils/soundPackExport';
 import { parseSoundPackZip } from '@/utils/soundPackImport';
 
@@ -8,6 +10,11 @@ vi.mock('@/utils/audioUtils', async (importOriginal) => ({
   // Node has no media elements to read a length from.
   getAudioDuration: vi.fn(async () => 1.5),
 }));
+
+afterEach(() => {
+  // Back to 1.5 s.
+  vi.mocked(getAudioDuration).mockReset();
+});
 
 /** Open a pack and export it again, the way Import then Export does. */
 async function reexport(file: File) {
@@ -34,6 +41,7 @@ async function roundTrip(files: Parameters<typeof makePackZip>[0]) {
     expect(await second.out.bytes(name)).toEqual(await first.out.bytes(name));
   }
   expect(second.pack.warnings).toEqual([]);
+  expect(second.pack.notes).toEqual([]);
   return first;
 }
 
@@ -430,4 +438,42 @@ describe('import then export', () => {
       }
     },
   );
+
+  it('keeps a key without timing when the length of its file is unknown', async () => {
+    vi.mocked(getAudioDuration).mockResolvedValue(0);
+    const files = {
+      'config.json': packConfig({
+        definition_method: 'multi',
+        audio_file: 'a.ogg',
+        definitions: {
+          KeyA: { audio_file: 'a.ogg', timing: [[0, 40]] },
+          KeyC: { audio_file: 'a.ogg' },
+        },
+      }),
+      'a.ogg': fakeAudio('a'),
+    };
+    const first = await reexport(await makePackZip(files));
+    const second = await reexport(
+      new File([first.blob], 'pack.zip', { type: 'application/zip' }),
+    );
+
+    expect(first.pack.keySounds.get('KeyC')?.press).toEqual(WHOLE_FILE);
+    expect(first.out.config).toEqual(
+      exportedConfig({
+        definition_method: 'multi',
+        audio_file: 'a.ogg',
+        definitions: {
+          KeyA: { audio_file: 'a.ogg', timing: [[0, 40]] },
+          KeyC: { audio_file: 'a.ogg' },
+        },
+      }),
+    );
+    expect(second.out.configText).toBe(first.out.configText);
+    expect(second.out.names).toEqual(first.out.names);
+    expect(await second.out.bytes('a.ogg')).toEqual(fakeAudio('a'));
+    expect(first.pack.warnings).toEqual([
+      'This browser cannot read the audio of these keys, so you cannot hear or edit them here. They still play their whole file in the app and are exported unchanged: KeyC.',
+    ]);
+    expect(second.pack.warnings).toEqual(first.pack.warnings);
+  });
 });

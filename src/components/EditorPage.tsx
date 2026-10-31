@@ -9,12 +9,20 @@ import React, {
 import type WaveSurfer from 'wavesurfer.js';
 import type RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js';
 import { ConfirmDiscardModal } from '@/components/ConfirmDiscardModal';
+import { ConfirmPackTypeModal } from '@/components/ConfirmPackTypeModal';
 import { EditorNavbar } from '@/components/EditorNavbar';
 import { EditPackModal } from '@/components/EditPackModal';
 import { AudioFileSelector } from '@/components/editor/AudioFileSelector';
+import { HiddenKeysTray } from '@/components/editor/HiddenKeysTray';
+import {
+  codesOfOtherKind,
+  findHiddenKeys,
+  inferKeyboardSize,
+} from '@/components/editor/hidden-keys';
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
 import { KeyboardShortcuts } from '@/components/editor/KeyboardShortcuts';
 import {
+  type KeyboardSize,
   keyboardLayouts,
   type LayoutKey,
   parseKeyboardLayout,
@@ -54,6 +62,7 @@ import {
   countKeysBySource,
   createAudioSource,
   isSamePackInfo,
+  isWholeFile,
   type KeySounds,
   type PackExtras,
   type PackInfo,
@@ -270,9 +279,7 @@ function libraryErrorNotice(error: unknown, fallback: string): Notice {
 
 export function EditorPage() {
   // Basic state
-  const [keyboardSize, setKeyboardSize] = useState<
-    'fullsize' | 'tkl' | 'compact'
-  >('fullsize');
+  const [keyboardSize, setKeyboardSize] = useState<KeyboardSize>('fullsize');
   const {
     present,
     undoLabel,
@@ -305,6 +312,9 @@ export function EditorPage() {
     null | 'new' | 'import' | { pack: LibraryPackSummary }
   >(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  // The pack type a switch is waiting on, while its dialog asks about the
+  // sounds that type would not show.
+  const [pendingPackType, setPendingPackType] = useState<PackType | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const { session, refresh: refreshSession } = useLibrarySession();
   const [libraryPack, setLibraryPack] = useState<OpenLibraryPack | null>(null);
@@ -367,6 +377,23 @@ export function EditorPage() {
     [layout],
   );
 
+  // Mapped codes the drawn layout leaves out; the tray under the keyboard lists them.
+  const hiddenKeys = useMemo(
+    () => findHiddenKeys(keySounds.keys(), layout),
+    [keySounds, layout],
+  );
+  // Codes preview can play: keys in a keyboard pack, buttons in a mouse pack,
+  // each with a sound of known length.
+  const playableCount = useMemo(() => {
+    const otherKind = new Set(
+      codesOfOtherKind(keySounds.keys(), packInfo.packType),
+    );
+    return [...keySounds].filter(
+      ([code, { press }]) => !otherKind.has(code) && !isWholeFile(press),
+    ).length;
+  }, [keySounds, packInfo.packType]);
+  const hasHiddenKeys = hiddenKeys.length > 0;
+
   const [viewport, setViewport] = useState(readViewport);
   useEffect(() => {
     const onResize = () => setViewport(readViewport());
@@ -424,8 +451,11 @@ export function EditorPage() {
     // measured: those rows derive their width from keyboardScale, so measuring them
     // would make the scale depend on its own output. The rows keep a minimum width
     // so they stay on one line and this height holds. Preview collapses both rows,
-    // so the keyboard gets that space back.
-    const rowsHeight = isPreview ? 0 : 24 + 20 + 24;
+    // so the keyboard gets that space back. The hidden-keys tray, when shown,
+    // adds its own row and one more gap.
+    const rowsHeight = isPreview
+      ? 0
+      : 24 + 20 + 24 + (hasHiddenKeys ? 24 + 12 : 0);
     const rescale = (width: number, height: number) => {
       const available = height - rowsHeight;
       const scale = Math.min(
@@ -473,7 +503,7 @@ export function EditorPage() {
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [keyboardNaturalWidth, keyboardNaturalHeight, isPreview]);
+  }, [keyboardNaturalWidth, keyboardNaturalHeight, isPreview, hasHiddenKeys]);
 
   // Create unique key IDs — stable identity so consumers can memoise on it
   const getKeyId = useCallback((key: LayoutKey, index: number) => {
@@ -503,6 +533,7 @@ export function EditorPage() {
     isPreview ||
     showEditPackModal ||
     confirmDiscardAction !== null ||
+    pendingPackType !== null ||
     showMyPacks ||
     isExporting ||
     isUpdating ||
@@ -602,11 +633,37 @@ export function EditorPage() {
     }
   };
 
-  const handlePackTypeChange = (packType: PackType) => {
-    if (packType === packInfo.packType) return;
+  const switchPackType = (packType: PackType) => {
     commit(`Switch to ${packType} pack`, (current) => ({
       packInfo: { ...current.packInfo, packType },
     }));
+  };
+
+  // Sounds the other type neither shows nor plays are asked about first.
+  const handlePackTypeChange = (packType: PackType) => {
+    if (packType === packInfo.packType) return;
+    if (codesOfOtherKind(keySounds.keys(), packType).length > 0) {
+      setPendingPackType(packType);
+    } else {
+      switchPackType(packType);
+    }
+  };
+
+  // Shortcuts are off while the dialog is open, so the pack cannot change under it.
+  const pendingCodes = pendingPackType
+    ? codesOfOtherKind(keySounds.keys(), pendingPackType)
+    : [];
+  const closePackTypeDialog = useCallback(() => setPendingPackType(null), []);
+
+  // The type switch and the removal are one step, so Undo brings back both.
+  const switchPackTypeAndRemove = (packType: PackType, codes: string[]) => {
+    commit(
+      `Switch to ${packType} and remove ${plural(codes.length, 'sound')}`,
+      (current) => ({
+        packInfo: { ...current.packInfo, packType },
+        keySounds: clearKeySounds(codes, current.keySounds),
+      }),
+    );
   };
 
   // Clear what belongs to the open pack but is not in its history.
@@ -686,6 +743,12 @@ export function EditorPage() {
       keySounds: imported.keySounds,
     };
     startFrom(snapshot, fromLibrary ? snapshot : null);
+    // Show every mapped key. Outside the history, like any size change.
+    if (imported.info.packType === 'Keyboard') {
+      setKeyboardSize((current) =>
+        inferKeyboardSize(imported.keySounds.keys(), current),
+      );
+    }
     setLoadedPackId(imported.id);
     setPackExtras(imported.extras);
     setActiveSourceId(imported.sources[0]?.id ?? null);
@@ -1030,8 +1093,8 @@ export function EditorPage() {
                 : previewError
                   ? previewError
                   : isMousePack
-                    ? `Click or scroll anywhere — ${keySounds.size} button${keySounds.size !== 1 ? 's' : ''} mapped`
-                    : `Press any highlighted key — ${keySounds.size} key${keySounds.size !== 1 ? 's' : ''} mapped`}
+                    ? `Click or scroll anywhere — ${plural(playableCount, 'button')} mapped`
+                    : `Press any highlighted key — ${plural(playableCount, 'key')} mapped`}
             </span>
             <button
               type="button"
@@ -1052,7 +1115,7 @@ export function EditorPage() {
             onExport={handleExport}
             isExporting={isExporting}
             onPreview={() => setIsPreview(true)}
-            canPreview={sources.length > 0 && keySounds.size > 0}
+            canPreview={sources.length > 0 && playableCount > 0}
             session={session}
             signInHref={signInUrl(window.location.href)}
             signInInNewTab={isDirty}
@@ -1086,6 +1149,22 @@ export function EditorPage() {
           isOpen={confirmDiscardAction !== null}
           onCancel={() => setConfirmDiscardAction(null)}
           onConfirm={confirmDiscard}
+        />
+
+        <ConfirmPackTypeModal
+          packType={pendingPackType}
+          codes={pendingCodes}
+          onCancel={closePackTypeDialog}
+          onKeep={() => {
+            if (pendingPackType) switchPackType(pendingPackType);
+            closePackTypeDialog();
+          }}
+          onRemove={() => {
+            if (pendingPackType) {
+              switchPackTypeAndRemove(pendingPackType, pendingCodes);
+            }
+            closePackTypeDialog();
+          }}
         />
 
         {session.status === 'signed-in' && (
@@ -1312,6 +1391,27 @@ export function EditorPage() {
             </div>
           </div>
 
+          {/* Keys with a sound that the drawn layout leaves out */}
+          {hasHiddenKeys && (
+            <div
+              className="editor-chrome-vertical w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+              data-hidden={isPreview}
+              style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+            >
+              <h2 className="sr-only">Hidden keys</h2>
+              <HiddenKeysTray
+                hiddenKeys={hiddenKeys}
+                keySounds={keySounds}
+                sources={sources}
+                onClear={(code) =>
+                  commitKeySounds(`Clear ${code}`, (current) =>
+                    clearKeySounds([code], current),
+                  )
+                }
+              />
+            </div>
+          )}
+
           {/* Shortcuts Bar */}
           <div
             className="editor-chrome-vertical w-full flex justify-center shrink-0"
@@ -1446,6 +1546,7 @@ export function EditorPage() {
                       keySounds={keySounds}
                       commitKeySounds={commitKeySounds}
                       onClearSelected={clearSelectedKeySounds}
+                      hiddenCount={hiddenKeys.length}
                       activeSourceId={activeSourceId}
                       audioDuration={audioDuration}
                       slot={soundSlot}

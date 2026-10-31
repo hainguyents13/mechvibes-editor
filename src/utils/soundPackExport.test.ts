@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readPackZip } from '@/test/packZip';
+import { fakeAudio, readPackZip } from '@/test/packZip';
+import { getAudioDuration } from '@/utils/audioUtils';
 import {
   createAudioSource,
   type KeySound,
   type PackInfo,
+  WHOLE_FILE,
 } from '@/utils/soundPack';
 import { buildSoundPackZip } from '@/utils/soundPackExport';
 import { parseSoundPackZip } from '@/utils/soundPackImport';
@@ -90,6 +92,7 @@ function exportFile(
 describe('buildSoundPackZip', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(getAudioDuration).mockReset();
   });
 
   it('cuts a video down to the segments keys use', async () => {
@@ -186,5 +189,58 @@ describe('buildSoundPackZip', () => {
         KeyA: { press: [0, 100] },
       }),
     ).rejects.toThrow('Could not extract audio from clip.mp4 for export.');
+  });
+
+  it('writes a key that plays its whole file without timing, in a multi pack', async () => {
+    const out = await readPackZip(
+      await exportFile(
+        new File([fakeAudio('a')], 'click.ogg', { type: 'audio/ogg' }),
+        { KeyA: { press: WHOLE_FILE }, KeyB: { press: [0, 50] } },
+      ),
+    );
+
+    expect(out.names).toEqual(['click.ogg', 'config.json']);
+    expect(await out.bytes('click.ogg')).toEqual(fakeAudio('a'));
+    expect(out.config.definition_method).toBe('multi');
+    expect(out.config.audio_file).toBe('click.ogg');
+    expect(out.config.definitions).toEqual({
+      KeyA: { audio_file: 'click.ogg' },
+      KeyB: { audio_file: 'click.ogg', timing: [[0, 50]] },
+    });
+  });
+
+  it('leaves out a file no key uses, and opens a whole-file key the same again', async () => {
+    vi.mocked(getAudioDuration).mockResolvedValue(0);
+    const used = createAudioSource(
+      new File([fakeAudio('a')], 'a.ogg', { type: 'audio/ogg' }),
+      0,
+    );
+    const unused = createAudioSource(
+      new File([fakeAudio('b')], 'b.ogg', { type: 'audio/ogg' }),
+      1,
+    );
+    const blob = await buildSoundPackZip({
+      info,
+      sources: [used, unused],
+      keySounds: new Map([['KeyA', { source: used.id, press: WHOLE_FILE }]]),
+    });
+    const out = await readPackZip(blob);
+
+    expect(out.names).toEqual(['a.ogg', 'config.json']);
+    expect(out.config.definitions).toEqual({ KeyA: { audio_file: 'a.ogg' } });
+
+    const pack = await parseSoundPackZip(
+      new File([blob], 'pack.zip', { type: 'application/zip' }),
+    );
+    expect(pack.keySounds.get('KeyA')?.press).toEqual(WHOLE_FILE);
+    const again = await readPackZip(
+      await buildSoundPackZip({
+        info: pack.info,
+        sources: pack.sources,
+        keySounds: pack.keySounds,
+        extras: pack.extras,
+      }),
+    );
+    expect(again.configText).toBe(out.configText);
   });
 });

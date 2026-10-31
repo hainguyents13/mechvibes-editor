@@ -33,6 +33,8 @@ interface TimeSegmentControlsProps {
   ) => void;
   /** Remove the press and release sounds of the selected keys. */
   onClearSelected: () => void;
+  /** Mapped keys the current layout does not draw; Reset all clears them too. */
+  hiddenCount: number;
   /** The source shown in the waveform; applied sounds are cut from it. */
   activeSourceId: string;
   /** Length of the active source in seconds. */
@@ -56,6 +58,7 @@ export function TimeSegmentControls({
   keySounds,
   commitKeySounds,
   onClearSelected,
+  hiddenCount,
   activeSourceId,
   audioDuration,
   slot,
@@ -361,8 +364,10 @@ export function TimeSegmentControls({
             <h3 className="text-base font-semibold">Reset all key mappings?</h3>
             <p className="py-3 text-sm text-base-content/70">
               This clears the sound on all{' '}
-              {plural(keySounds.size, 'mapped key')}. The audio files themselves
-              are kept. You can undo this.
+              {plural(keySounds.size, 'mapped key')}
+              {hiddenCount > 0 &&
+                `, including ${hiddenCount} not shown on this layout`}
+              . The audio files themselves are kept. You can undo this.
             </p>
             <div className="modal-action">
               <button

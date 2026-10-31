@@ -1,16 +1,55 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeAudio, makePackZip, readPackZip } from '@/test/packZip';
+import { getAudioDuration, getDecodedDuration } from '@/utils/audioUtils';
+import {
+  type AudioSource,
+  createAudioSource,
+  type KeySound,
+  WHOLE_FILE,
+} from '@/utils/soundPack';
 import { buildSoundPackZip } from '@/utils/soundPackExport';
-import { migrateKeyCode, parseSoundPackZip } from '@/utils/soundPackImport';
+import {
+  findSegmentsPastEnd,
+  migrateKeyCode,
+  parseSoundPackZip,
+} from '@/utils/soundPackImport';
 
 vi.mock('@/utils/audioUtils', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/utils/audioUtils')>()),
-  // Node has no media elements to read a length from.
+  // Node has no media elements to read a length from, nor a decoder.
   getAudioDuration: vi.fn(async () => 1.5),
+  getDecodedDuration: vi.fn(async () => 0),
 }));
 
-/** A single pack zip whose keys play `definitions` from one file. */
-function singlePack(definitions: Record<string, unknown>) {
+afterEach(() => {
+  // Back to the lengths above.
+  vi.mocked(getAudioDuration).mockReset();
+  vi.mocked(getDecodedDuration).mockReset();
+});
+
+/** A multi pack zip from `definitions` and the files they name. */
+function multiPack(
+  definitions: Record<string, unknown>,
+  files: Record<string, Uint8Array<ArrayBuffer>>,
+) {
+  return makePackZip({
+    'config.json': {
+      config_version: '2',
+      name: 'Multi pack',
+      definition_method: 'multi',
+      audio_file: Object.keys(files)[0],
+      soundpack_type: 'Keyboard',
+      definitions,
+    },
+    ...files,
+  });
+}
+
+/** A single pack zip whose keys play `definitions` from one file, with `more` files. */
+function singlePackWith(
+  definitions: Record<string, unknown>,
+  more: Record<string, Uint8Array<ArrayBuffer>>,
+) {
   return makePackZip({
     'config.json': {
       config_version: '2',
@@ -22,7 +61,13 @@ function singlePack(definitions: Record<string, unknown>) {
       definitions,
     },
     'sound.ogg': fakeAudio('main'),
+    ...more,
   });
+}
+
+/** A single pack zip whose keys play `definitions` from one file. */
+function singlePack(definitions: Record<string, unknown>) {
+  return singlePackWith(definitions, {});
 }
 
 describe('migrateKeyCode', () => {
@@ -119,5 +164,197 @@ describe('opening a pack with old key names', () => {
       'Left out because the app cannot read their timing: Numpad0.',
     ]);
     expect(pack.notes).toEqual([]);
+  });
+});
+
+describe('findSegmentsPastEnd', () => {
+  const oneSecond = createAudioSource(new File([], 'a.ogg'), 1);
+  const sound = (source: AudioSource, rest: Omit<KeySound, 'source'>) => ({
+    source: source.id,
+    ...rest,
+  });
+
+  it('sorts keys by where their sound ends', () => {
+    const keySounds = new Map([
+      ['KeyA', sound(oneSecond, { press: [0, 500] })],
+      ['KeyB', sound(oneSecond, { press: [900, 1200] })],
+      ['KeyC', sound(oneSecond, { press: [0, 100], release: [1000, 1100] })],
+      ['KeyD', sound(oneSecond, { press: [900, 1200], release: [1000, 1100] })],
+      ['KeyE', sound(oneSecond, { press: [0, 1000] })],
+    ]);
+
+    expect(findSegmentsPastEnd(keySounds, [oneSecond])).toEqual({
+      silent: ['KeyC', 'KeyD'],
+      cutShort: ['KeyB'],
+    });
+  });
+
+  it('allows an end rounded up to the next millisecond, as the editor does', () => {
+    const source = createAudioSource(new File([], 'b.ogg'), 0.9996);
+    const keySounds = new Map([
+      ['KeyA', sound(source, { press: [0, 1000] })],
+      ['KeyB', sound(source, { press: [0, 1000.4] })],
+    ]);
+
+    expect(findSegmentsPastEnd(keySounds, [source])).toEqual({
+      silent: [],
+      cutShort: ['KeyB'],
+    });
+  });
+
+  it('skips files of unknown length, and keys whose file is gone', () => {
+    const unknown = createAudioSource(new File([], 'c.ogg'), 0);
+    const gone = createAudioSource(new File([], 'd.ogg'), 1);
+    const keySounds = new Map([
+      ['KeyA', sound(unknown, { press: [5000, 6000] })],
+      ['KeyB', sound(unknown, { press: WHOLE_FILE })],
+      ['KeyC', sound(gone, { press: [5000, 6000] })],
+    ]);
+
+    expect(findSegmentsPastEnd(keySounds, [unknown])).toEqual({
+      silent: [],
+      cutShort: [],
+    });
+  });
+});
+
+describe('opening a key that plays its whole file', () => {
+  it('keeps it without timing when the browser cannot read the file', async () => {
+    vi.mocked(getAudioDuration).mockResolvedValue(0);
+
+    const pack = await parseSoundPackZip(
+      await multiPack(
+        { KeyA: { audio_file: 'a.ogg' } },
+        { 'a.ogg': fakeAudio('a') },
+      ),
+    );
+
+    expect(pack.keySounds.get('KeyA')?.press).toEqual(WHOLE_FILE);
+    expect(pack.warnings).toEqual([
+      'This browser cannot read the audio of these keys, so you cannot hear or edit them here. They still play their whole file in the app and are exported unchanged: KeyA.',
+    ]);
+  });
+
+  it('decodes the file when its length is not in the metadata', async () => {
+    vi.mocked(getAudioDuration).mockResolvedValue(0);
+    vi.mocked(getDecodedDuration).mockResolvedValue(0.25);
+
+    const pack = await parseSoundPackZip(
+      await multiPack(
+        { KeyA: { audio_file: 'a.ogg' } },
+        { 'a.ogg': fakeAudio('a') },
+      ),
+    );
+
+    expect(pack.keySounds.get('KeyA')?.press).toEqual([0, 250]);
+    expect(pack.sources[0].duration).toBe(0.25);
+    expect(pack.warnings).toEqual([]);
+  });
+});
+
+describe('opening a pack with files no key uses', () => {
+  it('keeps them last and leaves out macOS resource forks', async () => {
+    const pack = await parseSoundPackZip(
+      await multiPack(
+        { KeyA: { audio_file: 'a.ogg', timing: [[0, 50]] } },
+        {
+          'a.ogg': fakeAudio('a'),
+          '__MACOSX/._a.ogg': fakeAudio('fork'),
+          'b.ogg': fakeAudio('b'),
+        },
+      ),
+    );
+
+    expect(pack.sources.map((source) => source.file.name)).toEqual([
+      'a.ogg',
+      'b.ogg',
+    ]);
+    expect(pack.warnings).toEqual([]);
+    expect(pack.notes).toEqual([
+      'Kept an audio file that no key uses: b.ogg. You can cut sounds from it here, but Export leaves out files that no key uses.',
+    ]);
+  });
+
+  it('names several of them, in name order', async () => {
+    const pack = await parseSoundPackZip(
+      await multiPack(
+        { KeyA: { audio_file: 'a.ogg', timing: [[0, 50]] } },
+        {
+          'a.ogg': fakeAudio('a'),
+          'demo.mp3': fakeAudio('demo'),
+          'b.ogg': fakeAudio('b'),
+          'sounds/._c.ogg': fakeAudio('fork'),
+        },
+      ),
+    );
+
+    expect(pack.sources.map((source) => source.file.name)).toEqual([
+      'a.ogg',
+      'demo.mp3',
+      'b.ogg',
+    ]);
+    expect(pack.notes).toEqual([
+      'Kept 2 audio files that no key uses: b.ogg, demo.mp3. You can cut sounds from them here, but Export leaves out files that no key uses.',
+    ]);
+  });
+
+  it('keeps a stray file of a single pack, and Export leaves it out', async () => {
+    const pack = await parseSoundPackZip(
+      await singlePackWith({ KeyA: [[0, 50]] }, { 'demo.mp3': fakeAudio('x') }),
+    );
+
+    expect(pack.sources.map((source) => source.file.name)).toEqual([
+      'sound.ogg',
+      'demo.mp3',
+    ]);
+    const out = await readPackZip(
+      await buildSoundPackZip({
+        info: pack.info,
+        sources: pack.sources,
+        keySounds: pack.keySounds,
+        extras: pack.extras,
+      }),
+    );
+    expect(out.names).toEqual(['audio.ogg', 'config.json']);
+  });
+
+  it('does not take a resource fork for the file of a single pack', async () => {
+    const pack = await parseSoundPackZip(
+      await makePackZip({
+        'config.json': {
+          config_version: '2',
+          definition_method: 'single',
+          definitions: { KeyA: [[0, 50]] },
+        },
+        '__MACOSX/._sound.ogg': fakeAudio('fork'),
+        'sound.ogg': fakeAudio('main'),
+      }),
+    );
+
+    expect(pack.sources.map((source) => source.file.name)).toEqual([
+      'sound.ogg',
+    ]);
+  });
+});
+
+describe('opening a pack whose sounds run past their file', () => {
+  it('warns about a sound that starts after the end and notes one cut short', async () => {
+    vi.mocked(getAudioDuration).mockResolvedValue(1);
+
+    const pack = await parseSoundPackZip(
+      await singlePack({
+        KeyA: [[1200, 1300]],
+        KeyB: [[900, 1500]],
+        KeyC: [[0, 100]],
+      }),
+    );
+
+    expect([...pack.keySounds.keys()]).toEqual(['KeyA', 'KeyB', 'KeyC']);
+    expect(pack.warnings).toEqual([
+      'Part of the sound of these keys starts after their audio file ends, so the app plays nothing there: KeyA.',
+    ]);
+    expect(pack.notes).toEqual([
+      'These keys run past the end of their audio file. The app stops them where the file ends: KeyB.',
+    ]);
   });
 });

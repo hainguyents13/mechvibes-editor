@@ -9,7 +9,7 @@ import {
   keysAcceptingRelease,
   removeReleaseFromKeys,
 } from '@/utils/audioUtils';
-import type { KeySound, KeySounds } from '@/utils/soundPack';
+import { type KeySound, type KeySounds, WHOLE_FILE } from '@/utils/soundPack';
 
 const keySounds = () =>
   new Map<string, KeySound>([
@@ -70,6 +70,14 @@ describe('keysAcceptingRelease', () => {
       keysAcceptingRelease(['KeyC', 'KeyD', 'KeyB', 'KeyA'], 'a', keySounds()),
     ).toEqual(['KeyC', 'KeyA']);
   });
+
+  it('leaves out a key that plays its whole file', () => {
+    const input = keySounds();
+    input.set('KeyW', { source: 'a', press: WHOLE_FILE });
+    expect(keysAcceptingRelease(['KeyW', 'KeyC'], 'a', input)).toEqual([
+      'KeyC',
+    ]);
+  });
 });
 
 describe('applyReleaseToKeys', () => {
@@ -97,6 +105,16 @@ describe('applyReleaseToKeys', () => {
     expect(result.get('KeyB')).toBe(input.get('KeyB'));
     expect(result.has('KeyD')).toBe(false);
     expect(result.size).toBe(input.size);
+  });
+
+  it('leaves a key that plays its whole file without a release', () => {
+    const input = keySounds();
+    input.set('KeyW', { source: 'a', press: WHOLE_FILE });
+    const result = updated(input, () =>
+      applyReleaseToKeys(['KeyW', 'KeyC'], 'a', [200, 250], input),
+    );
+    expect(result.get('KeyW')).toBe(input.get('KeyW'));
+    expect(result.get('KeyC')?.release).toEqual([200, 250]);
   });
 });
 

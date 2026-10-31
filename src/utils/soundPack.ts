@@ -4,6 +4,17 @@
 export type Segment = [number, number];
 
 /**
+ * The press segment of a key that plays its whole file when the editor could
+ * not read the file's length. Exported without timing, as the app allows in a
+ * multi pack.
+ */
+export const WHOLE_FILE: Segment = [0, 0];
+
+export function isWholeFile(segment: Segment) {
+  return segment[0] === 0 && segment[1] === 0;
+}
+
+/**
  * What one key plays. `press` plays when the key goes down and `release`, when
  * set, when it comes up. Both are cut from the same source, as V2 requires.
  */
@@ -72,6 +83,11 @@ export const LICENSE_FILE_NAMES = new Set([
 export function getExtension(fileName: string) {
   const dotIndex = fileName.lastIndexOf('.');
   return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : '';
+}
+
+/** Codes or names for a message: the first 8, then an ellipsis. */
+export function listKeys(codes: string[]) {
+  return `${codes.slice(0, 8).join(', ')}${codes.length > 8 ? ', …' : ''}`;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

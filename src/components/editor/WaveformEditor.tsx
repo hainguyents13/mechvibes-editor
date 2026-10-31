@@ -2,7 +2,7 @@ import { RotateCcw, Zap } from 'lucide-react';
 import React from 'react';
 import { CombinedWaveform } from '@/components/editor/CombinedWaveform';
 import { useWaveformEditor } from '@/hooks/useWaveformEditor';
-import type { KeySounds } from '@/utils/soundPack';
+import { isWholeFile, type KeySounds } from '@/utils/soundPack';
 
 interface WaveformEditorProps {
   audioFile: File | null;
@@ -284,7 +284,9 @@ export function WaveformEditor({
                   regionGroups.set(regionKey, group);
                 };
                 keySounds.forEach((sound, keyName) => {
-                  if (sound.source !== sourceId) return;
+                  // A key of unknown length has no span to mark.
+                  if (sound.source !== sourceId || isWholeFile(sound.press))
+                    return;
                   add('press', sound.press, keyName);
                   if (sound.release) add('release', sound.release, keyName);
                 });
