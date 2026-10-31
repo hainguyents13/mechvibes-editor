@@ -495,6 +495,14 @@ export function EditorPage() {
     [selectedKeys, keyCodeById],
   );
 
+  // A pack without an author is credited to the signed-in account, as the library does.
+  const packInfoForExport = () => ({
+    ...packInfo,
+    author:
+      packInfo.author.trim() ||
+      (session.status === 'signed-in' ? session.user.name : ''),
+  });
+
   // Add audio or video files; the first one added opens in the waveform.
   const handleAddSources = async (files: File[]) => {
     const added = await Promise.all(
@@ -503,6 +511,8 @@ export function EditorPage() {
       ),
     );
     setSources((current) => [...current, ...added]);
+    // An error such as "Load an audio file before exporting" no longer applies.
+    setNotice((current) => (current?.tone === 'error' ? null : current));
     setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
   };
@@ -669,12 +679,12 @@ export function EditorPage() {
     try {
       const zip = await buildSoundPackZip({
         id: libraryPack.id,
-        info: packInfo,
+        info: packInfoForExport(),
         sources,
         keySounds,
         extras: packExtras,
       });
-      const pack = await updatePackZip(
+      const { pack, unchanged } = await updatePackZip(
         libraryPack.id,
         zip,
         libraryPack.revision,
@@ -682,6 +692,13 @@ export function EditorPage() {
       setLibraryPack((current) =>
         current ? { ...current, revision: pack.revision } : current,
       );
+      if (unchanged) {
+        setNotice({
+          tone: 'success',
+          message: `Nothing changed since revision ${pack.revision} of ${libraryPack.name}, so nothing new was published.`,
+        });
+        return;
+      }
       setNotice({
         tone: 'success',
         message: `Published revision ${pack.revision} of ${libraryPack.name}.`,
@@ -721,7 +738,7 @@ export function EditorPage() {
     try {
       await exportSoundPack({
         id: loadedPackId ?? undefined,
-        info: packInfo,
+        info: packInfoForExport(),
         sources,
         keySounds,
         extras: packExtras,
