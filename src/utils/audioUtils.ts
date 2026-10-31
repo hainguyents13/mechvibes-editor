@@ -24,6 +24,19 @@ const MEDIA_TYPES_BY_EXTENSION: Record<string, string> = {
   '.mov': 'video/quicktime',
 };
 
+// What a file picker offers for audio or video: the types, plus the
+// extensions above for systems that type those files differently.
+const pickerAccept = (kind: 'audio' | 'video') =>
+  [
+    `${kind}/*`,
+    ...Object.keys(MEDIA_TYPES_BY_EXTENSION).filter((extension) =>
+      MEDIA_TYPES_BY_EXTENSION[extension].startsWith(`${kind}/`),
+    ),
+  ].join(',');
+
+export const AUDIO_FILE_ACCEPT = pickerAccept('audio');
+export const VIDEO_FILE_ACCEPT = pickerAccept('video');
+
 const isMediaType = (type: string) =>
   type.startsWith('audio/') || type.startsWith('video/');
 

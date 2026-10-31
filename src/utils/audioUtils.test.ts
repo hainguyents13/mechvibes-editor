@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AUDIO_FILE_ACCEPT,
   applyPressToKeys,
   applyReleaseToKeys,
   clearKeySounds,
@@ -9,6 +10,7 @@ import {
   keysAcceptingRelease,
   mediaTypeOf,
   removeReleaseFromKeys,
+  VIDEO_FILE_ACCEPT,
   withMediaType,
 } from '@/utils/audioUtils';
 import { type KeySound, type KeySounds, WHOLE_FILE } from '@/utils/soundPack';
@@ -186,6 +188,19 @@ describe('isValidWaveformSelection', () => {
     { start: 2, end: 1 },
   ])('refuses $start to $end', (selection) => {
     expect(isValidWaveformSelection(selection)).toBe(false);
+  });
+});
+
+describe('file picker accept lists', () => {
+  it('offer each kind by type and by extension, apart', () => {
+    expect(AUDIO_FILE_ACCEPT.split(',')).toEqual(
+      expect.arrayContaining(['audio/*', '.mp3', '.wav', '.flac', '.m4a']),
+    );
+    expect(VIDEO_FILE_ACCEPT.split(',')).toEqual(
+      expect.arrayContaining(['video/*', '.mp4', '.webm', '.mov']),
+    );
+    expect(AUDIO_FILE_ACCEPT).not.toContain('.mov');
+    expect(VIDEO_FILE_ACCEPT).not.toContain('.mp3');
   });
 });
 
