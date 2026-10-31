@@ -53,7 +53,10 @@ export function BackButton({ onClick }: { onClick: () => void }) {
 /** Why something the visitor asked for did not happen, next to where they asked. */
 export function ErrorLine({ message }: { message: string }) {
   return (
-    <p role="alert" className="flex items-start gap-2 text-sm text-error">
+    <p
+      role="alert"
+      className="flex items-start gap-2 text-sm text-error-strong"
+    >
       <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
       <span>{message}</span>
     </p>

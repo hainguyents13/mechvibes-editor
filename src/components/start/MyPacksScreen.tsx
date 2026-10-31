@@ -44,18 +44,21 @@ export function MyPacksScreen({
 
   return (
     <StartPage>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <BackButton onClick={onBack} />
-        <ScreenHeading className="flex-1 text-center text-xl md:text-2xl font-bold">
-          Your packs on {websiteHost}
-        </ScreenHeading>
-        <p className="min-w-16 max-w-48 truncate text-right text-sm text-base-content/60">
-          {session.status === 'signed-in' &&
-            `Signed in as ${session.user.name}`}
-        </p>
-      </div>
+      <div className="mx-auto max-w-3xl">
+        {/* Equal side columns keep the heading centred over the list. */}
+        <div className="mb-6 grid grid-cols-[1fr_auto_1fr] items-center gap-x-4">
+          <div>
+            <BackButton onClick={onBack} />
+          </div>
+          <ScreenHeading className="text-center text-xl md:text-2xl font-bold">
+            Your packs on {websiteHost}
+          </ScreenHeading>
+          <p className="min-w-0 truncate text-right text-sm text-base-content/60">
+            {session.status === 'signed-in' &&
+              `Signed in as ${session.user.name}`}
+          </p>
+        </div>
 
-      <div className="mx-auto mt-6 max-w-3xl">
         {openError && (
           <div className="mb-3">
             <ErrorLine message={openError} />

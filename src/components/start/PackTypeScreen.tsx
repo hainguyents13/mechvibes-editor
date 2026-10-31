@@ -36,7 +36,12 @@ export function PackTypeScreen({
           <button
             key={packType}
             type="button"
-            onClick={() => onChoose(packType)}
+            // This screen opens under the pointer that clicked Start, so the
+            // second click of a double click would choose for the visitor.
+            onClick={(event) => {
+              if (event.detail > 1) return;
+              onChoose(packType);
+            }}
             className="flex flex-col items-center gap-3 rounded-box border border-base-300 bg-base-100 px-6 py-10 shadow-sm transition hover:border-primary/60 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             <Icon

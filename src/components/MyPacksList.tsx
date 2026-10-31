@@ -61,7 +61,9 @@ export function MyPacksList({
                 {statusLabel(pack)}
               </p>
               {pack.status === 'REMOVED' && pack.removedReason && (
-                <p className="text-xs text-error">{pack.removedReason}</p>
+                <p className="text-xs text-error-strong">
+                  {pack.removedReason}
+                </p>
               )}
             </div>
           </div>

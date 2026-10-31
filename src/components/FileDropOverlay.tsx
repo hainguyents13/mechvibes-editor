@@ -55,7 +55,7 @@ const ROUTE_LOOKS: Record<
     Icon: FolderOpen,
     tone: 'border-base-content/40 text-base-content',
   },
-  reject: { Icon: CircleAlert, tone: 'border-error text-error' },
+  reject: { Icon: CircleAlert, tone: 'border-error text-error-strong' },
 };
 
 /**
