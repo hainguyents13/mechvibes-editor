@@ -38,7 +38,7 @@ export function ProgressLine({ items }: { items: ProgressItem[] }) {
             {item.state === 'done' && (
               <Check
                 aria-hidden="true"
-                className="h-3 w-3 shrink-0 text-success"
+                className="h-3 w-3 shrink-0 text-success-strong"
                 strokeWidth={3}
               />
             )}

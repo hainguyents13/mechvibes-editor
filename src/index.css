@@ -18,6 +18,17 @@
   color: color-mix(in oklab, var(--color-error) 60%, var(--color-base-content));
 }
 
+/* A mark on a plain background, such as a check. The theme's success colour
+   reads at about 2:1 on white, short of the 3:1 a mark needs, so it is pulled
+   toward the text colour the same way. */
+@utility text-success-strong {
+  color: color-mix(
+    in oklab,
+    var(--color-success) 60%,
+    var(--color-base-content)
+  );
+}
+
 body {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
