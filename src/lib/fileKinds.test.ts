@@ -89,6 +89,16 @@ describe('inferKindsFromPack', () => {
     ).toEqual({ a: 'one', long: 'one', unread: 'one' });
   });
 
+  it('makes a long file one sound when its keys play it whole after encoding', () => {
+    // Given whole at 3 s, then downloaded: the encoded copy reads 3.003 s.
+    const take = source('take', 3.002667);
+    const keySounds = sounds([
+      ['Space', { source: 'take', press: [0, 3000] }],
+      ['Enter', { source: 'take', press: [0, 3000] }],
+    ]);
+    expect(inferKindsFromPack([take], keySounds).get('take')).toBe('one');
+  });
+
   it('makes one shared part of a short file one sound', () => {
     const a = source('a', 0.8);
     const keySounds = sounds([

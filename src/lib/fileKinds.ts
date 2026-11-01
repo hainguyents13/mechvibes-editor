@@ -46,10 +46,17 @@ export function inferNewFileKind(
   return kindFromLength(duration);
 }
 
+// How much longer a file can read than the part saved for it and still count
+// as played whole: encoding a pack's audio pads the end with silence, so a
+// 3 s file comes back about 3.003 s long, and MP3 at low rates pads more.
+const ENCODER_PADDING_MS = 100;
+
 // Whether a segment runs from the start to the end of a file that is
 // `seconds` long, as a key that plays the whole file is stored.
 function coversFile([start, end]: Segment, seconds: number) {
-  return start === 0 && seconds > 0 && end >= seconds * 1000 - 1;
+  return (
+    start === 0 && seconds > 0 && end >= seconds * 1000 - ENCODER_PADDING_MS
+  );
 }
 
 function kindInPack(source: AudioSource, keySounds: KeySounds): FileKind {
