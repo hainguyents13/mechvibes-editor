@@ -2898,6 +2898,7 @@ export function EditorPage() {
                           // A mouse pack has no groups of keys to pick.
                           keys={visibility.keyGroups ? keys : undefined}
                           getKeyId={getKeyId}
+                          noun={noun}
                         />
                       </div>
                     )}
