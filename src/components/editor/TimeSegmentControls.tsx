@@ -1,6 +1,11 @@
-import { ChevronDown, Info, Play, RotateCcw, Square } from 'lucide-react';
+import { ChevronDown, Info, Play, Square } from 'lucide-react';
 import React from 'react';
-import { KEY_GROUPS } from '@/components/editor/key-groups';
+import {
+  ClearSelectedButton,
+  ResetAllButton,
+} from '@/components/editor/ClearKeysButtons';
+import type { LayoutKey } from '@/components/editor/keyboardLayouts';
+import { QuickSelect } from '@/components/editor/QuickSelect';
 import { cn, plural } from '@/lib/utils';
 import {
   applyPressToKeys,
@@ -10,9 +15,6 @@ import {
   removeReleaseFromKeys,
 } from '@/utils/audioUtils';
 import type { KeySounds } from '@/utils/soundPack';
-
-/** The Quick select block, which a panel too short for it leaves below its fold. */
-export const QUICK_SELECT_SELECTOR = '[data-quick-select]';
 
 /** Which half of a key's sound the controls assign. */
 export type SoundSlot = 'press' | 'release';
@@ -50,9 +52,9 @@ interface TimeSegmentControlsProps {
   showExactTimes: boolean;
   setShowExactTimes: (open: boolean) => void;
   /** Keys of the current layout, used to resolve the group-select buttons. */
-  keys?: any[];
+  keys?: LayoutKey[];
   /** Same id builder the keyboard uses, so group ids match selection ids. */
-  getKeyId?: (key: any, index: number) => string;
+  getKeyId?: (key: LayoutKey, index: number) => string;
 }
 
 export function TimeSegmentControls({
@@ -80,7 +82,7 @@ export function TimeSegmentControls({
   const exactTimesId = React.useId();
   const exactTimesRef = React.useRef<HTMLDivElement>(null);
   const hasValidSelection = isValidWaveformSelection(waveformSelection);
-  // Whole file ends at the exact length; typed ends are whole milliseconds.
+  // A sound may end at the exact length; typed ends are whole milliseconds.
   const fileLengthMs = Math.ceil(audioDuration * 1000);
   const endsPastFile =
     audioDuration > 0 && waveformSelection.end > fileLengthMs;
@@ -93,9 +95,6 @@ export function TimeSegmentControls({
   const codesWithRelease = selectedCodes.filter(
     (code) => keySounds.get(code)?.release,
   );
-  const codesWithSound = selectedCodes.filter((code) => keySounds.has(code));
-
-  const [showResetConfirm, setShowResetConfirm] = React.useState(false);
 
   const applySelection = () => {
     if (!canApply) return;
@@ -110,27 +109,6 @@ export function TimeSegmentControls({
           ? applyPressToKeys(targetCodes, activeSourceId, segment, current)
           : applyReleaseToKeys(targetCodes, activeSourceId, segment, current),
     );
-  };
-
-  // Resolve each group against the current layout once per render.
-  const groupMatches = React.useMemo(() => {
-    if (!keys || !getKeyId) return [];
-    return KEY_GROUPS.map((group) => {
-      const ids = new Set<string>();
-      keys.forEach((key, index) => {
-        if (group.matches(key)) ids.add(getKeyId(key, index));
-      });
-      return { group, ids };
-    }).filter((entry) => entry.ids.size > 0);
-  }, [keys, getKeyId]);
-
-  const isGroupSelected = (ids: Set<string>) =>
-    selectedKeys.size === ids.size &&
-    Array.from(ids).every((id) => selectedKeys.has(id));
-
-  // Clicking a fully-selected group clears it, so the same button toggles.
-  const selectGroup = (ids: Set<string>) => {
-    setSelectedKeys(isGroupSelected(ids) ? new Set() : new Set(ids));
   };
 
   let hint: string | null = null;
@@ -199,22 +177,6 @@ export function TimeSegmentControls({
               <div>
                 <button
                   type="button"
-                  className="btn btn-sm rounded-box"
-                  onClick={() =>
-                    setWaveformSelection({
-                      start: 0,
-                      end: audioDuration * 1000,
-                    })
-                  }
-                  disabled={!(audioDuration > 0)}
-                  title="Select the whole file, for a file that holds one sound"
-                >
-                  Whole file
-                </button>
-              </div>
-              <div>
-                <button
-                  type="button"
                   className={cn(
                     'btn btn-sm rounded-box',
                     isPlaying ? 'btn-active' : '',
@@ -270,17 +232,11 @@ export function TimeSegmentControls({
                   </button>
                 </div>
               )}
-              <div>
-                <button
-                  type="button"
-                  className="btn btn-sm rounded-box"
-                  onClick={onClearSelected}
-                  disabled={codesWithSound.length === 0}
-                  title="Remove the press and release sounds of the selected keys (Delete)"
-                >
-                  Clear {plural(codesWithSound.length, 'key')}
-                </button>
-              </div>
+              <ClearSelectedButton
+                selectedCodes={selectedCodes}
+                keySounds={keySounds}
+                onClearSelected={onClearSelected}
+              />
               <div>
                 <button
                   type="button"
@@ -309,18 +265,11 @@ export function TimeSegmentControls({
                   />
                 </button>
               </div>
-              <div className="ml-auto">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-error rounded-box"
-                  onClick={() => setShowResetConfirm(true)}
-                  disabled={keySounds.size === 0}
-                  title={`Clear the sound on all ${plural(keySounds.size, 'mapped key')}`}
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Reset all ({keySounds.size})
-                </button>
-              </div>
+              <ResetAllButton
+                keySounds={keySounds}
+                hiddenCount={hiddenCount}
+                commitKeySounds={commitKeySounds}
+              />
             </div>
 
             <div
@@ -411,81 +360,12 @@ export function TimeSegmentControls({
         </div>
       </div>
 
-      {groupMatches.length > 0 && (
-        <fieldset
-          data-quick-select
-          className="fieldset py-0 px-4 shrink-0 min-w-0"
-        >
-          <legend className="fieldset-legend">
-            <h2 className="text-xs font-medium text-base-content">
-              Quick select
-            </h2>
-          </legend>
-          <div className="flex flex-wrap items-center gap-2">
-            {groupMatches.map(({ group, ids }) => (
-              <button
-                type="button"
-                key={group.id}
-                className={cn(
-                  'btn btn-sm rounded-box',
-                  isGroupSelected(ids) ? 'btn-active' : '',
-                )}
-                onClick={() => selectGroup(ids)}
-                title={`Select all ${ids.size} ${group.label}`}
-              >
-                {group.label} ({group.hint})
-              </button>
-            ))}
-          </div>
-        </fieldset>
-      )}
-
-      {showResetConfirm && (
-        <dialog
-          className="modal modal-open"
-          onClose={() => setShowResetConfirm(false)}
-        >
-          <div className="modal-box">
-            <h3 className="text-base font-semibold">Reset all key mappings?</h3>
-            <p className="py-3 text-sm text-base-content/70">
-              This clears the sound on all{' '}
-              {plural(keySounds.size, 'mapped key')}
-              {hiddenCount > 0 &&
-                `, including ${hiddenCount} not shown on this layout`}
-              . The audio files themselves are kept. You can undo this.
-            </p>
-            <div className="modal-action">
-              <button
-                type="button"
-                className="btn btn-sm rounded-box"
-                onClick={() => setShowResetConfirm(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-error rounded-box"
-                onClick={() => {
-                  // An empty pack has nothing to reset, so no step.
-                  commitKeySounds(
-                    `Reset all ${plural(keySounds.size, 'key')}`,
-                    (current) => (current.size === 0 ? current : new Map()),
-                  );
-                  setShowResetConfirm(false);
-                }}
-              >
-                Reset all
-              </button>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="modal-backdrop"
-            aria-label="Close"
-            onClick={() => setShowResetConfirm(false)}
-          />
-        </dialog>
-      )}
+      <QuickSelect
+        keys={keys}
+        getKeyId={getKeyId}
+        selectedKeys={selectedKeys}
+        setSelectedKeys={setSelectedKeys}
+      />
     </>
   );
 }

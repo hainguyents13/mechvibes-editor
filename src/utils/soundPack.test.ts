@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addSources,
+  compareFileNames,
   createAudioSource,
   isSamePackInfo,
   isWholeFile,
@@ -138,5 +139,26 @@ describe('sourcesInUse', () => {
     ]);
     expect(sourcesInUse([a, b, c], keySounds)).toEqual([a, c]);
     expect(sourcesInUse([a, b, c], new Map())).toEqual([]);
+  });
+});
+
+describe('compareFileNames', () => {
+  it('orders numbers by value, case aside, and a name before its longer forms', () => {
+    const names = [
+      'key_10.wav',
+      'Key_2.wav',
+      'a_down.wav',
+      'key_1.wav',
+      'B.wav',
+      'a.wav',
+    ];
+    expect([...names].sort(compareFileNames)).toEqual([
+      'a.wav',
+      'a_down.wav',
+      'B.wav',
+      'key_1.wav',
+      'Key_2.wav',
+      'key_10.wav',
+    ]);
   });
 });

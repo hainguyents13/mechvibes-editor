@@ -2,12 +2,14 @@ import { CircleAlert, FolderOpen, type LucideIcon, Music } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   carriesLink,
+  DROP_MESSAGES,
   type DropContents,
   type DropContext,
   type DroppedFile,
   type DropRoute,
   routeDrop,
 } from '@/lib/dropRouting';
+import { readDroppedEntries } from '@/lib/folderFiles';
 import { isTextEntry } from '@/lib/shortcuts';
 
 /**
@@ -49,6 +51,10 @@ const ROUTE_LOOKS: Record<
   { Icon: LucideIcon; tone: string }
 > = {
   'open-zip': { Icon: FolderOpen, tone: 'border-primary text-base-content' },
+  'open-folder': {
+    Icon: FolderOpen,
+    tone: 'border-primary text-base-content',
+  },
   'to-type-question': { Icon: Music, tone: 'border-primary text-base-content' },
   'add-media': { Icon: Music, tone: 'border-primary text-base-content' },
   unknown: {
@@ -135,12 +141,30 @@ export function FileDropOverlay({
       hide();
       if (!handles(event)) return;
       event.preventDefault();
-      const { enabled, context, onDrop } = latest.current;
-      const contents = {
-        files: Array.from(event.dataTransfer.files),
-        hasLink: carriesLink(event.dataTransfer),
+      if (!latest.current.enabled) return;
+      const hasLink = carriesLink(event.dataTransfer);
+      // A dropped folder comes as a file of no type; its entries hold what is
+      // in it, and the browser hands them over only while the drop fires.
+      const entries = Array.from(event.dataTransfer.items)
+        .filter((item) => item.kind === 'file')
+        .map((item) => item.webkitGetAsEntry());
+      const route = (files: File[]) => {
+        const { enabled, context, onDrop } = latest.current;
+        const contents = { files, hasLink };
+        if (enabled && answers(contents)) onDrop(routeDrop(contents, context));
       };
-      if (enabled && answers(contents)) onDrop(routeDrop(contents, context));
+      if (entries.some((entry) => entry?.isDirectory)) {
+        readDroppedEntries(
+          entries.filter((entry): entry is FileSystemEntry => entry !== null),
+        ).then(route, () =>
+          latest.current.onDrop({
+            kind: 'reject',
+            message: DROP_MESSAGES.unusable,
+          }),
+        );
+      } else {
+        route(Array.from(event.dataTransfer.files));
+      }
     };
     // Pasting files or a link outside a text field is a drop by other means.
     const onPaste = (event: ClipboardEvent) => {

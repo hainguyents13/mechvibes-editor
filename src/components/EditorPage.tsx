@@ -12,11 +12,19 @@ import { ConfirmPackTypeModal } from '@/components/ConfirmPackTypeModal';
 import { EditorNavbar } from '@/components/EditorNavbar';
 import { EditPackModal } from '@/components/EditPackModal';
 import {
+  AddedFilesSummary,
+  type ReadingProgress,
+  readingText,
+  type SummaryActionLine,
+} from '@/components/editor/AddedFilesSummary';
+import {
   ADD_SOUNDS_HEADING_ID,
+  type AddOptions,
   AddSoundsPanel,
 } from '@/components/editor/AddSoundsPanel';
 import {
   AudioFileSelector,
+  FILE_LIST_SELECTOR,
   SOURCES_HEADING_ID,
 } from '@/components/editor/AudioFileSelector';
 import { HiddenKeysTray } from '@/components/editor/HiddenKeysTray';
@@ -25,6 +33,7 @@ import {
   findHiddenKeys,
   getLayoutCodes,
   inferKeyboardSize,
+  widenKeyboardSize,
 } from '@/components/editor/hidden-keys';
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
 import { KeyboardShortcutsDialog } from '@/components/editor/KeyboardShortcuts';
@@ -44,8 +53,9 @@ import {
   MouseDisplay,
 } from '@/components/editor/MouseDisplay';
 import { NextStep } from '@/components/editor/NextStep';
+import { OneSoundPane } from '@/components/editor/OneSoundPane';
+import { QUICK_SELECT_SELECTOR } from '@/components/editor/QuickSelect';
 import {
-  QUICK_SELECT_SELECTOR,
   type SoundSlot,
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
@@ -67,9 +77,17 @@ import { usePackHistory } from '@/hooks/usePackHistory';
 import { useCoarsePointer, usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { useSessionFlag } from '@/hooks/useSessionFlag';
+import { type AddBatch, summarizeAdd } from '@/lib/addSummary';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
 import { autoTourFlow, hasSeenTour, type TourFlow } from '@/lib/editorTourFlow';
+import {
+  type FileKind,
+  inferKindsFromPack,
+  inferNewFileKind,
+} from '@/lib/fileKinds';
+import { zipFolder } from '@/lib/folderFiles';
+import { guessPackType } from '@/lib/keyNames';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
   asksBeforeReplacing,
@@ -105,7 +123,14 @@ import {
 } from '@/lib/workspaceVisibility';
 import {
   clearKeySounds,
-  getAudioDuration,
+  giveFilesToKeysInOrder,
+  giveFilesToTheirKeys,
+  giveOneSoundToKeys,
+  keysToFill,
+  oneSoundSegment,
+  playFileSegment,
+  readSoundLengths,
+  spreadFilesAcrossKeys,
   withMediaType,
 } from '@/utils/audioUtils';
 import {
@@ -115,12 +140,13 @@ import {
 } from '@/utils/blankPack';
 import { getHistoryShortcut, type PackSnapshot } from '@/utils/packHistory';
 import {
+  type AudioSource,
   addSources,
-  countKeysBySource,
   createAudioSource,
   isSamePackInfo,
   isWholeFile,
   type KeySounds,
+  listKeys,
   type PackExtras,
   type PackType,
 } from '@/utils/soundPack';
@@ -179,6 +205,11 @@ const PANEL_DRAG_MAX_HEIGHT = 720;
 const PANEL_RESERVED_HEIGHT = 320;
 /** The drag handle's 4px in the layout and the panel's 2px top border. */
 const PANEL_EDGE_HEIGHT = 6;
+/**
+ * Stacked, the file list gives way to the pane of a file of one sound down to
+ * about two rows; below that the panel scrolls.
+ */
+const STACKED_LIST_MIN_HEIGHT = 112;
 /** On screen, key labels grow back to this as the keyboard scales down... */
 const KEY_LABEL_MIN_PX = 8;
 /**
@@ -307,6 +338,17 @@ type OpenLibraryPack = Pick<
 
 const NEW_PACK_URL = `${websiteUrl}/profile/sound-packs/new`;
 
+/** Files a new pack starts with, and the names of those a drop left out. */
+type IncomingFiles = { files: File[]; skipped: string[] };
+const NO_FILES: IncomingFiles = { files: [], skipped: [] };
+
+/** Why files could not be added, named where they were added. */
+function unreadableMessage(names: string[]) {
+  return names.length === 1
+    ? `Your browser can't read the sound in ${names[0]}. Try an MP4 or MP3 copy.`
+    : `Your browser can't read the sound in ${names.length} files: ${listKeys(names)}. Try MP4 or MP3 copies.`;
+}
+
 /** Turns a failed library call into a notice. 400 and 409 are handled by Update itself. */
 function libraryErrorNotice(error: unknown, fallback: string): Notice {
   if (!(error instanceof WebsiteApiError)) {
@@ -399,7 +441,7 @@ export function EditorPage() {
     | null
     | { pack: LibraryPackSummary }
     | { file: File }
-    | { packType: PackType }
+    | ({ packType: PackType } & IncomingFiles)
   >(null);
   // The editor opens on the start screen; the pack controls show in the workspace.
   const [screen, setScreen] = useState<EditorScreen>('start');
@@ -416,8 +458,9 @@ export function EditorPage() {
   const [startLink, setStartLink] = useState(() =>
     parseStartLink(window.location.search),
   );
-  // Files that go into the new pack once Keyboard or Mouse is chosen.
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Files that go into the new pack once Keyboard or Mouse is chosen, and
+  // the names of those the drop left out.
+  const [pendingFiles, setPendingFiles] = useState<IncomingFiles>(NO_FILES);
   // Why a pack file or a library pack did not open, shown where it was asked for.
   const [openFileError, setOpenFileError] = useState<string | null>(null);
   const [libraryOpenError, setLibraryOpenError] = useState<string | null>(null);
@@ -433,6 +476,36 @@ export function EditorPage() {
   const [openingPackId, setOpeningPackId] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const packFileInputRef = useRef<HTMLInputElement>(null);
+  // Whether each file is one sound or many, which decides how it shows. It
+  // is not part of the pack, so it stays out of history and unsaved changes;
+  // Undo of a Remove brings the file back with its id, and so its kind.
+  const [fileKinds, setFileKinds] = useState<ReadonlyMap<string, FileKind>>(
+    () => new Map(),
+  );
+  // The files the last add brought in, for the summary over the sound panel.
+  const [lastAdd, setLastAdd] = useState<AddBatch | null>(null);
+  // Files on their way in, and why some of the last ones could not come.
+  const [reading, setReading] = useState<ReadingProgress | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  // The work files are added to, set with workId: a read that ends after
+  // another pack took its place adds nothing to that one.
+  const workRef = useRef<string | null>(null);
+  // The adds being read, as one: their files read so far and in all, how
+  // many adds are still reading, and what those done brought in or left out.
+  const readGroupRef = useRef<{
+    read: number;
+    total: number;
+    pending: number;
+    ids: string[];
+    skipped: string[];
+    unreadable: string[];
+  } | null>(null);
+  // The file of one sound playing outside the waveform, and how to stop it.
+  const [playingSourceId, setPlayingSourceId] = useState<string | null>(null);
+  const playingSourceRef = useRef<string | null>(null);
+  const stopSoundRef = useRef<(() => void) | null>(null);
+  // Codes of the keys to keep selected across the next change of layout.
+  const keptSelectionRef = useRef<readonly string[] | null>(null);
 
   // Waveform state
   const [waveformSelection, setWaveformSelection] = useState({
@@ -465,7 +538,19 @@ export function EditorPage() {
     sources.find((source) => source.id === activeSourceId) ?? null;
   const audioFile = activeSource?.file ?? null;
   const audioDuration = activeSource?.duration ?? 0;
-  const keyCounts = useMemo(() => countKeysBySource(keySounds), [keySounds]);
+  // The keys that play each file.
+  const codesBySource = useMemo(() => {
+    const codes = new Map<string, string[]>();
+    keySounds.forEach(({ source }, code) => {
+      codes.set(source, [...(codes.get(source) ?? []), code]);
+    });
+    return codes;
+  }, [keySounds]);
+  // A file whose kind was never told, as one undone before this pack opened,
+  // keeps the waveform.
+  const activeFileKind: FileKind | null = activeSourceId
+    ? (fileKinds.get(activeSourceId) ?? 'many')
+    : null;
   // Keys show the colour and name of the file their sound comes from.
   const sourcesById = useMemo(
     () => new Map(sources.map((source) => [source.id, source])),
@@ -639,7 +724,23 @@ export function EditorPage() {
     isLibraryPack: libraryPack !== null,
     isSignedIn: session.status === 'signed-in',
     selectedCodes,
+    activeFileKind,
   });
+  const noun = packInfo.packType === 'Mouse' ? 'button' : 'key';
+  // What the last add brought in, read from the pack as it is now.
+  const addSummary = useMemo(
+    () =>
+      lastAdd &&
+      summarizeAdd({
+        batch: lastAdd,
+        sources,
+        kinds: fileKinds,
+        keySounds,
+        packType: packInfo.packType,
+      }),
+    [lastAdd, sources, fileKinds, keySounds, packInfo.packType],
+  );
+  const hasSummary = Boolean(addSummary || reading || addError);
   const keyCount = useMemo(
     () => countDrawnKeys(keySounds, getLayoutCodes(layout)),
     [keySounds, layout],
@@ -730,11 +831,17 @@ export function EditorPage() {
   // so measuring it feeds nothing back.
   const panelRowRef = useRef<HTMLDivElement>(null);
   const panelControlsRef = useRef<HTMLDivElement>(null);
+  // The summary of the last add, across the top of the panel.
+  const summaryRef = useRef<HTMLElement>(null);
   const [panelControlsHeight, setPanelControlsHeight] = useState<number | null>(
     null,
   );
+  // What the pane of a file of one sound needs, which has no waveform.
+  const [oneSoundHeight, setOneSoundHeight] = useState<number | null>(null);
   // The same, up to where Quick select starts; null without Quick select.
   const [quickSelectStart, setQuickSelectStart] = useState<number | null>(null);
+  // Stacked, what that pane's panel holds besides the file list.
+  const [stackedListRest, setStackedListRest] = useState<number | null>(null);
 
   // The panel leaves the keyboard its rows and at least its smallest scale.
   // Keyboard sizes narrower than full size are kept as wide as their rows
@@ -754,8 +861,13 @@ export function EditorPage() {
   const panelRoom: PanelRoom = {
     usable: Math.floor(panelSpace - keyboardMinHeight),
     readable: Math.floor(panelSpace - keyboardReadableHeight),
-    needed:
+    // The pane of a file of one sound takes the panel the waveform has, so
+    // switching between files keeps the keyboard still; only a pane taller
+    // than that grows the panel.
+    needed: Math.max(
       (panelControlsHeight ?? PANEL_CONTROLS_HEIGHT) + WAVEFORM_SQUEEZED_HEIGHT,
+      oneSoundHeight ?? 0,
+    ),
   };
   const panelHeight = getPanelHeight(viewport, chosenPanelHeight, panelRoom);
   const panelDragMax = getPanelDragMax(viewport.height, panelRoom.usable);
@@ -769,7 +881,9 @@ export function EditorPage() {
     const waveform = controls?.querySelector<HTMLElement>(
       WAVEFORM_BOX_SELECTOR,
     );
-    if (!row || !controls || !column || !waveform) return;
+    if (!row || !controls || !column) return;
+    // The summary sits over both columns and takes its height off the rest.
+    const summary = summaryRef.current?.offsetHeight ?? 0;
     const quickSelect = controls.querySelector<HTMLElement>(
       QUICK_SELECT_SELECTOR,
     );
@@ -782,11 +896,12 @@ export function EditorPage() {
     // panel. Side by side, the panel has a fixed height and only the right
     // column's content counts, with the column's padding and the row's
     // bottom border, which stays below the column's fold.
-    let needed = row.offsetHeight;
+    let needed = summary + row.offsetHeight;
     let start =
       toQuickSelect === null
         ? null
-        : controls.getBoundingClientRect().top -
+        : summary +
+          controls.getBoundingClientRect().top -
           row.getBoundingClientRect().top +
           toQuickSelect;
     if (!isStacked) {
@@ -794,12 +909,23 @@ export function EditorPage() {
       const paddingTop = parseFloat(columnStyle.paddingTop);
       const border = parseFloat(getComputedStyle(row).borderBottomWidth);
       needed =
+        summary +
         controls.offsetHeight +
         paddingTop +
         parseFloat(columnStyle.paddingBottom) +
         border;
       start =
-        toQuickSelect === null ? null : paddingTop + toQuickSelect + border;
+        toQuickSelect === null
+          ? null
+          : summary + paddingTop + toQuickSelect + border;
+    }
+    // Without a waveform the pane is measured whole, apart from the
+    // waveform's numbers, which the next file with one picks up again.
+    if (!waveform) {
+      setOneSoundHeight(needed);
+      const list = row.querySelector<HTMLElement>(FILE_LIST_SELECTOR);
+      setStackedListRest(isStacked && list ? needed - list.offsetHeight : null);
+      return;
     }
     setPanelControlsHeight(needed - waveform.offsetHeight);
     setQuickSelectStart(
@@ -815,7 +941,7 @@ export function EditorPage() {
     measureSharedHeight();
     measurePanelControls();
   });
-  const hasPanelControls = Boolean(audioFile && activeSourceId);
+  const hasPanelControls = visibility.waveform || visibility.oneSoundPane;
   useLayoutEffect(() => {
     if (!isWorkspace || isPhone) return;
     const observer = new ResizeObserver(() => {
@@ -825,6 +951,8 @@ export function EditorPage() {
     for (const el of [
       keyboardAreaRef.current?.parentElement,
       panelRowRef.current,
+      // Each comes and goes with what it holds.
+      hasSummary ? summaryRef.current : null,
       hasPanelControls ? panelControlsRef.current : null,
     ]) {
       if (el) observer.observe(el);
@@ -834,6 +962,7 @@ export function EditorPage() {
     isWorkspace,
     isPhone,
     hasPanelControls,
+    hasSummary,
     measureSharedHeight,
     measurePanelControls,
   ]);
@@ -844,6 +973,12 @@ export function EditorPage() {
   // ends where Quick select starts and the waveform takes the rest, so the
   // chips wait below the fold whole rather than show a slice.
   const panelView = panelHeight ?? stackedPanelMax;
+  // Stacked, the pane of a file of one sound has no waveform to give way, so
+  // the file list does: the summary and the pane's chips stay in the panel.
+  const fileListMax =
+    isStacked && visibility.oneSoundPane && stackedListRest !== null
+      ? Math.max(STACKED_LIST_MIN_HEIGHT, stackedPanelMax - stackedListRest)
+      : undefined;
   const panelControls = panelControlsHeight ?? PANEL_CONTROLS_HEIGHT;
   const waveformHeight = clamp(
     quickSelectStart !== null &&
@@ -936,37 +1071,191 @@ export function EditorPage() {
   const clearSelectedKeySounds = () => {
     const count = selectedCodes.filter((code) => keySounds.has(code)).length;
     if (count === 0) return;
-    commitKeySounds(`Clear ${plural(count, 'key')}`, (current) =>
+    commitKeySounds(`Clear ${plural(count, noun)}`, (current) =>
       clearKeySounds(selectedCodes, current),
     );
   };
 
-  // Add audio or video files; the first one added opens in the waveform.
-  // Files without a type get one from their extension first.
-  const handleAddSources = async (files: File[]) => {
-    const added = await Promise.all(
-      files
-        .map(withMediaType)
-        .map(async (file) =>
-          createAudioSource(file, await getAudioDuration(file)),
-        ),
+  // Add audio or video files; the first one added opens. Files without a
+  // type get one from their extension first. Each is decoded on the way in:
+  // one the browser cannot read is named here and left out. `tile` is the
+  // way in the visitor chose, which says what kind the files are. An add
+  // that starts while another is read joins it, so the reading line
+  // counts the files of both until the last is read, and the summary and the
+  // error cover them all.
+  const handleAddSources = async (
+    files: File[],
+    { tile, skipped = [] }: AddOptions = {},
+  ) => {
+    const work = workRef.current;
+    if (files.length === 0) {
+      setAddError('There are no audio or video files in this folder.');
+      return;
+    }
+    const typed = files.map(withMediaType);
+    const group = readGroupRef.current ?? {
+      read: 0,
+      total: 0,
+      pending: 0,
+      ids: [],
+      skipped: [],
+      unreadable: [],
+    };
+    if (readGroupRef.current !== group) {
+      readGroupRef.current = group;
+      setAddError(null);
+    }
+    group.total += typed.length;
+    group.pending += 1;
+    group.skipped.push(...skipped);
+    setReading({ read: group.read, total: group.total });
+    const lengths = await readSoundLengths(typed, () => {
+      if (readGroupRef.current !== group) return;
+      group.read += 1;
+      setReading({ read: group.read, total: group.total });
+    });
+    // Another pack took this one's place while the files were read.
+    if (workRef.current !== work || readGroupRef.current !== group) return;
+    group.pending -= 1;
+    if (group.pending === 0) {
+      readGroupRef.current = null;
+      setReading(null);
+    }
+    group.unreadable.push(
+      ...typed.flatMap((file, index) =>
+        lengths[index] === 0 ? file.name : [],
+      ),
     );
+    if (group.unreadable.length > 0) {
+      setAddError(unreadableMessage(group.unreadable));
+    }
+    const added = typed.flatMap((file, index) =>
+      lengths[index] > 0 ? [createAudioSource(file, lengths[index])] : [],
+    );
+    if (added.length === 0) return;
     // Appends to the latest files, and picks colours against them: an Undo
-    // can land while durations are read.
+    // can land while the files are read.
     commit(
       added.length === 1
         ? `Add ${added[0].file.name}`
         : `Add ${added.length} files`,
       (current) => ({ sources: addSources(current.sources, added) }),
     );
+    setFileKinds((current) => {
+      const next = new Map(current);
+      for (const source of added) {
+        next.set(
+          source.id,
+          inferNewFileKind(source.file, source.duration, tile),
+        );
+      }
+      return next;
+    });
+    group.ids.push(...added.map((source) => source.id));
+    setLastAdd({ ids: [...group.ids], skipped: [...group.skipped] });
     setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
   };
 
+  // Stop the file of one sound that plays outside the waveform.
+  const stopSound = useCallback(() => {
+    stopSoundRef.current?.();
+    stopSoundRef.current = null;
+  }, []);
+
+  // Play a file of one sound as its keys do: the part they share, else the
+  // whole file. Played again while it plays, it stops, unless `restart`.
+  const playSource = (source: AudioSource, restart = false) => {
+    const wasPlaying = playingSourceRef.current === source.id;
+    stopSound();
+    if (wasPlaying && !restart) return;
+    playingSourceRef.current = source.id;
+    setPlayingSourceId(source.id);
+    stopSoundRef.current = playFileSegment(
+      source.file,
+      oneSoundSegment(source, keySounds),
+      () => {
+        if (playingSourceRef.current !== source.id) return;
+        playingSourceRef.current = null;
+        setPlayingSourceId(null);
+      },
+    );
+  };
+
+  // Give a file of one sound to the selected keys, as one step. Giving it
+  // again to keys that already play it adds none.
+  const giveToSelected = (source: AudioSource) => {
+    if (selectedCodes.length === 0) return;
+    commitKeySounds(
+      `Give ${source.file.name} to ${plural(selectedCodes.length, noun)}`,
+      (current) => giveOneSoundToKeys(selectedCodes, source, current),
+    );
+  };
+
+  // A click on a file opens it; a file of one sound also plays, and goes to
+  // the selected keys, so the next file on the same keys is one click away.
   const handleSelectSource = (id: string) => {
+    const source = sourcesById.get(id);
+    if (!source) return;
+    if (fileKinds.get(id) === 'one') {
+      giveToSelected(source);
+      playSource(source, true);
+    }
     if (id === activeSourceId) return;
     setActiveSourceId(id);
     setWaveformSelection({ start: 0, end: 0 });
+  };
+
+  const setKinds = (ids: readonly string[], kind: FileKind) => {
+    setFileKinds((current) => {
+      const next = new Map(current);
+      for (const id of ids) next.set(id, kind);
+      return next;
+    });
+  };
+
+  // The buttons of the summary of the last add, each one step.
+  const handleSummaryAction = (line: SummaryActionLine) => {
+    const filesOf = (ids: readonly string[]) =>
+      ids.flatMap((id) => sourcesById.get(id) ?? []);
+    if (line.kind === 'matched') {
+      const matches = line.matches.flatMap(({ id, codes }) => {
+        const source = sourcesById.get(id);
+        return source ? [{ source, codes }] : [];
+      });
+      commitKeySounds(
+        `Give ${plural(matches.length, 'file')} to their ${noun}s`,
+        (current) => giveFilesToTheirKeys(matches, current),
+      );
+      // Keys a smaller keyboard leaves out show, as when a pack is opened.
+      // The selected keys stay selected: the give did not use them, and the
+      // bigger keyboard draws them all.
+      if (packInfo.packType === 'Keyboard') {
+        const codes = matches.flatMap((match) => match.codes);
+        const wider = widenKeyboardSize(codes, keyboardSize);
+        if (wider !== keyboardSize) {
+          keptSelectionRef.current = selectedCodes;
+          setKeyboardSize(wider);
+        }
+      }
+      return;
+    }
+    const files = filesOf(line.ids);
+    const layoutCodes = getLayoutCodes(layout);
+    // Silent keys are counted from the pack as the step finds it.
+    const targetsIn = (current: KeySounds) =>
+      keysToFill(layoutCodes, selectedCodes, current);
+    if (line.kind === 'similar') {
+      commitKeySounds(
+        `Spread ${plural(files.length, 'file')} across ${plural(targetsIn(keySounds).length, noun)}`,
+        (current) => spreadFilesAcrossKeys(files, targetsIn(current), current),
+      );
+    } else {
+      commitKeySounds(
+        `Give ${plural(files.length, 'file')} to ${noun}s in order`,
+        (current) => giveFilesToKeysInOrder(files, targetsIn(current), current),
+      );
+    }
   };
 
   // Removing a file also removes the sounds cut from it, as one step. Undo
@@ -1038,7 +1327,13 @@ export function EditorPage() {
     setNotice(null);
     setEmphasizeTryIt(false);
     setAutoTour(null);
-  }, [setSelectedKeys]);
+    setFileKinds(new Map());
+    setLastAdd(null);
+    readGroupRef.current = null;
+    setReading(null);
+    setAddError(null);
+    stopSound();
+  }, [setSelectedKeys, stopSound]);
 
   // Start a new history from `snapshot` with nothing unsaved. `published` is what the library holds.
   const startFrom = useCallback(
@@ -1061,6 +1356,7 @@ export function EditorPage() {
     setPendingPackType(null);
     setEmphasizeTryIt(false);
     exitPreview();
+    stopSound();
     // Playing again stops it.
     if (isPlaying) playSelectedSegment();
     tourRef.current?.destroy();
@@ -1085,7 +1381,7 @@ export function EditorPage() {
     // The discard question was asked for a way in on the screen left, also
     // when the browser's Back or Forward left it.
     setConfirmDiscardAction(null);
-    if (next !== 'pack-type') setPendingFiles([]);
+    if (next !== 'pack-type') setPendingFiles(NO_FILES);
     if (next !== 'start') dropStartLink();
     setOpenFileError(null);
     setLibraryOpenError(null);
@@ -1107,6 +1403,7 @@ export function EditorPage() {
     const id = newWorkId();
     dropStartLink();
     window.history.replaceState(workspaceState(window.history.state, id), '');
+    workRef.current = id;
     setWorkId(id);
     setScreen('workspace');
   };
@@ -1162,25 +1459,28 @@ export function EditorPage() {
     refreshSession();
   };
 
-  // Ask whether the new pack is for a keyboard or a mouse. `files` go into
-  // it once that is answered.
-  const askPackType = (files: File[] = []) => {
+  // Ask whether the new pack is for a keyboard or a mouse. `incoming` files
+  // go into it once that is answered.
+  const askPackType = (incoming: IncomingFiles = NO_FILES) => {
     pushScreen('pack-type');
-    setPendingFiles(files);
+    setPendingFiles(incoming);
   };
 
   // The new pack starts from a blank one of the chosen type, which counts as
-  // saved: choosing Mouse leaves nothing to lose. Waiting files are added on
-  // top as an undoable step, so they do count as changes.
-  const startNewPack = (packType: PackType) => {
-    const files = pendingFiles;
-    setPendingFiles([]);
+  // saved: choosing Mouse leaves nothing to lose. Files coming with it are
+  // added on top as an undoable step, so they do count as changes. They come
+  // with the call, not from state this same event may have just set.
+  const startNewPack = (
+    packType: PackType,
+    { files, skipped }: IncomingFiles = NO_FILES,
+  ) => {
+    setPendingFiles(NO_FILES);
     resetView();
     startFrom(createBlankSnapshot(packType), null);
     enterWorkspace();
     // Files on their way skip the empty pack the tour would show.
     if (files.length > 0) {
-      handleAddSources(files);
+      handleAddSources(files, { skipped });
     } else {
       setAutoTour('new-pack');
     }
@@ -1190,11 +1490,14 @@ export function EditorPage() {
   // that are not saved.
   const asksFirst = asksBeforeReplacing({ workId, isDirty });
 
-  const chooseNewPack = (packType: PackType) => {
+  const chooseNewPack = (
+    packType: PackType,
+    incoming: IncomingFiles = NO_FILES,
+  ) => {
     if (asksFirst) {
-      setConfirmDiscardAction({ packType });
+      setConfirmDiscardAction({ packType, ...incoming });
     } else {
-      startNewPack(packType);
+      startNewPack(packType, incoming);
     }
   };
 
@@ -1203,7 +1506,7 @@ export function EditorPage() {
     setConfirmDiscardAction(null);
     if (!action) return;
     if ('packType' in action) {
-      startNewPack(action.packType);
+      startNewPack(action.packType, action);
     } else if ('file' in action) {
       openPackFile(action.file);
     } else {
@@ -1228,6 +1531,8 @@ export function EditorPage() {
       keySounds: imported.keySounds,
     };
     startFrom(snapshot, fromLibrary ? snapshot : null);
+    // How the keys play each file tells what it holds.
+    setFileKinds(inferKindsFromPack(imported.sources, imported.keySounds));
     // Show every mapped key. Outside the history, like any size change.
     if (imported.info.packType === 'Keyboard') {
       setKeyboardSize((current) =>
@@ -1354,6 +1659,13 @@ export function EditorPage() {
       : !isKeyboardOwnedElsewhere);
 
   // Why a drop did nothing shows where a pack file's problem would.
+  const showDropProblem = (message: string) => {
+    if (isWorkspace) {
+      setNotice({ tone: 'error', message });
+    } else {
+      setOpenFileError(message);
+    }
+  };
   const handleDrop = (route: DropRoute<File>) => {
     switch (route.kind) {
       case 'open-zip':
@@ -1363,18 +1675,36 @@ export function EditorPage() {
           openPackFile(route.file);
         }
         return;
-      case 'to-type-question':
-        askPackType(route.files);
+      case 'open-folder':
+        // Zipped in memory, the folder opens the way its zip would. A file
+        // that cannot be read on the way says so, as a pack that cannot open.
+        zipFolder(route.files).then(
+          (file) => {
+            if (route.confirm) {
+              setConfirmDiscardAction({ file });
+            } else {
+              openPackFile(file);
+            }
+          },
+          () => showDropProblem('Could not open this pack.'),
+        );
         return;
+      case 'to-type-question': {
+        const incoming = { files: route.files, skipped: route.skipped };
+        // Names that all say the same kind of pack skip the question.
+        const packType = guessPackType(route.files.map((file) => file.name));
+        if (packType) {
+          chooseNewPack(packType, incoming);
+        } else {
+          askPackType(incoming);
+        }
+        return;
+      }
       case 'add-media':
-        handleAddSources(route.files);
+        handleAddSources(route.files, { skipped: route.skipped });
         return;
       default:
-        if (isWorkspace) {
-          setNotice({ tone: 'error', message: route.message });
-        } else {
-          setOpenFileError(route.message);
-        }
+        showDropProblem(route.message);
     }
   };
 
@@ -1470,10 +1800,23 @@ export function EditorPage() {
     }
   };
 
-  // Clear selection when changing the keyboard size or the pack type
+  // Clear selection when changing the keyboard size or the pack type, unless
+  // the keyboard grew to show keys just given a sound: then the same keys
+  // stay selected on it. Selection ids differ between layouts, so they are
+  // found again by code.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the layout change is the trigger, not a value the effect reads
   useEffect(() => {
-    setSelectedKeys(new Set());
+    const kept = keptSelectionRef.current;
+    keptSelectionRef.current = null;
+    setSelectedKeys(
+      new Set(
+        kept
+          ? [...keyCodeById]
+              .filter(([, code]) => kept.includes(code))
+              .map(([id]) => id)
+          : [],
+      ),
+    );
   }, [layout, setSelectedKeys]);
 
   // Keep the waveform on a file the pack still has: Undo and Redo can take
@@ -1543,6 +1886,7 @@ export function EditorPage() {
       signedIn: session.status === 'signed-in',
       stage: visibility.stage,
       isMouse: isMousePack,
+      activeFileKind,
     });
   };
   useEffect(() => () => tourRef.current?.destroy(), []);
@@ -1587,8 +1931,9 @@ export function EditorPage() {
     if (!isPhone) return;
     exitPreview();
     setIsPlaying(false);
+    stopSound();
     tourRef.current?.destroy();
-  }, [isPhone, exitPreview]);
+  }, [isPhone, exitPreview, stopSound]);
 
   // The editor opens on the start screen, also after a reload. Reloaded on an
   // entry added on top of the start screen's, it steps back onto that one.
@@ -1808,7 +2153,37 @@ export function EditorPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isKeyboardOwnedElsewhere, undo, redo]);
 
-  // Space plays or stops the selected sound, as the waveform hint says.
+  // Another file opens: what played from the one before stops, unless the
+  // click that opened it plays it.
+  useEffect(() => {
+    if (playingSourceRef.current !== activeSourceId) stopSound();
+    setIsPlaying(false);
+  }, [activeSourceId, stopSound]);
+
+  // A file that stops being one sound, or leaves the pack, takes away the
+  // buttons that stop its sound, so the sound stops with them.
+  useEffect(() => {
+    if (
+      playingSourceId !== null &&
+      (fileKinds.get(playingSourceId) !== 'one' ||
+        !sources.some((source) => source.id === playingSourceId))
+    ) {
+      stopSound();
+    }
+  }, [playingSourceId, fileKinds, sources, stopSound]);
+
+  // Space plays or stops the open sound, as the waveform hint says: the
+  // waveform's selection, or a file of one sound. The waveform's player
+  // stays behind when a file of one sound opens, so the kind decides.
+  const playOpenSound = () => {
+    if (activeFileKind === 'one') {
+      if (activeSource) playSource(activeSource);
+    } else {
+      playSelectedSegment();
+    }
+  };
+  const playOpenSoundRef = useRef(playOpenSound);
+  playOpenSoundRef.current = playOpenSound;
   useEffect(() => {
     if (isKeyboardOwnedElsewhere || !activeSourceId) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1827,11 +2202,11 @@ export function EditorPage() {
       }
       // Also keeps the page from scrolling when there is nothing to play.
       event.preventDefault();
-      playSelectedSegment();
+      playOpenSoundRef.current();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isKeyboardOwnedElsewhere, activeSourceId, playSelectedSegment]);
+  }, [isKeyboardOwnedElsewhere, activeSourceId]);
 
   // Ask before closing or reloading the tab over unsaved changes.
   useEffect(() => {
@@ -2075,9 +2450,9 @@ export function EditorPage() {
         )}
         {screen === 'pack-type' && (
           <PackTypeScreen
-            fileCount={pendingFiles.length}
+            fileCount={pendingFiles.files.length}
             onBack={goBackToStart}
-            onChoose={chooseNewPack}
+            onChoose={(packType) => chooseNewPack(packType, pendingFiles)}
           />
         )}
 
@@ -2146,6 +2521,8 @@ export function EditorPage() {
                     stage={visibility.stage}
                     packType={packInfo.packType}
                     isTouch={isCoarsePointer}
+                    activeFileKind={activeFileKind}
+                    selectedCount={selectedCodes.length}
                     isLarge={keyboardWidth >= NEXT_STEP_LARGE_WIDTH}
                   />
                   {visibility.keyboardSize && (
@@ -2291,6 +2668,13 @@ export function EditorPage() {
               <AddSoundsPanel
                 packType={packInfo.packType}
                 onAdd={handleAddSources}
+                status={
+                  reading
+                    ? { tone: 'info', text: readingText(reading) }
+                    : addError
+                      ? { tone: 'error', text: addError }
+                      : null
+                }
               />
             )}
 
@@ -2352,7 +2736,7 @@ export function EditorPage() {
             >
               {/* Stacked, the panel sizes to its content; capped so the keyboard keeps room */}
               <div
-                className="max-lg:overflow-y-auto"
+                className="flex flex-col max-lg:overflow-y-auto"
                 style={
                   panelHeight === null
                     ? { maxHeight: stackedPanelMax }
@@ -2360,27 +2744,54 @@ export function EditorPage() {
                 }
               >
                 <h2 className="sr-only">Sound editing</h2>
+                {/* Over the tiles, A says the same under them. */}
+                {visibility.soundPanel && (
+                  <AddedFilesSummary
+                    ref={summaryRef}
+                    summary={addSummary}
+                    reading={reading}
+                    error={addError}
+                    onChangeKind={(kind) => {
+                      if (lastAdd) setKinds(lastAdd.ids, kind);
+                    }}
+                    onAction={handleSummaryAction}
+                    onDismiss={() => {
+                      setLastAdd(null);
+                      setAddError(null);
+                    }}
+                  />
+                )}
                 {/* Dividers run edge to edge: padding lives inside each column, not on the row */}
                 <div
                   ref={panelRowRef}
-                  className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20"
+                  className="flex flex-col lg:flex-row items-stretch max-lg:shrink-0 lg:flex-1 min-h-0 border-b-2 border-base-content/20"
                 >
                   {/* Left: audio/video import. Stacked, it is a short dropzone,
                   sizes to the file list once audio is loaded (the waveform
                   gives way to a longer list), and keeps room for the clip when
-                  a video is loaded. */}
+                  a video plays along with the waveform. */}
                   <div
                     // The tour points only at what is on show.
                     data-tour={visibility.soundPanel ? 'sources' : undefined}
-                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : visibility.waveform && audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
                   >
                     <AudioFileSelector
                       sources={sources}
                       activeSourceId={activeSourceId}
-                      keyCounts={keyCounts}
+                      kinds={fileKinds}
+                      codesBySource={codesBySource}
+                      selectedCount={selectedCodes.length}
+                      noun={noun}
+                      listMaxHeight={fileListMax}
+                      playingSourceId={playingSourceId}
+                      onPlay={(id) => {
+                        const source = sourcesById.get(id);
+                        if (source) playSource(source);
+                      }}
                       onSelect={handleSelectSource}
-                      onAdd={handleAddSources}
+                      onAdd={(files) => handleAddSources(files)}
                       onRemove={handleRemoveSource}
+                      onSetKind={(id, kind) => setKinds([id], kind)}
                       videoRef={videoPreviewRef}
                     />
                   </div>
@@ -2392,7 +2803,7 @@ export function EditorPage() {
                     data-tour={visibility.soundPanel ? 'sound' : undefined}
                     className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto"
                   >
-                    {audioFile && activeSourceId && (
+                    {visibility.waveform && audioFile && activeSourceId && (
                       // Sized to its content, which the panel measures.
                       <div
                         ref={panelControlsRef}
@@ -2448,6 +2859,42 @@ export function EditorPage() {
                         />
                       </div>
                     )}
+                    {visibility.oneSoundPane && activeSource && (
+                      // Measured as controls with no waveform.
+                      <div
+                        ref={panelControlsRef}
+                        className="min-w-0 flex flex-col gap-3"
+                      >
+                        <OneSoundPane
+                          source={activeSource}
+                          codes={codesBySource.get(activeSource.id) ?? []}
+                          noun={noun}
+                          isPlaying={playingSourceId === activeSource.id}
+                          onPlay={() => playSource(activeSource)}
+                          onGive={() => {
+                            giveToSelected(activeSource);
+                            playSource(activeSource, true);
+                          }}
+                          given={
+                            selectedCodes.length > 0 &&
+                            giveOneSoundToKeys(
+                              selectedCodes,
+                              activeSource,
+                              keySounds,
+                            ) === keySounds
+                          }
+                          selectedKeys={selectedKeys}
+                          setSelectedKeys={setSelectedKeys}
+                          selectedCodes={selectedCodes}
+                          keySounds={keySounds}
+                          commitKeySounds={commitKeySounds}
+                          onClearSelected={clearSelectedKeySounds}
+                          hiddenCount={hiddenKeys.length}
+                          keys={visibility.keyGroups ? keys : undefined}
+                          getKeyId={getKeyId}
+                        />
+                      </div>
+                    )}{' '}
                     {/* The column's bottom padding, kept over what the panel is
                     too short for, so cut content fades out at the edge
                     rather than ending in a sliver. */}

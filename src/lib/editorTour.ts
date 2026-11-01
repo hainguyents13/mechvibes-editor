@@ -1,6 +1,7 @@
 import { type DriveStep, driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import { markTourSeen, type TourFlow } from '@/lib/editorTourFlow';
+import type { FileKind } from '@/lib/fileKinds';
 import { MOD_LABEL } from '@/lib/utils';
 import type { WorkspaceStage } from '@/lib/workspaceVisibility';
 
@@ -30,15 +31,15 @@ function newPackSteps(isMouse: boolean): DriveStep[] {
       popover: {
         title: 'Add your sounds',
         description: isMouse
-          ? 'Pick what you have: one recording of your clicks, one file for each button, or a video. Each opens a file picker that fits it.'
-          : 'Pick what you have: one recording of your typing, one file for each key, or a video. Each opens a file picker that fits it.',
+          ? 'Pick what you have: one recording of your clicks, one file for each button, or a video. Each opens a file picker that fits it. Choose folder adds every sound in a folder.'
+          : 'Pick what you have: one recording of your typing, one file for each key, or a video. Each opens a file picker that fits it. Choose folder adds every sound in a folder.',
       },
     },
     {
       element: target('drop'),
       popover: {
         title: 'Or drop them',
-        description: `Drop audio or video files anywhere on the page. The ${isMouse ? 'buttons' : 'keys'} behind come alive once a file is in.`,
+        description: `Drop audio or video files, or a folder of them, anywhere on the page. The ${isMouse ? 'buttons' : 'keys'} behind come alive once a file is in.`,
       },
     },
   ];
@@ -51,14 +52,17 @@ function tryItDescription(isMouse: boolean) {
 }
 
 /** Where to hear, save and publish a pack that already makes sound. */
-function openedPackSteps(isMouse: boolean): DriveStep[] {
+function openedPackSteps(
+  isMouse: boolean,
+  activeFileKind: FileKind | null,
+): DriveStep[] {
   const noun = isMouse ? 'button' : 'key';
   return [
     {
       element: target('keyboard'),
       popover: {
         title: `The ${noun}s of the pack`,
-        description: `A dot marks a ${noun} that has a sound, in the colour of its file. Select ${noun}s to give them a new sound from the waveform below.`,
+        description: `A dot marks a ${noun} that has a sound, in the colour of its file. Select ${noun}s to give them a new sound ${activeFileKind === 'one' ? 'by clicking a sound in the list below' : 'from the waveform below'}.`,
       },
     },
     {
@@ -77,10 +81,40 @@ function openedPackSteps(isMouse: boolean): DriveStep[] {
   ];
 }
 
+/** The step on the open file: the list gives a file of one sound, the waveform cuts one of many. */
+function soundStep(
+  stage: WorkspaceStage,
+  isMouse: boolean,
+  activeFileKind: FileKind | null,
+): DriveStep {
+  const noun = isMouse ? 'button' : 'key';
+  const later =
+    stage === 'has-sounds'
+      ? ''
+      : ` Try it and Download .zip show up once a ${noun} has a sound.`;
+  if (activeFileKind === 'one') {
+    return {
+      element: target('sound'),
+      popover: {
+        title: `3. Give ${noun}s a sound`,
+        description: `Select ${noun}s, then click a sound in the list to give it to them. Click another sound to hear the change. A file with several sounds? Choose This file has several sounds in its ... menu to cut them on a waveform.${later}`,
+      },
+    };
+  }
+  return {
+    element: target('sound'),
+    popover: {
+      title: '3. Cut the sound',
+      description: `The waveform of the chosen file. Drag over one ${isMouse ? 'click' : 'keystroke'}, press Test to hear it, then Apply to give it to the selected ${noun}s. Once a ${noun} has a sound, switch to Release for the sound it makes when it comes up.${later}`,
+    },
+  };
+}
+
 function allSteps(
   signedIn: boolean,
   stage: WorkspaceStage,
   isMouse: boolean,
+  activeFileKind: FileKind | null,
 ): DriveStep[] {
   const noun = isMouse ? 'button' : 'key';
   return [
@@ -95,7 +129,7 @@ function allSteps(
       element: target('add-sounds'),
       popover: {
         title: '1. Add your sounds',
-        description: `Pick what you have: one recording, one file for each ${noun}, or a video. You can also drop files anywhere on the page. The ${noun}s behind come alive once a file is in.`,
+        description: `Pick what you have: one recording, one file for each ${noun}, or a video. Choose folder adds every sound in a folder. You can also drop files or a folder anywhere on the page. The ${noun}s behind come alive once a file is in.`,
       },
     },
     {
@@ -122,13 +156,7 @@ function allSteps(
         description: `Click a ${noun} to select it and click it again to deselect it. ${isMouse ? '' : 'Drag across keys to select several, '}Shift+click to select a range, or ${MOD_LABEL}+click to add or remove one. Delete clears the sound of the selected ${noun}s. A dot marks a ${noun} that already has a sound, in the colour of its file.`,
       },
     },
-    {
-      element: target('sound'),
-      popover: {
-        title: '3. Cut the sound',
-        description: `The waveform of the chosen file. Drag over one ${isMouse ? 'click' : 'keystroke'}, press Test to hear it, then Apply to give it to the selected ${noun}s. Once a ${noun} has a sound, switch to Release for the sound it makes when it comes up.${stage === 'has-sounds' ? '' : ` Try it and Download .zip show up once a ${noun} has a sound.`}`,
-      },
-    },
+    soundStep(stage, isMouse, activeFileKind),
     {
       element: target('try-it'),
       popover: { title: '4. Try it', description: tryItDescription(isMouse) },
@@ -192,34 +220,44 @@ function buildSteps(
   signedIn: boolean,
   stage: WorkspaceStage,
   isMouse: boolean,
+  activeFileKind: FileKind | null,
 ) {
   switch (flow) {
     case 'new-pack':
       return newPackSteps(isMouse);
     case 'opened-pack':
-      return openedPackSteps(isMouse);
+      return openedPackSteps(isMouse, activeFileKind);
     default:
-      return allSteps(signedIn, stage, isMouse);
+      return allSteps(signedIn, stage, isMouse, activeFileKind);
   }
 }
 
 /**
- * Start the tour, for how far the pack has come. It counts as seen as soon
- * as it opens: driver.js skips its destroy callback when the tour closes
- * mid-animation, so marking it on close would bring it back.
+ * Start the tour, for how far the pack has come and the kind of the open
+ * file. It counts as seen as soon as it opens: driver.js skips its destroy
+ * callback when the tour closes mid-animation, so marking it on close would
+ * bring it back.
  */
 export function startEditorTour({
   flow = 'all',
   signedIn,
   stage,
   isMouse,
+  activeFileKind = null,
 }: {
   flow?: TourFlow;
   signedIn: boolean;
   stage: WorkspaceStage;
   isMouse: boolean;
+  activeFileKind?: FileKind | null;
 }) {
-  const steps = buildSteps(flow, signedIn, stage, isMouse).filter(
+  const steps = buildSteps(
+    flow,
+    signedIn,
+    stage,
+    isMouse,
+    activeFileKind,
+  ).filter(
     (step) => typeof step.element !== 'string' || isOnShow(step.element),
   );
   if (steps.length === 0) return null;

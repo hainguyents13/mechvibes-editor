@@ -1,21 +1,41 @@
+import type { FileKind } from '@/lib/fileKinds';
 import type { WorkspaceStage } from '@/lib/workspaceVisibility';
 import type { PackType } from '@/utils/soundPack';
 
 /**
- * What to do next, for how far the pack has come. A mouse pack names its
- * buttons, and a touch screen, where Try it plays what is tapped, says so.
+ * What to do next, for how far the pack has come and the kind of the open
+ * file: a file of one sound goes to keys from the list, a file of many is cut
+ * on the waveform. A mouse pack names its buttons, and a touch screen, where
+ * Try it plays what is tapped, says so.
  */
 export function nextStepText({
   stage,
   packType,
   isTouch,
+  activeFileKind = null,
+  selectedCount = 0,
 }: {
   stage: WorkspaceStage;
   packType: PackType;
   isTouch: boolean;
+  activeFileKind?: FileKind | null;
+  /** Keys or buttons selected. */
+  selectedCount?: number;
 }) {
   const isMouse = packType === 'Mouse';
   const noun = isMouse ? 'button' : 'key';
+  if (stage !== 'no-files' && activeFileKind === 'one') {
+    if (selectedCount > 0) {
+      const them =
+        selectedCount === 1
+          ? `the selected ${noun}`
+          : `the ${selectedCount} selected ${noun}s`;
+      return `click a sound to give it to ${them}.`;
+    }
+    if (stage === 'no-sounds') {
+      return `select ${noun}s, then click a sound to give it to them.`;
+    }
+  }
   switch (stage) {
     case 'no-files':
       return 'add your sounds.';

@@ -1,12 +1,15 @@
 import {
   AudioLines,
   ChevronRight,
+  CircleAlert,
   Files,
   type LucideIcon,
   Video,
 } from 'lucide-react';
 import { useRef } from 'react';
 import { STRETCHED_ACTION } from '@/components/start/StartPage';
+import { sortChosenFolder } from '@/lib/dropRouting';
+import type { AddTile as TileKind } from '@/lib/fileKinds';
 import {
   AUDIO_FILE_ACCEPT,
   isMediaFile,
@@ -14,7 +17,11 @@ import {
 } from '@/utils/audioUtils';
 import type { PackType } from '@/utils/soundPack';
 
+/** How files came in: the tile chosen, and the names of files left out. */
+export type AddOptions = { tile?: TileKind; skipped?: string[] };
+
 interface Tile {
+  kind: TileKind;
   Icon: LucideIcon;
   title: string;
   hint: string;
@@ -27,6 +34,7 @@ function tilesFor(packType: PackType): Tile[] {
   const isMouse = packType === 'Mouse';
   return [
     {
+      kind: 'recording',
       Icon: AudioLines,
       title: isMouse ? 'One recording of clicks' : 'One recording of typing',
       hint: isMouse
@@ -37,6 +45,7 @@ function tilesFor(packType: PackType): Tile[] {
       multiple: false,
     },
     {
+      kind: 'per-key',
       Icon: Files,
       title: isMouse ? 'One file for each button' : 'One file for each key',
       hint: isMouse
@@ -47,6 +56,7 @@ function tilesFor(packType: PackType): Tile[] {
       multiple: true,
     },
     {
+      kind: 'video',
       Icon: Video,
       title: isMouse ? 'A video of clicking' : 'A video of typing',
       hint: 'Only its sound goes in the pack',
@@ -84,16 +94,19 @@ function AddTile({
 }: {
   tile: Tile;
   inputId?: string;
-  onAdd: (files: File[]) => void;
+  onAdd: (files: File[], options: AddOptions) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const { Icon } = tile;
+  // The tile of files for each key also takes a whole folder of them.
+  const takesFolder = tile.kind === 'per-key';
   return (
     <section className="relative flex flex-col rounded-box border border-base-300 bg-base-100 p-4 shadow-sm transition hover:border-primary/60 hover:shadow-md">
       <Icon className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />
       <h3 className="mt-2 text-sm font-semibold">{tile.title}</h3>
       <p className="mt-0.5 text-xs text-base-content/70">{tile.hint}</p>
-      <div className="mt-auto pt-3">
+      <div className="mt-auto pt-3 flex flex-wrap gap-2">
         <button
           type="button"
           // Named with its tile, so the three tell apart in a list of
@@ -109,6 +122,20 @@ function AddTile({
         >
           {tile.action}
         </button>
+        {takesFolder && (
+          <button
+            type="button"
+            aria-label={`Choose folder: ${tile.title}`}
+            onClick={(event) => {
+              if (event.detail > 1) return;
+              folderInputRef.current?.click();
+            }}
+            // Above the overlay that makes the whole tile choose files.
+            className="relative z-10 btn btn-sm btn-ghost rounded-box"
+          >
+            Choose folder
+          </button>
+        )}
       </div>
       <input
         ref={inputRef}
@@ -122,13 +149,34 @@ function AddTile({
             isMediaFile,
           );
           event.target.value = '';
-          if (media.length > 0) onAdd(media);
+          if (media.length > 0) onAdd(media, { tile: tile.kind });
         }}
       />
+      {takesFolder && (
+        <input
+          // React has no prop for it yet. A folder picker ignores accept, so
+          // the files are sorted here.
+          ref={(input) => {
+            folderInputRef.current = input;
+            if (input) input.webkitdirectory = true;
+          }}
+          type="file"
+          className="hidden"
+          multiple
+          onChange={(event) => {
+            const chosen = Array.from(event.target.files ?? []);
+            event.target.value = '';
+            if (chosen.length === 0) return;
+            // The tile said one file for each key, so a pack folder's
+            // config.json is only one more file left out.
+            const { media, skipped } = sortChosenFolder(chosen);
+            onAdd(media, { tile: tile.kind, skipped });
+          }}
+        />
+      )}
     </section>
   );
 }
-
 /** Takes the focus when the last file goes and these ways in come back. */
 export const ADD_SOUNDS_HEADING_ID = 'add-sounds-heading';
 
@@ -139,9 +187,12 @@ export const ADD_SOUNDS_HEADING_ID = 'add-sounds-heading';
 export function AddSoundsPanel({
   packType,
   onAdd,
+  status,
 }: {
   packType: PackType;
-  onAdd: (files: File[]) => void;
+  onAdd: (files: File[], options: AddOptions) => void;
+  /** Files being read, or why some could not be added: under the tiles. */
+  status: { tone: 'info' | 'error'; text: string } | null;
 }) {
   const tips = recordingTips(packType);
   return (
@@ -169,6 +220,20 @@ export function AddSoundsPanel({
             />
           ))}
         </div>
+        {status &&
+          (status.tone === 'error' ? (
+            <p
+              role="alert"
+              className="mt-3 flex items-start justify-center gap-1.5 text-sm text-error-strong"
+            >
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{status.text}</span>
+            </p>
+          ) : (
+            <output className="mt-3 block text-center text-sm text-base-content/70">
+              {status.text}
+            </output>
+          ))}
         <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs text-base-content/70">
           <p data-tour="drop">
             Or drop files anywhere. MP3, WAV, OGG, FLAC, M4A, MP4, WEBM, MOV
