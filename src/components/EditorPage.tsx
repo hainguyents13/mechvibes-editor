@@ -484,6 +484,16 @@ export function EditorPage() {
   // The work files are added to, set with workId: a read that ends after
   // another pack took its place adds nothing to that one.
   const workRef = useRef<string | null>(null);
+  // The adds being read, as one: their files read so far and in all, how
+  // many adds are still reading, and what those done brought in or left out.
+  const readGroupRef = useRef<{
+    read: number;
+    total: number;
+    pending: number;
+    ids: string[];
+    skipped: string[];
+    unreadable: string[];
+  } | null>(null);
   // The file of one sound playing outside the waveform, and how to stop it.
   const [playingSourceId, setPlayingSourceId] = useState<string | null>(null);
   const playingSourceRef = useRef<string | null>(null);
@@ -1053,28 +1063,55 @@ export function EditorPage() {
   // Add audio or video files; the first one added opens. Files without a
   // type get one from their extension first. Each is decoded on the way in:
   // one the browser cannot read is named here and left out. `tile` is the
-  // way in the visitor chose, which says what kind the files are.
+  // way in the visitor chose, which says what kind the files are. An add
+  // that starts while another is read joins it, so the reading line
+  // counts the files of both until the last is read, and the summary and the
+  // error cover them all.
   const handleAddSources = async (
     files: File[],
     { tile, skipped = [] }: AddOptions = {},
   ) => {
     const work = workRef.current;
-    setAddError(null);
     if (files.length === 0) {
       setAddError('There are no audio or video files in this folder.');
       return;
     }
     const typed = files.map(withMediaType);
-    setReading({ read: 0, total: typed.length });
-    const lengths = await readSoundLengths(typed, (read) => {
-      if (workRef.current === work) setReading({ read, total: typed.length });
+    const group = readGroupRef.current ?? {
+      read: 0,
+      total: 0,
+      pending: 0,
+      ids: [],
+      skipped: [],
+      unreadable: [],
+    };
+    if (readGroupRef.current !== group) {
+      readGroupRef.current = group;
+      setAddError(null);
+    }
+    group.total += typed.length;
+    group.pending += 1;
+    group.skipped.push(...skipped);
+    setReading({ read: group.read, total: group.total });
+    const lengths = await readSoundLengths(typed, () => {
+      if (readGroupRef.current !== group) return;
+      group.read += 1;
+      setReading({ read: group.read, total: group.total });
     });
     // Another pack took this one's place while the files were read.
-    if (workRef.current !== work) return;
-    setReading(null);
-    const unreadable = typed.filter((_, index) => lengths[index] === 0);
-    if (unreadable.length > 0) {
-      setAddError(unreadableMessage(unreadable.map((file) => file.name)));
+    if (workRef.current !== work || readGroupRef.current !== group) return;
+    group.pending -= 1;
+    if (group.pending === 0) {
+      readGroupRef.current = null;
+      setReading(null);
+    }
+    group.unreadable.push(
+      ...typed.flatMap((file, index) =>
+        lengths[index] === 0 ? file.name : [],
+      ),
+    );
+    if (group.unreadable.length > 0) {
+      setAddError(unreadableMessage(group.unreadable));
     }
     const added = typed.flatMap((file, index) =>
       lengths[index] > 0 ? [createAudioSource(file, lengths[index])] : [],
@@ -1098,7 +1135,8 @@ export function EditorPage() {
       }
       return next;
     });
-    setLastAdd({ ids: added.map((source) => source.id), skipped });
+    group.ids.push(...added.map((source) => source.id));
+    setLastAdd({ ids: [...group.ids], skipped: [...group.skipped] });
     setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
   };
@@ -1275,6 +1313,7 @@ export function EditorPage() {
     setAutoTour(null);
     setFileKinds(new Map());
     setLastAdd(null);
+    readGroupRef.current = null;
     setReading(null);
     setAddError(null);
     stopSound();
