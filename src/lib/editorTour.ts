@@ -12,6 +12,16 @@ import type { WorkspaceStage } from '@/lib/workspaceVisibility';
 
 const target = (name: string) => `[data-tour="${name}"]`;
 
+/** Shown for a pack opened from the library. */
+const updateStep: DriveStep = {
+  element: target('update'),
+  popover: {
+    title: 'Update',
+    description:
+      'Publishes your changes as the next revision of this pack in the library.',
+  },
+};
+
 /** The ways to add the first sounds of a new pack. */
 function newPackSteps(isMouse: boolean): DriveStep[] {
   return [
@@ -62,14 +72,7 @@ function openedPackSteps(isMouse: boolean): DriveStep[] {
           'Saves the pack as a .zip. Install it in the Mechvibes app, or create a pack from it on the website to share it.',
       },
     },
-    {
-      element: target('update'),
-      popover: {
-        title: 'Update',
-        description:
-          'Publishes your changes as the next revision of this pack in the library.',
-      },
-    },
+    updateStep,
   ];
 }
 
@@ -144,6 +147,7 @@ function allSteps(signedIn: boolean, stage: WorkspaceStage): DriveStep[] {
           'Saves the pack as a .zip. Install it in the Mechvibes app, or create a pack from it on the website to share it.',
       },
     },
+    updateStep,
     {
       element: target('start-over'),
       popover: {
