@@ -639,6 +639,8 @@ export function EditorPage() {
     isLibraryPack: libraryPack !== null,
     isSignedIn: session.status === 'signed-in',
     selectedCodes,
+    // Every file opens in the waveform until files of one sound get their pane.
+    activeFileKind: activeSourceId ? 'many' : null,
   });
   const keyCount = useMemo(
     () => countDrawnKeys(keySounds, getLayoutCodes(layout)),

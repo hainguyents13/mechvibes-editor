@@ -21,6 +21,7 @@ function facts(overrides: Partial<WorkspaceFacts> = {}): WorkspaceFacts {
     isLibraryPack: false,
     isSignedIn: false,
     selectedCodes: [],
+    activeFileKind: null,
     ...overrides,
   };
 }
@@ -42,14 +43,18 @@ describe('getVisibility', () => {
     expect(v.tryIt).toBe(false);
     expect(v.download).toBe(false);
     expect(v.pressReleaseToggle).toBe(false);
+    expect(v.waveform).toBe(false);
+    expect(v.oneSoundPane).toBe(false);
   });
 
   it('shows the files and the waveform once a file is added (B)', () => {
-    const v = getVisibility(facts({ sourceCount: 1 }));
+    const v = getVisibility(facts({ sourceCount: 1, activeFileKind: 'many' }));
     expect(v.stage).toBe('no-sounds');
     expect(v.addTiles).toBe(false);
     expect(v.fadedKeyboard).toBe(false);
     expect(v.soundPanel).toBe(true);
+    expect(v.waveform).toBe(true);
+    expect(v.oneSoundPane).toBe(false);
     expect(v.keyboardSize).toBe(true);
     expect(v.keyGroups).toBe(true);
     expect(v.legend).toBe(true);
@@ -159,18 +164,45 @@ describe('getVisibility', () => {
 
   it('shows Press / Release once a selected key has a press sound', () => {
     const keySounds = sounds([['KeyA', press()]]);
-    const none = getVisibility(facts({ sourceCount: 1, keySounds }));
+    const open = { sourceCount: 1, keySounds, activeFileKind: 'many' } as const;
+    const none = getVisibility(facts(open));
     expect(none.pressReleaseToggle).toBe(false);
 
     const silentKey = getVisibility(
-      facts({ sourceCount: 1, keySounds, selectedCodes: ['KeyB'] }),
+      facts({ ...open, selectedCodes: ['KeyB'] }),
     );
     expect(silentKey.pressReleaseToggle).toBe(false);
 
     const mixed = getVisibility(
-      facts({ sourceCount: 1, keySounds, selectedCodes: ['KeyB', 'KeyA'] }),
+      facts({ ...open, selectedCodes: ['KeyB', 'KeyA'] }),
     );
     expect(mixed.pressReleaseToggle).toBe(true);
+  });
+
+  it('shows the waveform for a file of many sounds and the pane for one sound', () => {
+    const keySounds = sounds([['KeyA', press()]]);
+    const selected = { sourceCount: 1, keySounds, selectedCodes: ['KeyA'] };
+
+    const many = getVisibility(facts({ ...selected, activeFileKind: 'many' }));
+    expect(many.waveform).toBe(true);
+    expect(many.oneSoundPane).toBe(false);
+
+    // A file of one sound plays whole: no waveform, so no Press / Release.
+    const one = getVisibility(facts({ ...selected, activeFileKind: 'one' }));
+    expect(one.waveform).toBe(false);
+    expect(one.oneSoundPane).toBe(true);
+    expect(one.pressReleaseToggle).toBe(false);
+    expect(one.soundPanel).toBe(true);
+    expect(one.legend).toBe(true);
+    expect(one.keyGroups).toBe(true);
+    expect(one.tryIt).toBe(true);
+
+    const noFileOpen = getVisibility(
+      facts({ ...selected, activeFileKind: null }),
+    );
+    expect(noFileOpen.waveform).toBe(false);
+    expect(noFileOpen.oneSoundPane).toBe(false);
+    expect(noFileOpen.pressReleaseToggle).toBe(false);
   });
 
   it('goes back to A when the last file goes', () => {

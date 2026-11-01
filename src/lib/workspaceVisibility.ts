@@ -1,4 +1,5 @@
 import { codesOfOtherKind } from '@/components/editor/hidden-keys';
+import type { FileKind } from '@/lib/fileKinds';
 import type { KeySounds, PackType } from '@/utils/soundPack';
 
 /**
@@ -18,6 +19,8 @@ export interface WorkspaceFacts {
   isSignedIn: boolean;
   /** Codes of the selected keys or buttons. */
   selectedCodes: readonly string[];
+  /** The kind of the file open in the sound panel; null when none is. */
+  activeFileKind: FileKind | null;
 }
 
 /** What the workspace shows; each flag is true when its control is on the page. */
@@ -29,8 +32,12 @@ export interface WorkspaceVisibility {
   fadedKeyboard: boolean;
   /** The three tiles that each open a file picker, with their hints. */
   addTiles: boolean;
-  /** The file list and the waveform. */
+  /** The file list, and beside it the open file. */
   soundPanel: boolean;
+  /** The waveform, for an open file with many sounds. */
+  waveform: boolean;
+  /** The pane that gives an open file of one sound to keys, without a waveform. */
+  oneSoundPane: boolean;
   keyboardSize: boolean;
   /** The chips that select a group of keys, such as the letters. */
   keyGroups: boolean;
@@ -44,7 +51,7 @@ export interface WorkspaceVisibility {
   download: boolean;
   /** Same as `library`: Update online publishes to the open library pack. */
   updateOnline: boolean;
-  /** The Press / Release switch, once a selected key has a press sound. */
+  /** The Press / Release switch, over the waveform once a selected key has a press sound. */
   pressReleaseToggle: boolean;
 }
 
@@ -77,6 +84,8 @@ export function getVisibility(facts: WorkspaceFacts): WorkspaceVisibility {
     fadedKeyboard: !hasFiles,
     addTiles: !hasFiles,
     soundPanel: hasFiles,
+    waveform: hasFiles && facts.activeFileKind === 'many',
+    oneSoundPane: hasFiles && facts.activeFileKind === 'one',
     keyboardSize: hasFiles && isKeyboard,
     keyGroups: hasFiles && isKeyboard,
     legend: hasFiles,
@@ -86,7 +95,9 @@ export function getVisibility(facts: WorkspaceFacts): WorkspaceVisibility {
     download: hasSounds,
     updateOnline: library,
     pressReleaseToggle:
-      hasFiles && facts.selectedCodes.some((code) => facts.keySounds.has(code)),
+      hasFiles &&
+      facts.activeFileKind === 'many' &&
+      facts.selectedCodes.some((code) => facts.keySounds.has(code)),
   };
 }
 
