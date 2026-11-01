@@ -44,6 +44,12 @@ function newPackSteps(isMouse: boolean): DriveStep[] {
   ];
 }
 
+function tryItDescription(isMouse: boolean) {
+  return isMouse
+    ? 'Plays the pack while you click and scroll your own mouse, or tap the buttons on a touch screen.'
+    : 'Plays the pack while you type on your own keyboard, or tap the keys on a touch screen.';
+}
+
 /** Where to hear, save and publish a pack that already makes sound. */
 function openedPackSteps(isMouse: boolean): DriveStep[] {
   const noun = isMouse ? 'button' : 'key';
@@ -57,12 +63,7 @@ function openedPackSteps(isMouse: boolean): DriveStep[] {
     },
     {
       element: target('try-it'),
-      popover: {
-        title: 'Try it',
-        description: isMouse
-          ? 'Plays the pack while you click and scroll your own mouse, or tap the buttons on a touch screen.'
-          : 'Plays the pack while you type on your own keyboard, or tap the keys on a touch screen.',
-      },
+      popover: { title: 'Try it', description: tryItDescription(isMouse) },
     },
     {
       element: target('download'),
@@ -76,7 +77,12 @@ function openedPackSteps(isMouse: boolean): DriveStep[] {
   ];
 }
 
-function allSteps(signedIn: boolean, stage: WorkspaceStage): DriveStep[] {
+function allSteps(
+  signedIn: boolean,
+  stage: WorkspaceStage,
+  isMouse: boolean,
+): DriveStep[] {
+  const noun = isMouse ? 'button' : 'key';
   return [
     {
       popover: {
@@ -89,47 +95,43 @@ function allSteps(signedIn: boolean, stage: WorkspaceStage): DriveStep[] {
       element: target('add-sounds'),
       popover: {
         title: '1. Add your sounds',
-        description:
-          'Pick what you have: one recording, one file for each key, or a video. You can also drop files anywhere on the page. The keys behind come alive once a file is in.',
+        description: `Pick what you have: one recording, one file for each ${noun}, or a video. You can also drop files anywhere on the page. The ${noun}s behind come alive once a file is in.`,
       },
     },
     {
       element: target('sources'),
       popover: {
         title: '1. Your sounds',
-        description:
-          'The files of the pack. Add more when keys need sounds from different recordings, or drop them anywhere on the page.',
+        description: `The files of the pack. Add more when ${noun}s need sounds from different recordings, or drop them anywhere on the page.`,
       },
     },
     {
       element: target('pack-type'),
       popover: {
         title: 'Keyboard or mouse',
-        description:
-          'What the pack is for. Open it to switch: a mouse pack shows the mouse buttons and wheel instead of keys.',
+        description: isMouse
+          ? 'What the pack is for. Open it to switch: a keyboard pack shows the keys instead of the mouse buttons and wheel.'
+          : 'What the pack is for. Open it to switch: a mouse pack shows the mouse buttons and wheel instead of keys.',
       },
     },
     {
       element: target('keyboard'),
       popover: {
-        title: '2. Pick keys',
-        description: `Click a key to select it and click it again to deselect it. Drag across keys to select several, Shift+click to select a range, or ${MOD_LABEL}+click to add or remove one. Delete clears the sound of the selected keys. A dot marks a key that already has a sound, in the colour of its file.`,
+        title: `2. Pick ${noun}s`,
+        // The mouse drawing has no box to drag across.
+        description: `Click a ${noun} to select it and click it again to deselect it. ${isMouse ? '' : 'Drag across keys to select several, '}Shift+click to select a range, or ${MOD_LABEL}+click to add or remove one. Delete clears the sound of the selected ${noun}s. A dot marks a ${noun} that already has a sound, in the colour of its file.`,
       },
     },
     {
       element: target('sound'),
       popover: {
         title: '3. Cut the sound',
-        description: `The waveform of the chosen file. Drag over one keystroke, press Test to hear it, then Apply to give it to the selected keys. Once a key has a sound, switch to Release for the sound it makes when it comes up.${stage === 'has-sounds' ? '' : ' Try it and Download .zip show up once a key has a sound.'}`,
+        description: `The waveform of the chosen file. Drag over one ${isMouse ? 'click' : 'keystroke'}, press Test to hear it, then Apply to give it to the selected ${noun}s. Once a ${noun} has a sound, switch to Release for the sound it makes when it comes up.${stage === 'has-sounds' ? '' : ` Try it and Download .zip show up once a ${noun} has a sound.`}`,
       },
     },
     {
       element: target('try-it'),
-      popover: {
-        title: '4. Try it',
-        description:
-          'Plays the pack while you type on your own keyboard, or tap the keys on a touch screen.',
-      },
+      popover: { title: '4. Try it', description: tryItDescription(isMouse) },
     },
     {
       element: target('pack-details'),
@@ -160,8 +162,7 @@ function allSteps(signedIn: boolean, stage: WorkspaceStage): DriveStep[] {
       element: target('help'),
       popover: {
         title: 'Help',
-        description:
-          'Take this tour again, or see the keyboard shortcuts for selecting keys.',
+        description: `Take this tour again, or see the keyboard shortcuts for selecting ${noun}s.`,
       },
     },
     {
@@ -198,7 +199,7 @@ function buildSteps(
     case 'opened-pack':
       return openedPackSteps(isMouse);
     default:
-      return allSteps(signedIn, stage);
+      return allSteps(signedIn, stage, isMouse);
   }
 }
 

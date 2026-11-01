@@ -114,7 +114,9 @@ function PackControls({
   isUpdating = false,
   onDownload,
   isDownloading = false,
+  packType,
 }: WorkspaceControls) {
+  const isMouse = packType === 'Mouse';
   return (
     <>
       {/* Icon-only; left out on phones, which cannot edit, so the account button keeps its room. The wrapper keeps the tooltip on a disabled button */}
@@ -191,8 +193,8 @@ function PackControls({
           data-tour="try-it"
           data-tip={
             canTryIt
-              ? 'Hear the pack as you type'
-              : 'This browser cannot play the sounds of these keys'
+              ? `Hear the pack as you ${isMouse ? 'click' : 'type'}`
+              : `This browser cannot play the sounds of these ${isMouse ? 'buttons' : 'keys'}`
           }
         >
           <button
