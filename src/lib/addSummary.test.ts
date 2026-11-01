@@ -332,6 +332,17 @@ describe('summarizeAdd: lines for name patterns', () => {
     expect(summary({ files, keySounds: given })?.lines).toEqual([]);
   });
 
+  it('gives in order only the files no key plays yet', () => {
+    const files = sources('key_01.wav', 'key_02.wav', 'key_03.wav');
+    const result = summary({
+      files,
+      keySounds: new Map([['KeyB', plays(files[0].id)]]),
+    });
+    expect(lineOf(result?.lines, 'no-match')).toMatchObject({
+      ids: [files[1].id, files[2].id],
+    });
+  });
+
   it('names the files it skipped', () => {
     const result = summary({
       files: sources('a.wav'),

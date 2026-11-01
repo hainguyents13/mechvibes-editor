@@ -213,7 +213,8 @@ export function summarizeAdd({
       kind: 'no-match',
       text: `None of the names match a ${key}. Select ${key}s and click a file, or`,
       action: `Give them to ${key}s in order`,
-      ids: unmatched.map((file) => file.id),
+      // A file a key plays already, given by hand, keeps its key alone.
+      ids: free.map((file) => file.id),
     });
   } else if (free.length > 0) {
     lines.push({
