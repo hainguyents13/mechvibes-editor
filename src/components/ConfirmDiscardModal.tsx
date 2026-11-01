@@ -48,10 +48,13 @@ export function ConfirmDiscardModal({
     >
       {isOpen && (
         <div className="modal-box max-w-sm">
-          <h2 id={titleId} className="text-lg font-semibold">
+          <h2 id={titleId} className="text-lg font-semibold break-words">
             {title}
           </h2>
-          <p id={messageId} className="text-sm text-base-content/70 mt-2">
+          <p
+            id={messageId}
+            className="text-sm text-base-content/70 mt-2 break-words"
+          >
             {message}
           </p>
           {/* The safe choice comes first, so it takes the focus. */}
