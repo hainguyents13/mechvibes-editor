@@ -691,7 +691,13 @@ export function EditorPage() {
   const [sharedHeight, setSharedHeight] = useState<number | null>(null);
   const measureSharedHeight = useCallback(() => {
     const column = keyboardAreaRef.current?.parentElement;
-    const page = column?.parentElement;
+    // The wrapper that hides the workspace behind the start screens has no
+    // box of its own while it shows (display: contents), so the page is the
+    // first ancestor laid out as one.
+    let page = column?.parentElement;
+    while (page && getComputedStyle(page).display === 'contents') {
+      page = page.parentElement;
+    }
     if (!column || !page) return;
     const style = getComputedStyle(column);
     setSharedHeight(
