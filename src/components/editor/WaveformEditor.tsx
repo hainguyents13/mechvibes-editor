@@ -36,6 +36,8 @@ interface WaveformEditorProps {
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   /** Waveform height in px; the editor shrinks it on short screens. */
   waveformHeight?: number;
+  /** The Auto detect threshold is open, under More in the sound controls. */
+  showThreshold?: boolean;
 }
 
 export function WaveformEditor({
@@ -53,6 +55,7 @@ export function WaveformEditor({
   sourceId,
   videoRef: externalVideoRef,
   waveformHeight = 200,
+  showThreshold = false,
 }: WaveformEditorProps) {
   const {
     soundRegionsMode,
@@ -177,7 +180,7 @@ export function WaveformEditor({
             <Zap className="h-3 w-3" />
             Auto detect
           </button>
-          {soundRegionsMode && (
+          {soundRegionsMode && showThreshold && (
             <>
               <span className="text-xs">Threshold</span>
               <input

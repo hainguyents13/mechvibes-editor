@@ -55,6 +55,7 @@ import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePackHistory } from '@/hooks/usePackHistory';
 import { useCoarsePointer, usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
+import { useSessionFlag } from '@/hooks/useSessionFlag';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
@@ -146,6 +147,13 @@ const PANEL_RESERVED_HEIGHT = 320;
  * panel gives way to it, and its controls scroll.
  */
 const DEFAULT_KEYBOARD_RESERVED_HEIGHT = 360;
+/**
+ * Height the stacked panel (below lg) takes besides the waveform, with one
+ * file and More closed, at the narrowest width where its rows wrap most. The
+ * waveform gets what is left of the panel's 50dvh cap, so the panel fits
+ * without scrolling on a portrait tablet.
+ */
+const STACKED_PANEL_CONTROLS_HEIGHT = 390;
 const PANEL_RESIZE_STEP = 16;
 const PANEL_HEIGHT_STORAGE_KEY = 'mechvibes-editor:panel-height';
 
@@ -297,6 +305,10 @@ export function EditorPage() {
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   // Whether the sound controls assign press or release sounds.
   const [soundSlot, setSoundSlot] = useState<SoundSlot>('press');
+  // Start, End, Duration and the Auto detect threshold, under More.
+  const [showExactTimes, setShowExactTimes] = useSessionFlag(
+    'mechvibes-editor:exact-times-open',
+  );
   const [defaultDuration, setDefaultDuration] = useState(100);
   const [showEditPackModal, setShowEditPackModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -431,7 +443,11 @@ export function EditorPage() {
   const panelDragMax = getPanelDragMax(viewport.height);
   const waveformHeight =
     panelHeight === null
-      ? WAVEFORM_MAX_HEIGHT
+      ? clamp(
+          Math.round(viewport.height / 2) - STACKED_PANEL_CONTROLS_HEIGHT,
+          WAVEFORM_MIN_HEIGHT,
+          WAVEFORM_MAX_HEIGHT,
+        )
       : Math.max(WAVEFORM_MIN_HEIGHT, panelHeight - PANEL_CONTROLS_HEIGHT);
 
   const panelDragRef = useRef<{ startY: number; startHeight: number } | null>(
@@ -1993,6 +2009,7 @@ export function EditorPage() {
                           sourceId={activeSourceId}
                           videoRef={videoPreviewRef}
                           waveformHeight={waveformHeight}
+                          showThreshold={showExactTimes}
                         />
 
                         {/* Time Segment Controls */}
@@ -2010,14 +2027,18 @@ export function EditorPage() {
                           hiddenCount={hiddenKeys.length}
                           activeSourceId={activeSourceId}
                           audioDuration={audioDuration}
-                          slot={soundSlot}
+                          // Without the switch, the controls assign press sounds.
+                          slot={
+                            visibility.pressReleaseToggle ? soundSlot : 'press'
+                          }
                           setSlot={setSoundSlot}
+                          showSlotSwitch={visibility.pressReleaseToggle}
+                          showExactTimes={showExactTimes}
+                          setShowExactTimes={setShowExactTimes}
                           // A mouse pack has no groups of keys to pick.
                           keys={visibility.keyGroups ? keys : undefined}
                           getKeyId={getKeyId}
                         />
-                        {/* Absorbs leftover height so the blocks above stay pinned to the top */}
-                        <div className="flex-1 min-h-0" />
                       </div>
                     )}
                   </div>

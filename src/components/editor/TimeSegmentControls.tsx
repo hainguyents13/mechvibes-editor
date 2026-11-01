@@ -1,4 +1,4 @@
-import { Info, Play, RotateCcw, Square } from 'lucide-react';
+import { ChevronDown, Info, Play, RotateCcw, Square } from 'lucide-react';
 import React from 'react';
 import { KEY_GROUPS } from '@/components/editor/key-groups';
 import { cn, plural } from '@/lib/utils';
@@ -41,6 +41,11 @@ interface TimeSegmentControlsProps {
   audioDuration: number;
   slot: SoundSlot;
   setSlot: (slot: SoundSlot) => void;
+  /** Show the Press / Release switch; without it the controls assign press sounds. */
+  showSlotSwitch: boolean;
+  /** The Start, End and Duration fields are open under More. */
+  showExactTimes: boolean;
+  setShowExactTimes: (open: boolean) => void;
   /** Keys of the current layout, used to resolve the group-select buttons. */
   keys?: any[];
   /** Same id builder the keyboard uses, so group ids match selection ids. */
@@ -63,9 +68,14 @@ export function TimeSegmentControls({
   audioDuration,
   slot,
   setSlot,
+  showSlotSwitch,
+  showExactTimes,
+  setShowExactTimes,
   keys,
   getKeyId,
 }: TimeSegmentControlsProps) {
+  const exactTimesId = React.useId();
+  const exactTimesRef = React.useRef<HTMLDivElement>(null);
   const hasValidSelection = isValidWaveformSelection(waveformSelection);
   // Whole file ends at the exact length; typed ends are whole milliseconds.
   const fileLengthMs = Math.ceil(audioDuration * 1000);
@@ -164,92 +174,40 @@ export function TimeSegmentControls({
         <legend className="fieldset-legend">
           <h2 className="text-xs font-medium text-base-content">Sound</h2>
         </legend>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col">
-            <span className="label text-xs">Plays on</span>
-            <div className="join">
-              <button
-                type="button"
-                className={cn(
-                  'btn btn-sm join-item',
-                  slot === 'press' ? 'btn-active' : '',
-                )}
-                aria-pressed={slot === 'press'}
-                onClick={() => setSlot('press')}
-                title="Assign the sound a key plays when it goes down"
-              >
-                Press
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  'btn btn-sm join-item',
-                  slot === 'release' ? 'btn-active' : '',
-                )}
-                aria-pressed={slot === 'release'}
-                onClick={() => setSlot('release')}
-                title="Assign the sound a key plays when it comes up"
-              >
-                Release
-              </button>
+        {/* Labels sit beside the controls, not above, so a wrapped row stays short. */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Release needs a press first, so the switch waits for a selected key that has one. */}
+          {showSlotSwitch && (
+            <div className="flex items-center gap-2">
+              <span className="label text-xs">Plays on</span>
+              <div className="join">
+                <button
+                  type="button"
+                  className={cn(
+                    'btn btn-sm join-item',
+                    slot === 'press' ? 'btn-active' : '',
+                  )}
+                  aria-pressed={slot === 'press'}
+                  onClick={() => setSlot('press')}
+                  title="Assign the sound a key plays when it goes down"
+                >
+                  Press
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'btn btn-sm join-item',
+                    slot === 'release' ? 'btn-active' : '',
+                  )}
+                  aria-pressed={slot === 'release'}
+                  onClick={() => setSlot('release')}
+                  title="Assign the sound a key plays when it comes up"
+                >
+                  Release
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="w-24">
-            <label className="label text-xs" htmlFor="start-time">
-              Start (ms)
-            </label>
-            <input
-              id="start-time"
-              type="number"
-              className="input input-sm input-bordered w-full"
-              placeholder="0"
-              value={Math.round(waveformSelection.start) || ''}
-              onChange={(e) => {
-                const startTime = parseInt(e.target.value) || 0;
-                setWaveformSelection((prev) => ({ ...prev, start: startTime }));
-              }}
-            />
-          </div>
-          <div className="w-24">
-            <label className="label text-xs" htmlFor="end-time">
-              End (ms)
-            </label>
-            <input
-              id="end-time"
-              type="number"
-              className="input input-sm input-bordered w-full"
-              placeholder="0"
-              value={Math.round(waveformSelection.end) || ''}
-              onChange={(e) => {
-                const endTime = parseInt(e.target.value) || 0;
-                setWaveformSelection((prev) => ({ ...prev, end: endTime }));
-              }}
-            />
-          </div>
-          <div className="w-24">
-            <label className="label text-xs" htmlFor="duration-time">
-              Duration (ms)
-            </label>
-            <input
-              id="duration-time"
-              type="number"
-              className="input input-sm input-bordered w-full"
-              placeholder="0"
-              value={
-                Math.round(waveformSelection.end - waveformSelection.start) ||
-                ''
-              }
-              onChange={(e) => {
-                const duration = parseInt(e.target.value) || 0;
-                if (waveformSelection.start >= 0) {
-                  setWaveformSelection((prev) => ({
-                    ...prev,
-                    end: prev.start + duration,
-                  }));
-                }
-              }}
-            />
-          </div>
+          )}
           <div>
             <button
               type="button"
@@ -332,6 +290,32 @@ export function TimeSegmentControls({
               Clear {plural(codesWithSound.length, 'key')}
             </button>
           </div>
+          <div>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost rounded-box"
+              aria-expanded={showExactTimes}
+              aria-controls={exactTimesId}
+              onClick={() => {
+                setShowExactTimes(!showExactTimes);
+                // A short panel opens them below its fold; scroll them into view.
+                if (!showExactTimes) {
+                  requestAnimationFrame(() =>
+                    exactTimesRef.current?.scrollIntoView({ block: 'nearest' }),
+                  );
+                }
+              }}
+              title="Exact times in milliseconds, and the Auto detect threshold"
+            >
+              More
+              <ChevronDown
+                className={cn(
+                  'h-3 w-3 transition-transform',
+                  showExactTimes ? 'rotate-180' : '',
+                )}
+              />
+            </button>
+          </div>
           <div className="ml-auto">
             <button
               type="button"
@@ -343,6 +327,70 @@ export function TimeSegmentControls({
               <RotateCcw className="h-3 w-3" />
               Reset all ({keySounds.size})
             </button>
+          </div>
+        </div>
+
+        <div
+          ref={exactTimesRef}
+          id={exactTimesId}
+          hidden={!showExactTimes}
+          className="mt-2 flex flex-wrap items-end gap-3"
+        >
+          <div className="w-24">
+            <label className="label text-xs" htmlFor="start-time">
+              Start (ms)
+            </label>
+            <input
+              id="start-time"
+              type="number"
+              className="input input-sm input-bordered w-full"
+              placeholder="0"
+              value={Math.round(waveformSelection.start) || ''}
+              onChange={(e) => {
+                const startTime = parseInt(e.target.value) || 0;
+                setWaveformSelection((prev) => ({ ...prev, start: startTime }));
+              }}
+            />
+          </div>
+          <div className="w-24">
+            <label className="label text-xs" htmlFor="end-time">
+              End (ms)
+            </label>
+            <input
+              id="end-time"
+              type="number"
+              className="input input-sm input-bordered w-full"
+              placeholder="0"
+              value={Math.round(waveformSelection.end) || ''}
+              onChange={(e) => {
+                const endTime = parseInt(e.target.value) || 0;
+                setWaveformSelection((prev) => ({ ...prev, end: endTime }));
+              }}
+            />
+          </div>
+          <div className="w-24">
+            <label className="label text-xs" htmlFor="duration-time">
+              Duration (ms)
+            </label>
+            <input
+              id="duration-time"
+              type="number"
+              className="input input-sm input-bordered w-full"
+              placeholder="0"
+              value={
+                Math.round(waveformSelection.end - waveformSelection.start) ||
+                ''
+              }
+              onChange={(e) => {
+                const duration = parseInt(e.target.value) || 0;
+                if (waveformSelection.start >= 0) {
+                  setWaveformSelection((prev) => ({
+                    ...prev,
+                    end: prev.start + duration,
+                  }));
+                }
+              }}
+            />
           </div>
         </div>
 
