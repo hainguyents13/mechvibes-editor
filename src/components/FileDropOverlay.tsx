@@ -255,11 +255,12 @@ export function FileDropOverlay({
   if (!route || !enabled) return null;
   if (offersKeyDrop(route, keyboardReady)) {
     // Neither blurred nor in the way: the keys under it light up and take
-    // the drop.
+    // the drop. Its line sits at the foot of the page, over the footer,
+    // rather than over the navbar's controls or the keys.
     return (
       <div className="pointer-events-none fixed inset-0 z-[120] bg-base-100/15 p-2">
-        <div className="flex h-full flex-col items-center rounded-box border-4 border-dashed border-primary">
-          <output className="mt-3 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-box bg-base-100 px-4 py-2 text-sm font-semibold text-base-content shadow-lg md:text-base">
+        <div className="flex h-full flex-col items-center justify-end rounded-box border-4 border-dashed border-primary">
+          <output className="mb-2 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-box bg-base-100 px-4 py-2 text-sm font-semibold text-base-content shadow-lg md:text-base">
             <Music
               className="h-5 w-5 shrink-0 text-primary"
               aria-hidden="true"
