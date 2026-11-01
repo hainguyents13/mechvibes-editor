@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 export interface NavbarMenuItem {
   label: string;
   onSelect: () => void;
+  /** Shown but not chosen, while it cannot run. */
+  disabled?: boolean;
 }
 
 /**
@@ -86,9 +88,13 @@ export function NavbarMenu({
         >
           <ul className="menu menu-sm w-52 p-0">
             {items.map((item) => (
-              <li key={item.label}>
+              <li
+                key={item.label}
+                className={item.disabled ? 'menu-disabled' : undefined}
+              >
                 <button
                   type="button"
+                  disabled={item.disabled}
                   onClick={() => {
                     menuRef.current?.hidePopover();
                     buttonRef.current?.focus();

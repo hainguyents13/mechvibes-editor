@@ -33,6 +33,8 @@ interface AudioFileSelectorProps {
   onSetKind: (id: string, kind: FileKind) => void;
   /** Swap the audio of a file for another, for every key that plays it. */
   onReplace: (id: string, file: File) => void;
+  /** Files are being read: Replace file… waits, so one replace runs at a time. */
+  isReading?: boolean;
   /** A file of one sound starts being dragged towards the keys (its id), or stops (null). */
   onDragFile: (id: string | null) => void;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
@@ -77,6 +79,7 @@ export function AudioFileSelector({
   onRemove,
   onSetKind,
   onReplace,
+  isReading = false,
   onDragFile,
   videoRef,
 }: AudioFileSelectorProps) {
@@ -334,6 +337,7 @@ export function AudioFileSelector({
                       },
                   {
                     label: 'Replace file…',
+                    disabled: isReading,
                     onSelect: () => {
                       replacingRef.current = source.id;
                       replaceInputRef.current?.click();

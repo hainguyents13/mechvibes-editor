@@ -1198,40 +1198,14 @@ export function EditorPage() {
       giveTo,
     }: AddOptions & { giveTo?: readonly string[] } = {},
   ) => {
-    const work = workRef.current;
     if (files.length === 0) {
       setAddError('There are no audio or video files in this folder.');
       return;
     }
     const typed = files.map(withMediaType);
-    const group = readGroupRef.current ?? {
-      read: 0,
-      total: 0,
-      pending: 0,
-      ids: [],
-      skipped: [],
-      unreadable: [],
-    };
-    if (readGroupRef.current !== group) {
-      readGroupRef.current = group;
-      setAddError(null);
-    }
-    group.total += typed.length;
-    group.pending += 1;
-    group.skipped.push(...skipped);
-    setReading({ read: group.read, total: group.total });
-    const lengths = await readSoundLengths(typed, () => {
-      if (readGroupRef.current !== group) return;
-      group.read += 1;
-      setReading({ read: group.read, total: group.total });
-    });
-    // Another pack took this one's place while the files were read.
-    if (workRef.current !== work || readGroupRef.current !== group) return;
-    group.pending -= 1;
-    if (group.pending === 0) {
-      readGroupRef.current = null;
-      setReading(null);
-    }
+    const read = await readIntoGroup(typed, skipped);
+    if (!read) return;
+    const { group, lengths } = read;
     group.unreadable.push(
       ...typed.flatMap((file, index) =>
         lengths[index] === 0 ? file.name : [],
@@ -1294,6 +1268,47 @@ export function EditorPage() {
         .map(([id]) => id);
       if (ids.length > 0) setSelectedKeys(new Set(ids));
     }
+  };
+
+  // Read the lengths of files on their way in, counted on the reading line
+  // with any others being read. Null when another pack took this one's place
+  // meanwhile.
+  const readIntoGroup = async (
+    typed: File[],
+    skipped: readonly string[] = [],
+  ) => {
+    const work = workRef.current;
+    const group = readGroupRef.current ?? {
+      read: 0,
+      total: 0,
+      pending: 0,
+      ids: [],
+      skipped: [],
+      unreadable: [],
+    };
+    if (readGroupRef.current !== group) {
+      readGroupRef.current = group;
+      setAddError(null);
+    }
+    group.total += typed.length;
+    group.pending += 1;
+    group.skipped.push(...skipped);
+    setReading({ read: group.read, total: group.total });
+    const lengths = await readSoundLengths(typed, () => {
+      if (readGroupRef.current !== group) return;
+      group.read += 1;
+      setReading({ read: group.read, total: group.total });
+    });
+    // Another pack took this one's place while the files were read.
+    if (workRef.current !== work || readGroupRef.current !== group) {
+      return null;
+    }
+    group.pending -= 1;
+    if (group.pending === 0) {
+      readGroupRef.current = null;
+      setReading(null);
+    }
+    return { group, lengths };
   };
 
   // Stop the sound that plays outside the waveform.
@@ -1406,15 +1421,15 @@ export function EditorPage() {
   // Replace the audio of a file for every key that plays it, as one step,
   // once the new file is read. Parts cut from it keep their times; keys that
   // would then run past its end, or play all of a long file, are asked about
-  // first.
+  // first. The file is read on the reading line, as an added one is.
   const replaceSource = async (id: string, file: File) => {
-    const work = workRef.current;
     const typed = withMediaType(file);
-    const [duration] = await readSoundLengths([typed], () => {});
-    // Another pack took this one's place while the file was read.
-    if (workRef.current !== work) return;
+    const read = await readIntoGroup([typed]);
+    if (!read) return;
+    const [duration] = read.lengths;
     if (duration === 0) {
-      setAddError(unreadableMessage([typed.name]));
+      read.group.unreadable.push(typed.name);
+      setAddError(unreadableMessage(read.group.unreadable));
       return;
     }
     const { sources: now, keySounds: sounds } = presentRef.current;
@@ -3208,6 +3223,7 @@ export function EditorPage() {
                       onRemove={handleRemoveSource}
                       onSetKind={(id, kind) => requestKinds([id], kind)}
                       onReplace={replaceSource}
+                      isReading={reading !== null}
                       onDragFile={(id) => {
                         if (id) setDraggedSourceId(id);
                         else endSourceDrag();
