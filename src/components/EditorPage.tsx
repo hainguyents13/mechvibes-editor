@@ -2696,7 +2696,9 @@ export function EditorPage() {
                   <h2 className="sr-only">Key marks</h2>
                   <KeyLegend
                     showRelease={visibility.releaseLegend}
-                    showSilent={keyCount.withSound > 0 && keyCount.silent > 0}
+                    showSilent={
+                      visibility.stage === 'has-sounds' && keyCount.silent > 0
+                    }
                     isMousePack={isMousePack}
                   />
                   <ProgressLine items={progressItems} />

@@ -12,8 +12,9 @@ export const KEY_LEGEND_ROWS_MIN_WIDTH = 496;
 
 /**
  * What the marks on the keys mean. Release sound is named only when some key
- * has one, and a plain key only while some drawn keys have a sound and others
- * stay silent, to say that is fine.
+ * has one, and a plain key only while the pack has sounds and some drawn keys
+ * stay silent, to say that is fine, even when every sound is on a key the
+ * layout leaves out.
  */
 export function KeyLegend({
   showRelease,
