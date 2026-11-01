@@ -97,7 +97,7 @@ function soundStep(
       element: target('sound'),
       popover: {
         title: `3. Give ${noun}s a sound`,
-        description: `Select ${noun}s, then click a sound in the list to give it to them. Click another sound to hear the change. A file with several sounds? Choose This file has several sounds in its ... menu to cut them on a waveform.${later}`,
+        description: `Select ${noun}s, then click a sound in the list to give it to them, or drag a sound onto a ${noun}. Click another sound to hear the change. A file with several sounds? Choose This file has several sounds in its ... menu to cut them on a waveform.${later}`,
       },
     };
   }

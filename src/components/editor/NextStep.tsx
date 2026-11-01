@@ -50,7 +50,7 @@ export function nextStepText({
       return `click a sound to give it to ${them}.`;
     }
     if (stage === 'no-sounds') {
-      return `select ${noun}s, then click a sound to give it to them.`;
+      return `drag a sound onto a ${noun}, or select ${noun}s and click a sound.`;
     }
   }
   switch (stage) {

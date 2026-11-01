@@ -35,7 +35,7 @@ describe('nextStepText', () => {
       activeFileKind: 'one',
     } as const;
     expect(nextStepText({ ...one, stage: 'no-sounds' })).toBe(
-      'select keys, then click a sound to give it to them.',
+      'drag a sound onto a key, or select keys and click a sound.',
     );
     expect(nextStepText({ ...one, stage: 'no-sounds', selectedCount: 3 })).toBe(
       'click a sound to give it to the 3 selected keys.',
@@ -49,7 +49,7 @@ describe('nextStepText', () => {
     );
     expect(
       nextStepText({ ...one, packType: 'Mouse', stage: 'no-sounds' }),
-    ).toBe('select buttons, then click a sound to give it to them.');
+    ).toBe('drag a sound onto a button, or select buttons and click a sound.');
     expect(
       nextStepText({
         ...one,

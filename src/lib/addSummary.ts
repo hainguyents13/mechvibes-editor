@@ -235,7 +235,7 @@ export function summarizeAdd({
   if (free.length > 0 && matched.length === 0) {
     lines.push({
       kind: 'no-match',
-      text: `None of the names match a ${key}. Select ${key}s and click a file, or`,
+      text: `None of the names match a ${key}. Drag files onto ${key}s, or`,
       action: `Give them to ${key}s in order`,
       // A file a key plays already, given by hand, keeps its key alone.
       ids: free.map((file) => file.id),
@@ -243,7 +243,10 @@ export function summarizeAdd({
   } else if (free.length > 0) {
     lines.push({
       kind: 'need-key',
-      text: `${free.length} ${free.length === 1 ? 'needs' : 'need'} a ${key}: select ${key}s, then click a file.`,
+      text:
+        free.length === 1
+          ? `1 needs a ${key}: drag it onto a ${key}, or select ${key}s and click it.`
+          : `${free.length} need a ${key}: drag them onto ${key}s, or select ${key}s and click a file.`,
     });
   }
   // One group at a time, so a spread never mixes two sounds: the largest
