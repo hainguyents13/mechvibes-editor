@@ -49,6 +49,10 @@ const ROUTE_LOOKS: Record<
   { Icon: LucideIcon; tone: string }
 > = {
   'open-zip': { Icon: FolderOpen, tone: 'border-primary text-base-content' },
+  'open-folder': {
+    Icon: FolderOpen,
+    tone: 'border-primary text-base-content',
+  },
   'to-type-question': { Icon: Music, tone: 'border-primary text-base-content' },
   'add-media': { Icon: Music, tone: 'border-primary text-base-content' },
   unknown: {

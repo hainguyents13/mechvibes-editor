@@ -1,3 +1,9 @@
+import {
+  isInFolder,
+  isSystemFile,
+  type PathedFile,
+  relativePathOf,
+} from '@/lib/folderFiles';
 import { mediaTypeOf } from '@/utils/audioUtils';
 import { getExtension } from '@/utils/soundPack';
 
@@ -8,8 +14,11 @@ import { getExtension } from '@/utils/soundPack';
 // themselves. The same rules run on both, so the overlay shown during the drag
 // says what the drop will do, except when a type alone cannot tell.
 
-/** A dropped file, or one being dragged: its name is empty until the drop. */
-export type DroppedFile = { name: string; type: string };
+/**
+ * A dropped file, or one being dragged: its name is empty until the drop. A
+ * file from a dropped folder carries its path inside it.
+ */
+export type DroppedFile = PathedFile & { type: string };
 
 /** What is being dropped: files, and whether it also carries a link. */
 export type DropContents<F extends DroppedFile> = {
@@ -29,23 +38,34 @@ export type DropContext = {
 
 /**
  * - `open-zip`: open the pack in `file`; ask first when `confirm`.
+ * - `open-folder`: open the pack folder whose files are `files`, the way its
+ *   zip would open; ask first when `confirm`.
  * - `to-type-question`: start a new pack with `files`, asking Keyboard or Mouse.
  * - `add-media`: add `files` to the open pack.
  * - `reject`: nothing happens; `message` says why.
  * - `unknown`: the dragged files' types do not tell yet; only while dragging.
+ *
+ * `skipped` names the files left out because they are not audio or video.
  */
 export type DropRoute<F extends DroppedFile> =
   | { kind: 'open-zip'; file: F; confirm: boolean; message: string }
-  | { kind: 'to-type-question'; files: F[]; message: string }
-  | { kind: 'add-media'; files: F[]; message: string }
+  | { kind: 'open-folder'; files: F[]; confirm: boolean; message: string }
+  | {
+      kind: 'to-type-question';
+      files: F[];
+      skipped: string[];
+      message: string;
+    }
+  | { kind: 'add-media'; files: F[]; skipped: string[]; message: string }
   | { kind: 'reject'; message: string }
   | { kind: 'unknown'; message: string };
 
 export const DROP_MESSAGES = {
-  unusable: "Can't use these files. Drop audio, video, or a .zip pack.",
+  unusable:
+    "Can't use these files. Drop audio, video, a .zip pack or a pack folder.",
   link: "Links can't be opened here. Download the video to your computer first, then add the file.",
   oneZip: 'Drop one .zip pack at a time.',
-  unknown: 'Drop audio, video, or a .zip pack.',
+  unknown: 'Drop audio, video, a .zip pack or a pack folder.',
 } as const;
 
 type FileKind = 'zip' | 'media' | 'rar' | '7z' | 'other' | 'unknown';
@@ -111,15 +131,45 @@ function archiveMessage(kind: 'rar' | '7z') {
   return `This is a .${kind} file. Unzip it, then open the folder or a .zip.`;
 }
 
+const topFolderOf = (file: PathedFile) => relativePathOf(file).split('/')[0];
+
+/** The folders, by name, that hold a config.json at any depth: pack folders. */
+function packFoldersOf(files: readonly DroppedFile[]) {
+  return new Set(
+    files
+      .filter(
+        (file) =>
+          isInFolder(file) &&
+          relativePathOf(file).toLowerCase().endsWith('/config.json'),
+      )
+      .map(topFolderOf),
+  );
+}
+
+/** Audio and video, and the names of the other files, which are left out. */
+function splitMedia<F extends DroppedFile>(
+  files: readonly F[],
+  kinds: readonly FileKind[],
+) {
+  return {
+    media: files.filter((_, index) => kinds[index] === 'media'),
+    skipped: files
+      .filter((_, index) => kinds[index] !== 'media')
+      .map((file) => file.name),
+  };
+}
+
 /**
  * What a drop does. Audio and video win over files the editor cannot use,
- * which are left out; a .zip opens only on its own, since opening a pack
- * replaces everything else.
+ * which are left out and named in `skipped`; a .zip or a pack folder (one
+ * with a config.json) opens only on its own, since opening a pack replaces
+ * everything else. Files the system leaves in folders are ignored.
  */
 export function routeDrop<F extends DroppedFile>(
-  { files, hasLink }: DropContents<F>,
+  { files: dropped, hasLink }: DropContents<F>,
   { onStart, isDirty }: DropContext,
 ): DropRoute<F> {
+  const files = dropped.filter((file) => !isSystemFile(relativePathOf(file)));
   if (files.length === 0) {
     return {
       kind: 'reject',
@@ -130,11 +180,25 @@ export function routeDrop<F extends DroppedFile>(
   if (kinds.includes('unknown')) {
     return { kind: 'unknown', message: DROP_MESSAGES.unknown };
   }
-  const zips = files.filter((_, index) => kinds[index] === 'zip');
-  const media = files.filter((_, index) => kinds[index] === 'media');
+  const packFolders = packFoldersOf(files);
+  const isInPack = (file: F) =>
+    isInFolder(file) && packFolders.has(topFolderOf(file));
+  const rest = files.filter((file) => !isInPack(file));
+  const restKinds = kinds.filter((_, index) => !isInPack(files[index]));
+  const zips = rest.filter((_, index) => restKinds[index] === 'zip');
+  const { media, skipped } = splitMedia(rest, restKinds);
 
-  if (zips.length > 1 || (zips.length === 1 && media.length > 0)) {
+  const packs = zips.length + packFolders.size;
+  if (packs > 1 || (packs === 1 && media.length > 0)) {
     return { kind: 'reject', message: DROP_MESSAGES.oneZip };
+  }
+  if (packFolders.size === 1) {
+    return {
+      kind: 'open-folder',
+      files: files.filter(isInPack),
+      confirm: isDirty,
+      message: 'Drop to open this pack',
+    };
   }
   if (zips.length === 1) {
     return {
@@ -150,13 +214,30 @@ export function routeDrop<F extends DroppedFile>(
       ? {
           kind: 'to-type-question',
           files: media,
+          skipped,
           message: `Drop to start a new pack with ${these}`,
         }
-      : { kind: 'add-media', files: media, message: `Drop to add ${these}` };
+      : {
+          kind: 'add-media',
+          files: media,
+          skipped,
+          message: `Drop to add ${these}`,
+        };
   }
   const archive = kinds.find((kind) => kind === 'rar' || kind === '7z');
   return {
     kind: 'reject',
     message: archive ? archiveMessage(archive) : DROP_MESSAGES.unusable,
   };
+}
+
+/**
+ * The audio and video of a folder chosen with Choose folder, and the names
+ * of its other files, without system files. The person chose to add one
+ * file for each key, so a chosen folder never opens a pack: its config.json
+ * is one more file left out.
+ */
+export function sortChosenFolder<F extends DroppedFile>(chosen: readonly F[]) {
+  const files = chosen.filter((file) => !isSystemFile(relativePathOf(file)));
+  return splitMedia(files, files.map(kindOf));
 }
