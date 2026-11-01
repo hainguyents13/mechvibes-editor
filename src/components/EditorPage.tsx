@@ -121,10 +121,10 @@ import {
   type WorkspaceStage,
 } from '@/lib/workspaceVisibility';
 import {
-  applyPressToKeys,
   clearKeySounds,
   giveFilesToKeysInOrder,
   giveFilesToTheirKeys,
+  giveOneSoundToKeys,
   keysToFill,
   oneSoundSegment,
   playFileSegment,
@@ -1132,13 +1132,7 @@ export function EditorPage() {
     if (selectedCodes.length === 0) return;
     commitKeySounds(
       `Give ${source.file.name} to ${plural(selectedCodes.length, noun)}`,
-      (current) =>
-        applyPressToKeys(
-          selectedCodes,
-          source.id,
-          oneSoundSegment(source, current),
-          current,
-        ),
+      (current) => giveOneSoundToKeys(selectedCodes, source, current),
     );
   };
 

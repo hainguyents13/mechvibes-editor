@@ -211,24 +211,20 @@ const isSameSegment = (a: Segment | undefined, b: Segment | undefined) =>
   a === b ||
   (a !== undefined && b !== undefined && a[0] === b[0] && a[1] === b[1]);
 
-/**
- * Give keys a press sound from `source`. A key that already had a release
- * sound from the same source keeps it; one from another source loses it,
- * because both halves of a key's sound come from one file. Returns
- * `keySounds` itself when every key already plays that sound, so giving it
- * again records no change.
- */
-export const applyPressToKeys = (
-  keyCodes: string[],
+// Press sounds onto keys, keeping a release from the same source only when
+// `keepRelease`. Returns `keySounds` itself when no key changes.
+function pressKeys(
+  keyCodes: readonly string[],
   source: string,
   segment: Segment,
   keySounds: KeySounds,
-): KeySounds => {
+  keepRelease: boolean,
+): KeySounds {
   let next: KeySounds | null = null;
   for (const code of keyCodes) {
     const current = keySounds.get(code);
     const sound: KeySound = { source, press: segment };
-    if (current?.source === source && current.release) {
+    if (keepRelease && current?.source === source && current.release) {
       sound.release = current.release;
     }
     if (
@@ -242,7 +238,21 @@ export const applyPressToKeys = (
     next.set(code, sound);
   }
   return next ?? keySounds;
-};
+}
+
+/**
+ * Give keys a press sound from `source`. A key that already had a release
+ * sound from the same source keeps it; one from another source loses it,
+ * because both halves of a key's sound come from one file. Returns
+ * `keySounds` itself when every key already plays that sound, so giving it
+ * again records no change.
+ */
+export const applyPressToKeys = (
+  keyCodes: string[],
+  source: string,
+  segment: Segment,
+  keySounds: KeySounds,
+): KeySounds => pressKeys(keyCodes, source, segment, keySounds, true);
 
 /**
  * The press segment every key that plays `sourceId` shares, or null when no
@@ -274,6 +284,25 @@ export const oneSoundSegment = (
   (source.duration > 0 ? [0, source.duration * 1000] : WHOLE_FILE);
 
 /**
+ * Give keys a file of one sound, at `oneSoundSegment`. A release a key had
+ * cut from the file goes: the file is a single sound, and a key given all of
+ * it would play part of it again on release. Returns `keySounds` itself when
+ * every key already plays it.
+ */
+export const giveOneSoundToKeys = (
+  keyCodes: readonly string[],
+  source: Pick<AudioSource, 'id' | 'duration'>,
+  keySounds: KeySounds,
+): KeySounds =>
+  pressKeys(
+    keyCodes,
+    source.id,
+    oneSoundSegment(source, keySounds),
+    keySounds,
+    false,
+  );
+
+/**
  * Give each file the keys its name matched, each as one sound. Returns
  * `keySounds` itself when every key already plays its file.
  */
@@ -282,13 +311,7 @@ export const giveFilesToTheirKeys = (
   keySounds: KeySounds,
 ): KeySounds =>
   matches.reduce(
-    (next, { source, codes }) =>
-      applyPressToKeys(
-        codes,
-        source.id,
-        oneSoundSegment(source, keySounds),
-        next,
-      ),
+    (next, { source, codes }) => giveOneSoundToKeys(codes, source, next),
     keySounds,
   );
 
@@ -331,12 +354,7 @@ function giveInTurn(
   }
   let next = keySounds;
   for (const [source, codes] of codesBySource) {
-    next = applyPressToKeys(
-      codes,
-      source.id,
-      oneSoundSegment(source, keySounds),
-      next,
-    );
+    next = giveOneSoundToKeys(codes, source, next);
   }
   return next;
 }

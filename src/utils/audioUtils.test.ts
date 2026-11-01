@@ -8,6 +8,7 @@ import {
   formatLength,
   giveFilesToKeysInOrder,
   giveFilesToTheirKeys,
+  giveOneSoundToKeys,
   isMediaFile,
   isValidWaveformSelection,
   keysAcceptingRelease,
@@ -353,6 +354,38 @@ describe('sharedPressSegment and oneSoundSegment', () => {
     expect(oneSoundSegment(source('a', 'a.wav', 0), new Map())).toEqual(
       WHOLE_FILE,
     );
+  });
+});
+
+describe('giveOneSoundToKeys', () => {
+  const typing = source('t', 'typing.wav', 3);
+
+  it('drops a release the key had cut from the same file', () => {
+    const input: KeySounds = new Map([
+      ['KeyA', { source: 't', press: [100, 200], release: [300, 400] }],
+      ['KeyS', { source: 't', press: [500, 600], release: [700, 800] }],
+    ]);
+    const result = updated(input, () =>
+      giveOneSoundToKeys(['KeyA'], typing, input),
+    );
+    expect(result.get('KeyA')).toEqual({ source: 't', press: [0, 3000] });
+    expect(result.get('KeyS')).toBe(input.get('KeyS'));
+  });
+
+  it('drops the release also where the press stays the part keys share', () => {
+    const input: KeySounds = new Map([
+      ['KeyA', { source: 't', press: [100, 200], release: [300, 400] }],
+    ]);
+    const result = giveOneSoundToKeys(['KeyA', 'KeyB'], typing, input);
+    expect(result.get('KeyA')).toEqual({ source: 't', press: [100, 200] });
+    expect(result.get('KeyB')).toEqual({ source: 't', press: [100, 200] });
+  });
+
+  it('returns the same map when every key already plays the file', () => {
+    const input: KeySounds = new Map([
+      ['KeyA', { source: 't', press: [0, 3000] }],
+    ]);
+    expect(giveOneSoundToKeys(['KeyA'], typing, input)).toBe(input);
   });
 });
 
