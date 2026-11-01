@@ -102,12 +102,13 @@ export function KeyCard({
   return (
     // Side by side, pinned over the column's bottom padding, which it
     // carries itself: a sticky box stops at the padding, so it is let past
-    // it by as much. Stacked, it shares the row with the list.
+    // it by as much. Stacked, it shares the row with the list, as tall as its
+    // own content rather than the list's.
     <section
       ref={sectionRef}
       aria-labelledby={titleId}
       data-tour="key-card"
-      className="min-w-0 z-10 editor-panel-surface max-lg:flex-1 lg:shrink-0 lg:pt-3 lg:sticky lg:-bottom-3 lg:-mb-3 lg:pb-3"
+      className="min-w-0 z-10 editor-panel-surface max-lg:flex-1 max-lg:self-start lg:shrink-0 lg:pt-3 lg:sticky lg:-bottom-3 lg:-mb-3 lg:pb-3"
     >
       <div
         className={cn(
