@@ -76,6 +76,14 @@ export function BackButton({
   );
 }
 
+/**
+ * Where a sign-in link opens: a new tab when the work kept in this one has
+ * unsaved changes, so it survives the round trip.
+ */
+export function signInTarget(newTab: boolean) {
+  return newTab ? { target: '_blank', rel: 'noopener' } : {};
+}
+
 /** Why something the visitor asked for did not happen, next to where they asked. */
 export function ErrorLine({ message }: { message: string }) {
   return (

@@ -15,6 +15,7 @@ import {
   ScreenHeading,
   STRETCHED_ACTION,
   StartPage,
+  signInTarget,
 } from './StartPage';
 
 const ACTION_CLASS = `${STRETCHED_ACTION} cursor-pointer text-left text-sm font-semibold focus-visible:outline-none disabled:cursor-default disabled:text-base-content/60`;
@@ -30,7 +31,7 @@ type CardAction = {
   label: string;
   /** Working on it: the card shows a spinner and cannot be clicked again. */
   busy?: boolean;
-} & ({ href: string } | { onClick: () => void });
+} & ({ href: string; newTab?: boolean } | { onClick: () => void });
 
 interface StartScreenProps {
   session: LibrarySession;
@@ -38,6 +39,8 @@ interface StartScreenProps {
   onRetrySession: () => Promise<void>;
   /** The website's sign-in page, coming back to the list of the visitor's packs. */
   signInHref: string;
+  /** Sign in in a new tab, so the work kept behind this screen survives it. */
+  signInInNewTab: boolean;
   /** The sign-in action's label when the link the editor was opened with names a pack. */
   signInLabel: string | null;
   onShowMyPacks: () => void;
@@ -105,7 +108,17 @@ function StartCard({
     };
     actionControl =
       'href' in action ? (
-        <a href={action.href} {...shared}>
+        <a
+          href={action.href}
+          {...signInTarget(action.newTab ?? false)}
+          // Space follows the link too, as it presses the other cards.
+          onKeyDown={(event) => {
+            if (event.key !== ' ') return;
+            event.preventDefault();
+            event.currentTarget.click();
+          }}
+          {...shared}
+        >
           {content}
         </a>
       ) : (
@@ -141,6 +154,7 @@ export function StartScreen({
   session,
   onRetrySession,
   signInHref,
+  signInInNewTab,
   signInLabel,
   onShowMyPacks,
   libraryOpenError,
@@ -164,7 +178,11 @@ export function StartScreen({
   // Where "Edit my pack" leads from the other card: the list, or signing in.
   const editMyPackLink =
     session.status === 'signed-out' ? (
-      <a href={signInHref} className={CROSS_LINK_CLASS}>
+      <a
+        href={signInHref}
+        {...signInTarget(signInInNewTab)}
+        className={CROSS_LINK_CLASS}
+      >
         Edit my pack
       </a>
     ) : hasPacks ? (
@@ -206,6 +224,7 @@ export function StartScreen({
           action: {
             label: signInLabel ?? 'Sign in to see them',
             href: signInHref,
+            newTab: signInInNewTab,
           },
         };
       case 'unavailable':
@@ -244,14 +263,6 @@ export function StartScreen({
 
   return (
     <StartPage centered>
-      {keptWork && (
-        <div className="mb-4">
-          <BackButton
-            label={`Back to "${keptWork.packName}"`}
-            onClick={keptWork.onReturn}
-          />
-        </div>
-      )}
       <div className="text-center">
         <img
           src="/logo.png"
@@ -268,7 +279,19 @@ export function StartScreen({
         </p>
       </div>
 
-      <div className="mt-10 grid gap-4 md:grid-cols-3 md:items-start">
+      {/* After the heading, which takes the focus, so Tab and a screen reader
+      reach the way back first. */}
+      {keptWork && (
+        <div className="mt-8">
+          <BackButton
+            label={`Back to "${keptWork.packName}"`}
+            onClick={keptWork.onReturn}
+          />
+        </div>
+      )}
+      <div
+        className={`${keptWork ? 'mt-3' : 'mt-10'} grid gap-4 md:grid-cols-3 md:items-start`}
+      >
         <div>
           <StartCard
             Icon={Globe}

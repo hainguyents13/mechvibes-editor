@@ -3,13 +3,20 @@ import { MyPacksList } from '@/components/MyPacksList';
 import { websiteHost } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
 import type { LibraryPackSummary } from '@/lib/websiteApi';
-import { BackButton, ErrorLine, ScreenHeading, StartPage } from './StartPage';
+import {
+  BackButton,
+  ErrorLine,
+  ScreenHeading,
+  StartPage,
+  signInTarget,
+} from './StartPage';
 
 /** The visitor's library packs, in place of the start cards. */
 export function MyPacksScreen({
   session,
   onRetrySession,
   signInHref,
+  signInInNewTab,
   onBack,
   openingId,
   onOpen,
@@ -21,6 +28,8 @@ export function MyPacksScreen({
   session: LibrarySession;
   onRetrySession: () => Promise<void>;
   signInHref: string;
+  /** Sign in in a new tab, so the work kept behind this screen survives it. */
+  signInInNewTab: boolean;
   onBack: () => void;
   /** Pack whose zip is being downloaded, if any. */
   openingId: string | null;
@@ -84,6 +93,7 @@ export function MyPacksScreen({
                   <p>Sign in to see the packs you shared on {websiteHost}.</p>
                   <a
                     href={signInHref}
+                    {...signInTarget(signInInNewTab)}
                     className="btn btn-sm btn-neutral rounded-box"
                   >
                     Sign in

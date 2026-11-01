@@ -61,6 +61,7 @@ import {
   resolvePopState,
   returnToWork,
   screenState,
+  standInState,
   startLinkUrl,
   startOverState,
   withoutStartLink,
@@ -746,7 +747,6 @@ export function EditorPage() {
     setShowMyPacks(false);
     setShowEditPackModal(false);
     setPendingPackType(null);
-    setConfirmDiscardAction(null);
     exitPreview();
     // Playing again stops it.
     if (isPlaying) playSelectedSegment();
@@ -769,6 +769,9 @@ export function EditorPage() {
   // Show a screen before the workspace, or the work kept behind them.
   const showScreen = (next: EditorScreen) => {
     if (isWorkspace && next !== 'workspace') leaveWorkspace();
+    // The discard question was asked for a way in on the screen left, also
+    // when the browser's Back or Forward left it.
+    setConfirmDiscardAction(null);
     if (next !== 'pack-type') setPendingFiles([]);
     if (next !== 'start') dropStartLink();
     setOpenFileError(null);
@@ -832,9 +835,10 @@ export function EditorPage() {
     }
   };
 
-  // Signing in from the start screens loses nothing, so it happens in this
-  // tab and comes back to the link the editor was opened with, or else to the
-  // list of the visitor's packs.
+  // Signing in from the start screens comes back to the link the editor was
+  // opened with, or else to the list of the visitor's packs. It happens in
+  // this tab unless the work kept behind them has unsaved changes, as from
+  // the workspace.
   const startSignInHref = signInUrl(
     startLinkUrl(window.location.href, startLink ?? { kind: 'my-packs' }),
   );
@@ -1010,12 +1014,14 @@ export function EditorPage() {
   };
 
   // Files dropped or pasted on the start screen or in the workspace. Nothing
-  // else may be open over them: a dialog holds a copy of the pack. The phone
-  // page shows neither.
+  // else may be open over them: a dialog holds a copy of the pack, or waits
+  // on a way in. The phone page shows neither.
   const canDrop =
     !isPhone &&
     (screen === 'start'
-      ? !isOpeningFile && openingPackId === null
+      ? !isOpeningFile &&
+        openingPackId === null &&
+        confirmDiscardAction === null
       : !isKeyboardOwnedElsewhere);
 
   // Why a drop did nothing shows where a pack file's problem would.
@@ -1253,13 +1259,12 @@ export function EditorPage() {
   // workspace. Leaving the workspace that way keeps the work, as Start over does.
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      const entry = readScreenState(event.state);
       if (steppingBackRef.current) {
         // The start screen already shows. A start screen entry stays as it
         // is, with the work it lies above; any other now stands for it.
         steppingBackRef.current = false;
-        if (entry?.editorScreen !== 'start') {
-          window.history.replaceState(screenState('start', entry?.pushed), '');
+        if (readScreenState(event.state)?.editorScreen !== 'start') {
+          window.history.replaceState(standInState(event.state, 'start'), '');
         }
         return;
       }
@@ -1272,7 +1277,7 @@ export function EditorPage() {
         showScreen(outcome.screen);
         if (outcome.replaceEntry) {
           window.history.replaceState(
-            screenState(outcome.screen, entry?.pushed),
+            standInState(event.state, outcome.screen),
             '',
           );
         }
@@ -1282,7 +1287,7 @@ export function EditorPage() {
           '',
         );
       } else if (!isWorkspace) {
-        window.history.replaceState(screenState(screen, true), '');
+        window.history.replaceState(standInState(event.state, screen), '');
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -1603,6 +1608,7 @@ export function EditorPage() {
             session={session}
             onRetrySession={refreshSession}
             signInHref={startSignInHref}
+            signInInNewTab={isDirty}
             signInLabel={
               startLink?.kind === 'open' ? 'Sign in to open your pack' : null
             }
@@ -1624,6 +1630,7 @@ export function EditorPage() {
             session={session}
             onRetrySession={refreshSession}
             signInHref={startSignInHref}
+            signInInNewTab={isDirty}
             onBack={goBackToStart}
             openingId={openingPackId}
             onOpen={handleOpenLibraryPack}

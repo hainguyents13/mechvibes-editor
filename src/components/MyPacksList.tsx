@@ -92,7 +92,7 @@ export function MyPacksList({
               aria-label={
                 openingId === pack.id
                   ? `Opening ${pack.name}`
-                  : `Open ${pack.name} to edit`
+                  : `Open to edit: ${pack.name}`
               }
               aria-describedby={`${statusIdPrefix}-${index}`}
               className="btn btn-sm rounded-box shrink-0 min-w-[6.75rem]"

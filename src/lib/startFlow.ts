@@ -69,6 +69,15 @@ export function workspaceState(state: unknown, workId: string) {
   return screenState('workspace', readScreenState(state)?.pushed, workId);
 }
 
+/**
+ * The entry `state` written over to stand for `screen`. Whether it was added
+ * on top of another carries over: a reload on it steps back only when there
+ * is an entry of the editor's below.
+ */
+export function standInState(state: unknown, screen: EditorScreen) {
+  return screenState(screen, readScreenState(state)?.pushed);
+}
+
 /** The start screen entry Start over adds on top of the workspace of `workId`. */
 export function startOverState(workId: string) {
   return screenState('start', true, workId);

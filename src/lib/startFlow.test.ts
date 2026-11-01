@@ -11,6 +11,7 @@ import {
   resolvePopState,
   returnToWork,
   screenState,
+  standInState,
   startLinkUrl,
   startOverState,
   withoutStartLink,
@@ -68,6 +69,18 @@ describe('workspaceState', () => {
     expect(workspaceState(null, 'w2')).toEqual(
       screenState('workspace', false, 'w2'),
     );
+  });
+});
+
+describe('standInState', () => {
+  it('stands for another screen and keeps whether the entry was added on top', () => {
+    expect(
+      standInState(screenState('workspace', false, 'w0'), 'start'),
+    ).toEqual(screenState('start'));
+    expect(
+      standInState(screenState('workspace', true, 'w0'), 'my-packs'),
+    ).toEqual(screenState('my-packs', true));
+    expect(standInState(null, 'start')).toEqual(screenState('start'));
   });
 });
 
@@ -195,7 +208,6 @@ function createFlow() {
   };
   const pop = () => {
     const state = entries[index];
-    const entry = readScreenState(state);
     const outcome = resolvePopState(flow.screen, state, {
       workId: flow.workId,
       isBusy: false,
@@ -203,10 +215,10 @@ function createFlow() {
     if (outcome.kind === 'show') {
       flow.screen = outcome.screen;
       if (outcome.replaceEntry) {
-        replace(screenState(outcome.screen, entry?.pushed));
+        replace(standInState(state, outcome.screen));
       }
     } else if (outcome.kind === 'stay' && flow.screen !== 'workspace') {
-      replace(screenState(flow.screen, true));
+      replace(standInState(state, flow.screen));
     }
   };
   const enterWork = () => {
@@ -421,9 +433,24 @@ describe('keeping the work behind the start screen', () => {
     expect(flow).toMatchObject({ screen: 'workspace', workId: 'w2' });
     flow.browserBack();
     flow.browserBack();
-    // The replaced work's entry stands for the start screen.
+    // The replaced work's entry stands for the start screen, and is still
+    // the editor's first, so a reload stays on it.
     expect(flow).toMatchObject({ screen: 'start', workId: 'w2' });
-    expect(flow.entries).toEqual([screenState('start', true)]);
+    expect(flow.entries).toEqual([screenState('start')]);
+    expect(backToStart(flow.entries[0])).toBe('replace');
+  });
+
+  it('Back onto the first work after Start over and a new pack stays in the editor on reload', () => {
+    const flow = createFlow();
+    flow.openZip();
+    flow.startOver();
+    flow.askPackType();
+    flow.choosePackType();
+    flow.browserBack();
+    flow.browserBack();
+    expect(flow).toMatchObject({ screen: 'start', workId: 'w2' });
+    expect(flow.entries).toEqual([screenState('start')]);
+    expect(backToStart(flow.entries[0])).toBe('replace');
   });
 
   it('a zip opened over the start screen of Start over takes its entry', () => {
