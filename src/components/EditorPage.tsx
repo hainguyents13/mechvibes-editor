@@ -24,6 +24,7 @@ import {
 } from '@/components/editor/AddSoundsPanel';
 import {
   AudioFileSelector,
+  FILE_LIST_SELECTOR,
   SOURCES_HEADING_ID,
 } from '@/components/editor/AudioFileSelector';
 import { HiddenKeysTray } from '@/components/editor/HiddenKeysTray';
@@ -204,6 +205,11 @@ const PANEL_DRAG_MAX_HEIGHT = 720;
 const PANEL_RESERVED_HEIGHT = 320;
 /** The drag handle's 4px in the layout and the panel's 2px top border. */
 const PANEL_EDGE_HEIGHT = 6;
+/**
+ * Stacked, the file list gives way to the pane of a file of one sound down to
+ * about two rows; below that the panel scrolls.
+ */
+const STACKED_LIST_MIN_HEIGHT = 112;
 /** On screen, key labels grow back to this as the keyboard scales down... */
 const KEY_LABEL_MIN_PX = 8;
 /**
@@ -834,6 +840,8 @@ export function EditorPage() {
   const [oneSoundHeight, setOneSoundHeight] = useState<number | null>(null);
   // The same, up to where Quick select starts; null without Quick select.
   const [quickSelectStart, setQuickSelectStart] = useState<number | null>(null);
+  // Stacked, what that pane's panel holds besides the file list.
+  const [stackedListRest, setStackedListRest] = useState<number | null>(null);
 
   // The panel leaves the keyboard its rows and at least its smallest scale.
   // Keyboard sizes narrower than full size are kept as wide as their rows
@@ -915,6 +923,8 @@ export function EditorPage() {
     // waveform's numbers, which the next file with one picks up again.
     if (!waveform) {
       setOneSoundHeight(needed);
+      const list = row.querySelector<HTMLElement>(FILE_LIST_SELECTOR);
+      setStackedListRest(isStacked && list ? needed - list.offsetHeight : null);
       return;
     }
     setPanelControlsHeight(needed - waveform.offsetHeight);
@@ -963,6 +973,12 @@ export function EditorPage() {
   // ends where Quick select starts and the waveform takes the rest, so the
   // chips wait below the fold whole rather than show a slice.
   const panelView = panelHeight ?? stackedPanelMax;
+  // Stacked, the pane of a file of one sound has no waveform to give way, so
+  // the file list does: the summary and the pane's chips stay in the panel.
+  const fileListMax =
+    isStacked && visibility.oneSoundPane && stackedListRest !== null
+      ? Math.max(STACKED_LIST_MIN_HEIGHT, stackedPanelMax - stackedListRest)
+      : undefined;
   const panelControls = panelControlsHeight ?? PANEL_CONTROLS_HEIGHT;
   const waveformHeight = clamp(
     quickSelectStart !== null &&
@@ -2766,6 +2782,7 @@ export function EditorPage() {
                       codesBySource={codesBySource}
                       selectedCount={selectedCodes.length}
                       noun={noun}
+                      listMaxHeight={fileListMax}
                       playingSourceId={playingSourceId}
                       onPlay={(id) => {
                         const source = sourcesById.get(id);

@@ -19,6 +19,8 @@ interface AudioFileSelectorProps {
   selectedCount: number;
   /** What the pack's keys are called: 'key' or 'button'. */
   noun: string;
+  /** Stacked, the most the list takes before it scrolls, when less than usual. */
+  listMaxHeight?: number;
   /** The file whose sound is playing from its row, if any. */
   playingSourceId: string | null;
   onPlay: (id: string) => void;
@@ -45,6 +47,8 @@ function keysText(codes: readonly string[], noun: string) {
 
 /** Takes the focus when the first file comes in and the ways to add one go. */
 export const SOURCES_HEADING_ID = 'audio-sources-heading';
+/** The list of files, which the panel measures. */
+export const FILE_LIST_SELECTOR = '[data-file-list]';
 
 // Files dropped here reach the page-wide drop handler, which adds them the
 // same way as the file picker.
@@ -55,6 +59,7 @@ export function AudioFileSelector({
   codesBySource,
   selectedCount,
   noun,
+  listMaxHeight,
   playingSourceId,
   onPlay,
   onSelect,
@@ -72,7 +77,7 @@ export function AudioFileSelector({
   // The open file's row stays in view: an add opens a file at the end of a
   // long list, and a selected key opens the file it plays. Only the list
   // scrolls, not the page around it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a file added or removed moves the row too
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a file added or removed, or a shorter list, moves the row too
   React.useLayoutEffect(() => {
     const list = listRef.current;
     const row = list?.querySelector<HTMLElement>('[data-active]');
@@ -81,7 +86,7 @@ export function AudioFileSelector({
     const { top, bottom } = row.getBoundingClientRect();
     if (top < view.top) list.scrollTop -= view.top - top;
     else if (bottom > view.bottom) list.scrollTop += bottom - view.bottom;
-  }, [activeSourceId, sources.length]);
+  }, [activeSourceId, sources.length, listMaxHeight]);
 
   const addFiles = (files: FileList | null) => {
     const media = Array.from(files ?? []).filter(isMediaFile);
@@ -151,10 +156,17 @@ export function AudioFileSelector({
           the open file's controls stay near. */}
       <ul
         ref={listRef}
+        data-file-list
         className={cn(
           'min-h-0 overflow-y-auto flex flex-col gap-2',
           isVideo ? 'shrink-0 max-h-28' : 'flex-1 max-lg:max-h-72',
         )}
+        // Never taller than max-h-72.
+        style={
+          listMaxHeight === undefined
+            ? undefined
+            : { maxHeight: `min(18rem, ${listMaxHeight}px)` }
+        }
       >
         {sources.map((source) => {
           const color = getAudioTrackColor(source.colorIndex);
