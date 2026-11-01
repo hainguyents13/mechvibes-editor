@@ -139,7 +139,10 @@ export function AddSoundsPanel({
 }) {
   const tips = recordingTips(packType);
   return (
-    <div className="shrink-0 max-h-[60dvh] overflow-y-auto editor-panel-surface border-t-2 border-base-content/20">
+    <div
+      data-tour="add-sounds"
+      className="shrink-0 max-h-[60dvh] overflow-y-auto editor-panel-surface border-t-2 border-base-content/20"
+    >
       <div className="mx-auto w-full max-w-4xl px-4 py-4">
         <h2 className="text-center text-sm font-semibold">
           What sounds do you have?

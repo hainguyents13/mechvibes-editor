@@ -20,7 +20,7 @@ import {
   inferKeyboardSize,
 } from '@/components/editor/hidden-keys';
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
-import { KeyboardShortcuts } from '@/components/editor/KeyboardShortcuts';
+import { KeyboardShortcutsDialog } from '@/components/editor/KeyboardShortcuts';
 import {
   KEY_LEGEND_HEIGHT,
   KEY_LEGEND_WITH_COUNT_HEIGHT,
@@ -53,7 +53,7 @@ import { websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePackHistory } from '@/hooks/usePackHistory';
-import { usePhoneScreen } from '@/hooks/usePhoneScreen';
+import { useCoarsePointer, usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
@@ -299,6 +299,9 @@ export function EditorPage() {
   const [soundSlot, setSoundSlot] = useState<SoundSlot>('press');
   const [defaultDuration, setDefaultDuration] = useState(100);
   const [showEditPackModal, setShowEditPackModal] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  // Set when a pack is opened, for Try it to draw the eye for a moment.
+  const [emphasizeTryIt, setEmphasizeTryIt] = useState(false);
   // config.id of an imported zip, kept on export. The editor never invents
   // one: the library issues ids, and the app mints imported-<uuid> otherwise.
   const [loadedPackId, setLoadedPackId] = useState<string | null>(null);
@@ -489,6 +492,7 @@ export function EditorPage() {
     isPhone ||
     isPreview ||
     showEditPackModal ||
+    showShortcuts ||
     confirmDiscardAction !== null ||
     pendingPackType !== null ||
     showMyPacks ||
@@ -566,8 +570,8 @@ export function EditorPage() {
   );
 
   // Height the rows around the keyboard take, each with the column's 12px gap:
-  // the settings row above, then the hidden-keys tray, the legend and the
-  // shortcuts below, when shown. Fixed rather than measured: those rows derive
+  // the settings row above, then the hidden-keys tray and the legend below,
+  // when shown. Fixed rather than measured: those rows derive
   // their width from keyboardScale, so measuring them would make the scale
   // depend on its own output. The rows keep a minimum width so they stay on
   // one line and these heights hold. Preview collapses them all, so the
@@ -582,7 +586,6 @@ export function EditorPage() {
             ? KEY_LEGEND_WITH_COUNT_HEIGHT
             : KEY_LEGEND_HEIGHT
           : 0,
-        visibility.shortcuts ? 20 : 0,
       ]
         .filter((height) => height > 0)
         .reduce((sum, height) => sum + height + 12, 0);
@@ -758,6 +761,7 @@ export function EditorPage() {
     setSoundSlot('press');
     setWaveformSelection({ start: 0, end: 0 });
     setNotice(null);
+    setEmphasizeTryIt(false);
   }, [setSelectedKeys]);
 
   // Start a new history from `snapshot` with nothing unsaved. `published` is what the library holds.
@@ -776,6 +780,7 @@ export function EditorPage() {
     startFrom(createBlankSnapshot(), null);
     setShowMyPacks(false);
     setShowEditPackModal(false);
+    setShowShortcuts(false);
     setPendingPackType(null);
     setConfirmDiscardAction(null);
     exitPreview();
@@ -921,6 +926,8 @@ export function EditorPage() {
     setLoadedPackId(imported.id);
     setPackExtras(imported.extras);
     setActiveSourceId(imported.sources[0]?.id ?? null);
+    // A pack that opens already makes sound: point at the way to hear it.
+    setEmphasizeTryIt(true);
     if (imported.warnings.length > 0) {
       setNotice({
         tone: 'error',
@@ -1088,7 +1095,7 @@ export function EditorPage() {
       } else if (error instanceof WebsiteApiError && error.status === 409) {
         setNotice({
           tone: 'error',
-          message: `${libraryPack.name} changed on the website since you opened it${error.revision ? ` (it is now at revision ${error.revision})` : ''}. Reopening it loses the changes made here, so export a copy first, then reopen the pack from My packs.`,
+          message: `${libraryPack.name} changed on the website since you opened it${error.revision ? ` (it is now at revision ${error.revision})` : ''}. Reopening it loses the changes made here, so download a .zip first, then reopen the pack from My packs.`,
         });
       } else {
         setNotice(libraryErrorNotice(error, 'Could not update the pack.'));
@@ -1101,7 +1108,7 @@ export function EditorPage() {
     }
   };
 
-  // Export current settings as a sound pack zip
+  // Download the pack as a .zip
   const handleExport = async () => {
     // The state written to the zip; edits are locked while it builds.
     const exported = present;
@@ -1121,7 +1128,7 @@ export function EditorPage() {
         setNotice({
           tone: 'success',
           message:
-            'Exported. To share it in the library, create a pack from this zip on the website.',
+            'Downloaded. To share it in the library, create a pack from this .zip on the website.',
           link: { href: NEW_PACK_URL, label: 'Create a pack' },
         });
       }
@@ -1129,9 +1136,7 @@ export function EditorPage() {
       setNotice({
         tone: 'error',
         message:
-          error instanceof Error
-            ? error.message
-            : 'Could not export sound pack.',
+          error instanceof Error ? error.message : 'Could not make the .zip.',
       });
     } finally {
       setIsExporting(false);
@@ -1165,19 +1170,50 @@ export function EditorPage() {
     error: previewError,
   } = usePreviewPlayback(sources, keySounds, isPreview);
   const isMousePack = packInfo.packType === 'Mouse';
+  // A touch screen has no keys to press: Try it says to tap the drawn ones.
+  const isCoarsePointer = useCoarsePointer();
 
   const exitPreview = useCallback(() => {
     setIsPreview(false);
     setPressedKeyCodes(new Set());
   }, []);
 
-  // Guided tour of the workspace, opened from the navbar. The start screen
+  // A key or button goes down or comes up in preview, from the real keyboard
+  // or mouse, or from a click or tap on its drawing.
+  const pressPreviewKey = useCallback(
+    (code: string) => {
+      playKey(code, 'press');
+      setPressedKeyCodes((prev) => new Set(prev).add(code));
+    },
+    [playKey],
+  );
+  const releasePreviewKey = useCallback(
+    (code: string) => {
+      playKey(code, 'release');
+      setPressedKeyCodes((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    },
+    [playKey],
+  );
+
+  // The emphasis on Try it plays out once, then goes.
+  useEffect(() => {
+    if (!emphasizeTryIt) return;
+    const timer = window.setTimeout(() => setEmphasizeTryIt(false), 4500);
+    return () => window.clearTimeout(timer);
+  }, [emphasizeTryIt]);
+
+  // Guided tour of the workspace, opened from the Help menu. The start screen
   // already says where to begin, so it never opens by itself.
   const tourRef = useRef<ReturnType<typeof startEditorTour> | null>(null);
   const startTour = () => {
     tourRef.current?.destroy();
     tourRef.current = startEditorTour({
       signedIn: session.status === 'signed-in',
+      stage: visibility.stage,
     });
   };
   useEffect(() => () => tourRef.current?.destroy(), []);
@@ -1295,19 +1331,6 @@ export function EditorPage() {
   useEffect(() => {
     if (!isPreview) return;
 
-    const press = (code: string) => {
-      playKey(code, 'press');
-      setPressedKeyCodes((prev) => new Set(prev).add(code));
-    };
-    const release = (code: string) => {
-      playKey(code, 'release');
-      setPressedKeyCodes((prev) => {
-        const next = new Set(prev);
-        next.delete(code);
-        return next;
-      });
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         exitPreview();
@@ -1318,21 +1341,28 @@ export function EditorPage() {
       // navigate or scroll instead of sounding like a key press.
       event.preventDefault();
       if (event.repeat) return;
-      press(event.code);
+      pressPreviewKey(event.code);
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (!isMousePack) release(event.code);
+      if (!isMousePack) releasePreviewKey(event.code);
     };
 
     // A mouse pack sounds on the real mouse buttons and wheel, as in the app.
+    // A tap plays the button tapped on the drawing instead, so the mouse
+    // events a browser makes up after a tap are left alone.
+    let lastTouch = Number.NEGATIVE_INFINITY;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') lastTouch = performance.now();
+    };
+    const isAfterTouch = () => performance.now() - lastTouch < 1000;
     const handleMouseDown = (event: MouseEvent) => {
       const code = MOUSE_BUTTON_CODES[event.button];
-      if (code) press(code);
+      if (code && !isAfterTouch()) pressPreviewKey(code);
     };
     const handleMouseUp = (event: MouseEvent) => {
       const code = MOUSE_BUTTON_CODES[event.button];
-      if (code) release(code);
+      if (code && !isAfterTouch()) releasePreviewKey(code);
     };
     let lastWheelSound = 0;
     const handleWheel = (event: WheelEvent) => {
@@ -1351,6 +1381,7 @@ export function EditorPage() {
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
     if (isMousePack) {
+      window.addEventListener('pointerdown', handlePointerDown, true);
       window.addEventListener('mousedown', handleMouseDown);
       window.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('wheel', handleWheel);
@@ -1360,12 +1391,20 @@ export function EditorPage() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [isPreview, isMousePack, playKey, exitPreview]);
+  }, [
+    isPreview,
+    isMousePack,
+    playKey,
+    pressPreviewKey,
+    releasePreviewKey,
+    exitPreview,
+  ]);
 
   useEffect(() => {
     if (isKeyboardOwnedElsewhere) return;
@@ -1446,9 +1485,11 @@ export function EditorPage() {
                 ? 'Loading sounds…'
                 : previewError
                   ? previewError
-                  : isMousePack
-                    ? `Click or scroll anywhere — ${plural(playableCount, 'button')} mapped`
-                    : `Press any highlighted key — ${plural(playableCount, 'key')} mapped`}
+                  : isCoarsePointer
+                    ? `Tap a ${isMousePack ? 'button' : 'key'} to hear it`
+                    : isMousePack
+                      ? `Click or scroll anywhere — ${plural(playableCount, 'button')} mapped`
+                      : `Press any highlighted key — ${plural(playableCount, 'key')} mapped`}
             </span>
             <button
               type="button"
@@ -1456,7 +1497,7 @@ export function EditorPage() {
               onClick={exitPreview}
             >
               <X className="h-4 w-4" />
-              Exit preview
+              Back to editing
             </button>
           </div>
         ) : (
@@ -1480,16 +1521,24 @@ export function EditorPage() {
                     packName: packInfo.name,
                     packType: packInfo.packType,
                     onEditPack: () => setShowEditPackModal(true),
+                    onSwitchPackType: handlePackTypeChange,
                     onStartOver: handleStartOver,
-                    onExport: handleExport,
-                    isExporting,
-                    onPreview: () => setIsPreview(true),
-                    canPreview: sources.length > 0 && playableCount > 0,
+                    onDownload: visibility.download ? handleExport : undefined,
+                    isDownloading: isExporting,
+                    onTryIt: visibility.tryIt
+                      ? () => {
+                          setEmphasizeTryIt(false);
+                          setIsPreview(true);
+                        }
+                      : undefined,
+                    canTryIt: playableCount > 0,
+                    emphasizeTryIt,
                     onUpdate: visibility.updateOnline
                       ? handleUpdate
                       : undefined,
                     isUpdating,
                     onStartTour: startTour,
+                    onShowShortcuts: () => setShowShortcuts(true),
                     undoLabel,
                     redoLabel,
                     onUndo: undo,
@@ -1539,6 +1588,12 @@ export function EditorPage() {
           }}
         />
 
+        <KeyboardShortcutsDialog
+          isOpen={showShortcuts}
+          onClose={() => setShowShortcuts(false)}
+          isMousePack={isMousePack}
+        />
+
         {session.status === 'signed-in' && (
           <MyPacksModal
             isOpen={showMyPacks}
@@ -1561,7 +1616,7 @@ export function EditorPage() {
               <span className="loading loading-spinner loading-lg text-primary"></span>
               <p className="text-sm font-medium">
                 {isExporting
-                  ? 'Exporting sound pack…'
+                  ? 'Making the .zip…'
                   : isUpdating
                     ? 'Publishing to the library…'
                     : 'Opening the pack…'}
@@ -1685,23 +1740,8 @@ export function EditorPage() {
                 <h2 className="sr-only">Keyboard settings</h2>
                 <div className="flex h-6 items-center justify-between gap-4">
                   <NextStep stage={visibility.stage} />
-                  <div className="flex shrink-0 items-center gap-4">
-                    {/* soundpack_type: which device the pack is for */}
-                    <div className="join" data-tour="pack-type">
-                      {(['Keyboard', 'Mouse'] as const).map((packType) => (
-                        <button
-                          key={packType}
-                          type="button"
-                          className={`btn btn-xs join-item ${packInfo.packType === packType ? 'btn-active' : ''}`}
-                          aria-pressed={packInfo.packType === packType}
-                          onClick={() => handlePackTypeChange(packType)}
-                          title={`Make a ${packType.toLowerCase()} sound pack`}
-                        >
-                          {packType}
-                        </button>
-                      ))}
-                    </div>
-                    {visibility.keyboardSize && (
+                  {visibility.keyboardSize && (
+                    <div className="flex shrink-0 items-center gap-4">
                       <div className="join">
                         <button
                           type="button"
@@ -1725,8 +1765,8 @@ export function EditorPage() {
                           Compact
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1744,6 +1784,7 @@ export function EditorPage() {
                   className={`shrink-0 transition-opacity duration-300 ${visibility.fadedKeyboard ? 'opacity-30' : ''}`}
                   // Faded, it shows where the sounds will go, and takes no clicks or focus.
                   inert={visibility.fadedKeyboard}
+                  // Inert, the tour leaves it out.
                   data-tour="keyboard"
                   style={{
                     width: keyboardNaturalWidth * keyboardScale,
@@ -1770,6 +1811,8 @@ export function EditorPage() {
                         keyboardRef={keyboardRef}
                         isPreview={isPreview}
                         pressedKeyCodes={pressedKeyCodes}
+                        onPreviewTouchDown={pressPreviewKey}
+                        onPreviewTouchUp={releasePreviewKey}
                       />
                     ) : (
                       <KeyboardDisplay
@@ -1785,8 +1828,8 @@ export function EditorPage() {
                         keyboardRef={keyboardRef}
                         isPreview={isPreview}
                         pressedKeyCodes={pressedKeyCodes}
-                        onPreviewKeyDown={(code) => playKey(code, 'press')}
-                        onPreviewKeyUp={(code) => playKey(code, 'release')}
+                        onPreviewKeyDown={pressPreviewKey}
+                        onPreviewKeyUp={releasePreviewKey}
                       />
                     )}
                   </div>
@@ -1826,22 +1869,6 @@ export function EditorPage() {
                     showRelease={visibility.releaseLegend}
                     count={visibility.keyCount ? keyCount : null}
                     isMousePack={isMousePack}
-                  />
-                </div>
-              )}
-
-              {/* Shortcuts Bar */}
-              {visibility.shortcuts && (
-                <div
-                  className="editor-chrome-vertical w-full flex justify-center shrink-0"
-                  data-hidden={isPreview}
-                >
-                  <KeyboardShortcuts
-                    selectedKeys={selectedKeys}
-                    setSelectedKeys={setSelectedKeys}
-                    maxWidth={keyboardNaturalWidth * keyboardScale}
-                    isMousePack={isMousePack}
-                    onFocusLost={focusKeyboard}
                   />
                 </div>
               )}

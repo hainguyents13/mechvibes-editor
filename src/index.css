@@ -76,6 +76,17 @@ body[data-editor-preview="true"] footer {
   }
 }
 
+/* Try it, just after a pack opens: a ring that spreads out and fades. */
+@keyframes try-it-cue {
+  from {
+    box-shadow: 0 0 0 0
+      color-mix(in oklab, var(--color-primary) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
 /* Editor timeline container: sits a step away from the page surface in both
    themes — darker on light, lighter on dark — so the panel reads as its own
    layer. base-300 only works for light (it goes darker on dark too), so the

@@ -31,8 +31,6 @@ export interface WorkspaceVisibility {
   addTiles: boolean;
   /** The file list and the waveform. */
   soundPanel: boolean;
-  /** The selection shortcuts under the keyboard. */
-  shortcuts: boolean;
   keyboardSize: boolean;
   /** The chips that select a group of keys, such as the letters. */
   keyGroups: boolean;
@@ -79,7 +77,6 @@ export function getVisibility(facts: WorkspaceFacts): WorkspaceVisibility {
     fadedKeyboard: !hasFiles,
     addTiles: !hasFiles,
     soundPanel: hasFiles,
-    shortcuts: hasFiles,
     keyboardSize: hasFiles && isKeyboard,
     keyGroups: hasFiles && isKeyboard,
     legend: hasFiles,

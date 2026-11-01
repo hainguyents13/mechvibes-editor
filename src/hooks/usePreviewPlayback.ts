@@ -57,7 +57,7 @@ export function usePreviewPlayback(
       if (cancelled) return;
       const names = failed.filter((name): name is string => name !== null);
       if (names.length > 0) {
-        setError(`Could not decode ${names.join(', ')} for preview.`);
+        setError(`Could not decode ${names.join(', ')} to play it.`);
       }
       setIsLoading(false);
     });

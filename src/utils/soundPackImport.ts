@@ -449,7 +449,7 @@ export async function parseSoundPackZip(
   if (unusedNames.length > 0) {
     const one = unusedNames.length === 1;
     notes.push(
-      `Kept ${one ? 'an audio file' : `${unusedNames.length} audio files`} that no key uses: ${listKeys(unusedNames)}. You can cut sounds from ${one ? 'it' : 'them'} here, but Export leaves out files that no key uses.`,
+      `Kept ${one ? 'an audio file' : `${unusedNames.length} audio files`} that no key uses: ${listKeys(unusedNames)}. You can cut sounds from ${one ? 'it' : 'them'} here, but Download .zip leaves out files that no key uses.`,
     );
   }
 

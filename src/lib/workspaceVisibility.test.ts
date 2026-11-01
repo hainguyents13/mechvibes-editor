@@ -34,7 +34,6 @@ describe('getVisibility', () => {
     expect(v.addTiles).toBe(true);
     expect(v.fadedKeyboard).toBe(true);
     expect(v.soundPanel).toBe(false);
-    expect(v.shortcuts).toBe(false);
     expect(v.keyboardSize).toBe(false);
     expect(v.keyGroups).toBe(false);
     expect(v.legend).toBe(false);
@@ -51,7 +50,6 @@ describe('getVisibility', () => {
     expect(v.addTiles).toBe(false);
     expect(v.fadedKeyboard).toBe(false);
     expect(v.soundPanel).toBe(true);
-    expect(v.shortcuts).toBe(true);
     expect(v.keyboardSize).toBe(true);
     expect(v.keyGroups).toBe(true);
     expect(v.legend).toBe(true);

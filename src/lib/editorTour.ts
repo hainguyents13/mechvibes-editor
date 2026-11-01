@@ -1,14 +1,16 @@
 import { type DriveStep, driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 import { MOD_LABEL } from '@/lib/utils';
+import type { WorkspaceStage } from '@/lib/workspaceVisibility';
 
 // A guided tour of the workspace: where each step happens and in what order.
-// It opens only from the navbar. Steps point at elements marked with
-// data-tour="…"; a step whose element is not on the page is left out.
+// It opens only from the Help menu. Steps point at elements marked with
+// data-tour="…"; a step whose element is not on show is left out, so the
+// tour follows what the pack has so far.
 
 const target = (name: string) => `[data-tour="${name}"]`;
 
-function buildSteps(signedIn: boolean): DriveStep[] {
+function buildSteps(signedIn: boolean, stage: WorkspaceStage): DriveStep[] {
   return [
     {
       popover: {
@@ -18,11 +20,19 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       },
     },
     {
+      element: target('add-sounds'),
+      popover: {
+        title: '1. Add your sounds',
+        description:
+          'Pick what you have: one recording, one file for each key, or a video. You can also drop files anywhere on the page. The keys behind come alive once a file is in.',
+      },
+    },
+    {
       element: target('sources'),
       popover: {
-        title: '1. Add a recording',
+        title: '1. Your sounds',
         description:
-          'Drop an audio or video file of your keyboard here. Add more files when keys need sounds from different recordings.',
+          'The files of the pack. Add more when keys need sounds from different recordings, or drop them anywhere on the page.',
       },
     },
     {
@@ -30,7 +40,7 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       popover: {
         title: 'Keyboard or mouse',
         description:
-          'Choose what the pack is for. A mouse pack shows the mouse buttons and wheel instead of keys.',
+          'What the pack is for. Open it to switch: a mouse pack shows the mouse buttons and wheel instead of keys.',
       },
     },
     {
@@ -44,16 +54,15 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       element: target('sound'),
       popover: {
         title: '3. Cut the sound',
-        description:
-          'Once a file is added, its waveform shows here. Drag over one keystroke, press Test to hear it, then Apply to give it to the selected keys. Switch to Release for the sound a key makes when it comes up.',
+        description: `The waveform of the chosen file. Drag over one keystroke, press Test to hear it, then Apply to give it to the selected keys. Once a key has a sound, switch to Release for the sound it makes when it comes up.${stage === 'has-sounds' ? '' : ' Try it and Download .zip show up once a key has a sound.'}`,
       },
     },
     {
-      element: target('preview'),
+      element: target('try-it'),
       popover: {
         title: '4. Try it',
         description:
-          'Preview plays the pack while you type on your own keyboard. It turns on once a key has a sound.',
+          'Plays the pack while you type on your own keyboard, or tap the keys on a touch screen.',
       },
     },
     {
@@ -65,11 +74,11 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       },
     },
     {
-      element: target('export'),
+      element: target('download'),
       popover: {
-        title: '5. Export',
+        title: '5. Download .zip',
         description:
-          'Download the pack as a zip. Install it in the Mechvibes app, or create a pack from it on the website to share it.',
+          'Saves the pack as a .zip. Install it in the Mechvibes app, or create a pack from it on the website to share it.',
       },
     },
     {
@@ -77,7 +86,15 @@ function buildSteps(signedIn: boolean): DriveStep[] {
       popover: {
         title: 'Start over',
         description:
-          'Go back to the first screen to open a pack file, open one of your packs or make a new one. It asks first when you have changes you have not exported. To open a pack file, you can also drop its .zip anywhere on the page.',
+          'Go back to the first screen to open a pack file, open one of your packs or make a new one. It asks first when you have changes you have not downloaded. To open a pack file, you can also drop its .zip anywhere on the page.',
+      },
+    },
+    {
+      element: target('help'),
+      popover: {
+        title: 'Help',
+        description:
+          'Take this tour again, or see the keyboard shortcuts for selecting keys.',
       },
     },
     {
@@ -92,12 +109,26 @@ function buildSteps(signedIn: boolean): DriveStep[] {
   ];
 }
 
-/** Start the tour. */
-export function startEditorTour({ signedIn }: { signedIn: boolean }) {
-  const steps = buildSteps(signedIn).filter(
-    (step) =>
-      typeof step.element !== 'string' ||
-      document.querySelector(step.element) !== null,
+// On the page, laid out, and not inside a part that is put away.
+function isOnShow(selector: string) {
+  const element = document.querySelector(selector);
+  return (
+    element !== null &&
+    element.getClientRects().length > 0 &&
+    element.closest('[inert], [data-hidden="true"]') === null
+  );
+}
+
+/** Start the tour, for how far the pack has come. */
+export function startEditorTour({
+  signedIn,
+  stage,
+}: {
+  signedIn: boolean;
+  stage: WorkspaceStage;
+}) {
+  const steps = buildSteps(signedIn, stage).filter(
+    (step) => typeof step.element !== 'string' || isOnShow(step.element),
   );
   const tour = driver({
     steps,
