@@ -39,7 +39,7 @@ interface WorkspaceControls {
   packName: string;
   packType: PackType;
   onEditPack: () => void;
-  /** Back to the start screen; asks first when there are unsaved changes. */
+  /** To the start screen, keeping the work behind it; asks nothing. */
   onStartOver: () => void;
   onExport: () => void;
   isExporting?: boolean;

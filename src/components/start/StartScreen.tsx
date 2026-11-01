@@ -1,16 +1,37 @@
-import { FolderOpen, Globe, type LucideIcon, Plus } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import {
+  ArrowRight,
+  FolderOpen,
+  Globe,
+  type LucideIcon,
+  Plus,
+} from 'lucide-react';
+import { type ReactNode, useId, useState } from 'react';
 import { siteIdentity, websiteHost } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
 import {
+  BackButton,
+  CARD_CLASS,
   ErrorLine,
   ScreenHeading,
   STRETCHED_ACTION,
   StartPage,
+  signInTarget,
 } from './StartPage';
 
-const ACTION_CLASS = `btn btn-sm btn-neutral rounded-box ${STRETCHED_ACTION}`;
-const CROSS_LINK_CLASS = 'link relative z-10 font-medium';
+const ACTION_CLASS = `${STRETCHED_ACTION} cursor-pointer text-left text-sm font-semibold focus-visible:outline-none disabled:cursor-default disabled:text-base-content/60`;
+const CROSS_LINK_CLASS = 'link relative z-10 font-medium whitespace-nowrap';
+
+// The card lifts while its action is hovered or keyboard-focused. Keyed on the
+// action rather than the card, so hovering a cross link leaves it at rest.
+const LIFT_WITH_ACTION_CLASS =
+  'has-[[data-card-action]:not(:disabled):hover]:border-primary/60 has-[[data-card-action]:not(:disabled):hover]:shadow-lg has-[[data-card-action]:focus-visible]:border-primary/60 has-[[data-card-action]:focus-visible]:shadow-lg has-[[data-card-action]:focus-visible]:outline-2 outline-offset-2 outline-primary';
+
+/** What clicking a card does, named in a line at its foot. */
+type CardAction = {
+  label: string;
+  /** Working on it: the card shows a spinner and cannot be clicked again. */
+  busy?: boolean;
+} & ({ href: string; newTab?: boolean } | { onClick: () => void });
 
 interface StartScreenProps {
   session: LibrarySession;
@@ -18,7 +39,9 @@ interface StartScreenProps {
   onRetrySession: () => Promise<void>;
   /** The website's sign-in page, coming back to the list of the visitor's packs. */
   signInHref: string;
-  /** The sign-in button's label when the link the editor was opened with names a pack. */
+  /** Sign in in a new tab, so the work kept behind this screen survives it. */
+  signInInNewTab: boolean;
+  /** The sign-in action's label when the link the editor was opened with names a pack. */
   signInLabel: string | null;
   onShowMyPacks: () => void;
   /** Why the library pack the editor was linked to did not open. */
@@ -29,9 +52,15 @@ interface StartScreenProps {
   /** Why the last pack file did not open. */
   openFileError: string | null;
   onMakeNewPack: () => void;
+  /** The work Start over kept, and the way back to it; null when there is none. */
+  keptWork: { packName: string; onReturn: () => void } | null;
 }
 
-/** One way in. The card keeps a fixed height whatever its content, so the row does not jump as the account loads. */
+/**
+ * One way in. With an action the whole card is the button; without one (while
+ * the account loads) it is plain text. The card keeps a fixed height whatever
+ * its content, so the row does not jump as the account loads.
+ */
 function StartCard({
   Icon,
   title,
@@ -42,19 +71,80 @@ function StartCard({
   Icon: LucideIcon;
   title: string;
   children: ReactNode;
-  /** The main control; it covers the whole card. */
-  action?: ReactNode;
+  action?: CardAction;
   /** A link to the neighbouring card. */
   crossLink?: ReactNode;
 }) {
+  const id = useId();
+  const titleId = `${id}-title`;
+  const bodyId = `${id}-body`;
+  const labelId = `${id}-label`;
+
+  let actionControl: ReactNode = null;
+  if (action) {
+    const content = (
+      <>
+        {action.busy && (
+          <span
+            className="loading loading-spinner loading-xs mr-1.5 align-middle"
+            aria-hidden="true"
+          />
+        )}
+        <span id={labelId}>{action.label}</span>
+        {!action.busy && (
+          <ArrowRight
+            className="ml-1 inline h-4 w-4 align-[-0.2em] text-primary"
+            aria-hidden="true"
+          />
+        )}
+      </>
+    );
+    // Screen readers hear the card's title with what it does.
+    const shared = {
+      'data-card-action': '',
+      'aria-labelledby': `${titleId} ${labelId}`,
+      'aria-describedby': bodyId,
+      className: ACTION_CLASS,
+    };
+    actionControl =
+      'href' in action ? (
+        <a
+          href={action.href}
+          {...signInTarget(action.newTab ?? false)}
+          // Space follows the link too, as it presses the other cards.
+          onKeyDown={(event) => {
+            if (event.key !== ' ') return;
+            event.preventDefault();
+            event.currentTarget.click();
+          }}
+          {...shared}
+        >
+          {content}
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={action.onClick}
+          disabled={action.busy}
+          {...shared}
+        >
+          {content}
+        </button>
+      );
+  }
+
   return (
     <section
-      className={`relative flex md:h-[19rem] flex-col rounded-box border border-base-300 bg-base-100 p-5 shadow-sm transition ${action ? 'hover:border-primary/60 hover:shadow-md' : ''}`}
+      className={`relative flex md:h-[17rem] flex-col p-5 ${CARD_CLASS} ${action ? LIFT_WITH_ACTION_CLASS : ''}`}
     >
       <Icon className="h-7 w-7 shrink-0 text-primary" aria-hidden="true" />
-      <h2 className="mt-3 text-lg font-semibold">{title}</h2>
-      <div className="mt-1 text-sm text-base-content/70">{children}</div>
-      <div className="mt-auto pt-4">{action}</div>
+      <h2 id={titleId} className="mt-3 text-lg font-semibold">
+        {title}
+      </h2>
+      <div id={bodyId} className="mt-1 text-sm text-base-content/70">
+        {children}
+      </div>
+      <div className="mt-auto pt-4">{actionControl}</div>
       <p className="mt-3 min-h-8 text-xs text-base-content/60">{crossLink}</p>
     </section>
   );
@@ -64,6 +154,7 @@ export function StartScreen({
   session,
   onRetrySession,
   signInHref,
+  signInInNewTab,
   signInLabel,
   onShowMyPacks,
   libraryOpenError,
@@ -71,6 +162,7 @@ export function StartScreen({
   isOpeningFile,
   openFileError,
   onMakeNewPack,
+  keptWork,
 }: StartScreenProps) {
   const [isRetrying, setIsRetrying] = useState(false);
   const retry = async () => {
@@ -86,7 +178,11 @@ export function StartScreen({
   // Where "Edit my pack" leads from the other card: the list, or signing in.
   const editMyPackLink =
     session.status === 'signed-out' ? (
-      <a href={signInHref} className={CROSS_LINK_CLASS}>
+      <a
+        href={signInHref}
+        {...signInTarget(signInInNewTab)}
+        className={CROSS_LINK_CLASS}
+      >
         Edit my pack
       </a>
     ) : hasPacks ? (
@@ -108,12 +204,7 @@ export function StartScreen({
     </button>
   );
 
-  const editMyPack = ((): {
-    body: ReactNode;
-    action?: ReactNode;
-    /** The body already links to the other card. */
-    hideCrossLink?: boolean;
-  } => {
+  const editMyPack = ((): { body: ReactNode; action?: CardAction } => {
     switch (session.status) {
       case 'loading':
         return {
@@ -130,48 +221,28 @@ export function StartScreen({
       case 'signed-out':
         return {
           body: <p>A pack you shared on {websiteHost}</p>,
-          action: (
-            <a href={signInHref} className={ACTION_CLASS}>
-              {signInLabel ?? 'Sign in to see them'}
-            </a>
-          ),
+          action: {
+            label: signInLabel ?? 'Sign in to see them',
+            href: signInHref,
+            newTab: signInInNewTab,
+          },
         };
       case 'unavailable':
         return {
-          body: (
-            <p>
-              Can't reach {websiteHost} right now. Download your pack's .zip
-              there, then use {openPackFileLink}.
-            </p>
-          ),
-          action: (
-            <button
-              type="button"
-              onClick={retry}
-              disabled={isRetrying}
-              className={ACTION_CLASS}
-            >
-              {isRetrying && (
-                <span className="loading loading-spinner loading-xs" />
-              )}
-              Try again
-            </button>
-          ),
-          hideCrossLink: true,
+          body: <p>A pack you shared on {websiteHost}</p>,
+          action: isRetrying
+            ? { label: 'Trying again…', busy: true, onClick: retry }
+            : {
+                label: `Can't reach ${websiteHost}. Click to try again.`,
+                onClick: retry,
+              },
         };
-      case 'signed-in':
-        if (session.packs.length === 0) {
+      case 'signed-in': {
+        const count = session.packs.length;
+        if (count === 0) {
           return {
             body: <p>You have no packs on {websiteHost} yet.</p>,
-            action: (
-              <button
-                type="button"
-                onClick={onMakeNewPack}
-                className={ACTION_CLASS}
-              >
-                Make a new pack
-              </button>
-            ),
+            action: { label: 'Make a new pack', onClick: onMakeNewPack },
           };
         }
         return {
@@ -181,22 +252,25 @@ export function StartScreen({
               <p className="mt-2 truncate">Signed in as {session.user.name}</p>
             </>
           ),
-          action: (
-            <button
-              type="button"
-              onClick={onShowMyPacks}
-              className={ACTION_CLASS}
-            >
-              Show my packs ({session.packs.length})
-            </button>
-          ),
+          action: {
+            label: `${count} ${count === 1 ? 'pack' : 'packs'}`,
+            onClick: onShowMyPacks,
+          },
         };
+      }
     }
   })();
 
   return (
-    <StartPage>
+    <StartPage centered>
       <div className="text-center">
+        <img
+          src="/logo.png"
+          alt=""
+          width={56}
+          height={56}
+          className="mx-auto mb-4 h-14 w-14"
+        />
         <ScreenHeading className="text-2xl md:text-3xl font-bold">
           Make a sound pack for {siteIdentity.productName}
         </ScreenHeading>
@@ -205,17 +279,25 @@ export function StartScreen({
         </p>
       </div>
 
-      <div className="mt-10 grid gap-4 md:grid-cols-3 md:items-start">
+      {/* After the heading, which takes the focus, so Tab and a screen reader
+      reach the way back first. */}
+      {keptWork && (
+        <div className="mt-8">
+          <BackButton
+            label={`Back to "${keptWork.packName}"`}
+            onClick={keptWork.onReturn}
+          />
+        </div>
+      )}
+      <div
+        className={`${keptWork ? 'mt-3' : 'mt-10'} grid gap-4 md:grid-cols-3 md:items-start`}
+      >
         <div>
           <StartCard
             Icon={Globe}
             title="Edit my pack"
             action={editMyPack.action}
-            crossLink={
-              !editMyPack.hideCrossLink && (
-                <>Only on your computer? {openPackFileLink}</>
-              )
-            }
+            crossLink={<>Only on your computer? {openPackFileLink}</>}
           >
             {editMyPack.body}
           </StartCard>
@@ -231,17 +313,9 @@ export function StartScreen({
             Icon={FolderOpen}
             title="Open a pack file"
             action={
-              <button
-                type="button"
-                onClick={onChoosePackFile}
-                disabled={isOpeningFile}
-                className={ACTION_CLASS}
-              >
-                {isOpeningFile && (
-                  <span className="loading loading-spinner loading-xs" />
-                )}
-                {isOpeningFile ? 'Opening…' : 'Choose .zip'}
-              </button>
+              isOpeningFile
+                ? { label: 'Opening…', busy: true, onClick: onChoosePackFile }
+                : { label: 'Choose a .zip', onClick: onChoosePackFile }
             }
             crossLink={
               editMyPackLink && (
@@ -263,15 +337,7 @@ export function StartScreen({
         <StartCard
           Icon={Plus}
           title="Make a new pack"
-          action={
-            <button
-              type="button"
-              onClick={onMakeNewPack}
-              className={ACTION_CLASS}
-            >
-              Start
-            </button>
-          }
+          action={{ label: 'Start', onClick: onMakeNewPack }}
         >
           <p>Start from your own recordings or sound files</p>
         </StartCard>

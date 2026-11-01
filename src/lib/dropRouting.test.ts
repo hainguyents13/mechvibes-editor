@@ -41,10 +41,10 @@ describe('routeDrop: pack .zip', () => {
     });
   });
 
-  it('never asks on the start screen, where there is no pack to lose', () => {
+  it('asks on the start screen only over unsaved work kept behind it', () => {
     expect(
       drop([file('pack.zip')], { onStart: true, isDirty: true }),
-    ).toMatchObject({ kind: 'open-zip', confirm: false });
+    ).toMatchObject({ kind: 'open-zip', confirm: true });
     expect(drop([file('pack.zip')], START)).toMatchObject({
       kind: 'open-zip',
       confirm: false,
