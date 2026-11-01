@@ -31,7 +31,6 @@ export function ProgressLine({ items }: { items: ProgressItem[] }) {
       {items.map((item, index) => (
         <li
           key={item.id}
-          title={item.title}
           className={`flex items-center gap-1.5 ${item.state === 'count' ? 'min-w-0' : 'shrink-0'} ${item.state === 'not-yet' ? 'text-base-content/40' : ''}`}
         >
           {index > 0 && <span aria-hidden="true">·</span>}
@@ -43,7 +42,12 @@ export function ProgressLine({ items }: { items: ProgressItem[] }) {
                 strokeWidth={3}
               />
             )}
-            <span className={item.state === 'count' ? 'truncate' : undefined}>
+            {/* On the words, not the item: a title on the <li> becomes its
+                accessible name and is read in place of the label. */}
+            <span
+              title={item.title}
+              className={item.state === 'count' ? 'truncate' : undefined}
+            >
               {item.label}
             </span>
           </span>
