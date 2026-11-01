@@ -45,6 +45,7 @@ import {
 } from '@/components/editor/MouseDisplay';
 import { NextStep } from '@/components/editor/NextStep';
 import {
+  QUICK_SELECT_SELECTOR,
   type SoundSlot,
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
@@ -732,6 +733,8 @@ export function EditorPage() {
   const [panelControlsHeight, setPanelControlsHeight] = useState<number | null>(
     null,
   );
+  // The same, up to where Quick select starts; null without Quick select.
+  const [quickSelectStart, setQuickSelectStart] = useState<number | null>(null);
 
   // The panel leaves the keyboard its rows and at least its smallest scale.
   // Keyboard sizes narrower than full size are kept as wide as their rows
@@ -767,19 +770,41 @@ export function EditorPage() {
       WAVEFORM_BOX_SELECTOR,
     );
     if (!row || !controls || !column || !waveform) return;
-    // Stacked, the whole row grows with its content. Side by side, the
-    // panel has a fixed height and only the right column's content counts,
-    // with the column's padding and the row's bottom border.
+    const quickSelect = controls.querySelector<HTMLElement>(
+      QUICK_SELECT_SELECTOR,
+    );
+    // Within the controls, which scroll as one, so their scroll is no matter.
+    const toQuickSelect = quickSelect
+      ? quickSelect.getBoundingClientRect().top -
+        controls.getBoundingClientRect().top
+      : null;
+    // Stacked, the whole row grows with its content and scrolls in the
+    // panel. Side by side, the panel has a fixed height and only the right
+    // column's content counts, with the column's padding and the row's
+    // bottom border, which stays below the column's fold.
     let needed = row.offsetHeight;
+    let start =
+      toQuickSelect === null
+        ? null
+        : controls.getBoundingClientRect().top -
+          row.getBoundingClientRect().top +
+          toQuickSelect;
     if (!isStacked) {
       const columnStyle = getComputedStyle(column);
+      const paddingTop = parseFloat(columnStyle.paddingTop);
+      const border = parseFloat(getComputedStyle(row).borderBottomWidth);
       needed =
         controls.offsetHeight +
-        parseFloat(columnStyle.paddingTop) +
+        paddingTop +
         parseFloat(columnStyle.paddingBottom) +
-        parseFloat(getComputedStyle(row).borderBottomWidth);
+        border;
+      start =
+        toQuickSelect === null ? null : paddingTop + toQuickSelect + border;
     }
     setPanelControlsHeight(needed - waveform.offsetHeight);
+    setQuickSelectStart(
+      start === null ? null : Math.round(start - waveform.offsetHeight),
+    );
   }, [isStacked]);
 
   // Measured after every commit, so a row or a notice this page adds is
@@ -814,10 +839,18 @@ export function EditorPage() {
   ]);
 
   // The waveform takes what the panel has besides its controls: the fixed
-  // height side by side, about half the screen stacked.
+  // height side by side, about half the screen stacked, within the most the
+  // panel shows before its controls scroll. A panel too short for them all
+  // ends where Quick select starts and the waveform takes the rest, so the
+  // chips wait below the fold whole rather than show a slice.
+  const panelView = panelHeight ?? stackedPanelMax;
+  const panelControls = panelControlsHeight ?? PANEL_CONTROLS_HEIGHT;
   const waveformHeight = clamp(
-    (panelHeight ?? Math.round(viewport.height / 2)) -
-      (panelControlsHeight ?? PANEL_CONTROLS_HEIGHT),
+    quickSelectStart !== null &&
+      panelControls + WAVEFORM_SQUEEZED_HEIGHT > panelView
+      ? panelView - quickSelectStart
+      : Math.min(panelHeight ?? Math.round(viewport.height / 2), panelView) -
+          panelControls,
     WAVEFORM_SQUEEZED_HEIGHT,
     WAVEFORM_MAX_HEIGHT,
   );

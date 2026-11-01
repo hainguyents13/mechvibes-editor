@@ -11,6 +11,9 @@ import {
 } from '@/utils/audioUtils';
 import type { KeySounds } from '@/utils/soundPack';
 
+/** The Quick select block, which a panel too short for it leaves below its fold. */
+export const QUICK_SELECT_SELECTOR = '[data-quick-select]';
+
 /** Which half of a key's sound the controls assign. */
 export type SoundSlot = 'press' | 'release';
 
@@ -145,12 +148,12 @@ export function TimeSegmentControls({
   return (
     <>
       {/* Right under the waveform, with Quick select below, so a short panel
-      cuts the chips rather than Apply. A panel too short even for this row
-      pins it to its bottom while what is above it scrolls. The bottom
-      padding is the panel's own, lent to the pinned row and handed back
-      below it; side by side, the row pins over that padding too. A wrapper
-      carries the background, which a fieldset leaves off above its legend's
-      middle. */}
+      leaves the chips below its fold rather than Apply. A panel too short
+      even for this row pins it to its bottom while what is above it
+      scrolls. The bottom padding is the panel's own, lent to the pinned row
+      and handed back below it; side by side, the row pins over that padding
+      too. A wrapper carries the background, which a fieldset leaves off
+      above its legend's middle. */}
       <div className="panel-pinned-row sticky bottom-0 lg:-bottom-3 z-10 -mb-3 shrink-0 min-w-0">
         <div className="editor-panel-surface pb-3">
           <fieldset className="fieldset py-0 px-4 min-w-0">
@@ -409,7 +412,10 @@ export function TimeSegmentControls({
       </div>
 
       {groupMatches.length > 0 && (
-        <fieldset className="fieldset py-0 px-4 shrink-0 min-w-0">
+        <fieldset
+          data-quick-select
+          className="fieldset py-0 px-4 shrink-0 min-w-0"
+        >
           <legend className="fieldset-legend">
             <h2 className="text-xs font-medium text-base-content">
               Quick select
