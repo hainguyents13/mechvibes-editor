@@ -41,8 +41,20 @@ export function NavbarMenu({
     const button = buttonRef.current;
     if (event.newState !== 'open' || !button) return;
     const box = button.getBoundingClientRect();
-    const style = event.currentTarget.style;
+    const menu = event.currentTarget;
+    const style = menu.style;
     style.top = `${box.bottom + 4}px`;
+    // Opens above a button too near the bottom of the window for it, once
+    // it is shown and has a height, before it paints.
+    requestAnimationFrame(() => {
+      const height = menu.offsetHeight;
+      if (
+        box.bottom + 4 + height > window.innerHeight &&
+        box.top > height + 4
+      ) {
+        style.top = `${box.top - 4 - height}px`;
+      }
+    });
     if (align === 'start') {
       style.left = `${box.left}px`;
       style.right = '';
