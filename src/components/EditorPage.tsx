@@ -51,15 +51,20 @@ import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
+  asksBeforeReplacing,
   backToStart,
   type EditorScreen,
   findLinkedPack,
+  newWorkId,
   parseStartLink,
   readScreenState,
   resolvePopState,
+  returnToWork,
   screenState,
   startLinkUrl,
+  startOverState,
   withoutStartLink,
+  workspaceState,
 } from '@/lib/startFlow';
 import { plural } from '@/lib/utils';
 import {
@@ -295,12 +300,21 @@ export function EditorPage() {
   const [pressedKeyCodes, setPressedKeyCodes] = useState<Set<string>>(
     new Set(),
   );
+  // Another way in, waiting while the visitor is asked whether to discard the
+  // unsaved work it would replace.
   const [confirmDiscardAction, setConfirmDiscardAction] = useState<
-    null | 'start-over' | { pack: LibraryPackSummary } | { file: File }
+    | null
+    | { pack: LibraryPackSummary }
+    | { file: File }
+    | { packType: PackType }
   >(null);
   // The editor opens on the start screen; the pack controls show in the workspace.
   const [screen, setScreen] = useState<EditorScreen>('start');
   const isWorkspace = screen === 'workspace';
+  // The work in the workspace, null until one is entered. Start over keeps
+  // it behind the start screens, with the workspace mounted but hidden, so
+  // Back to returns to it as it was; another way in replaces it.
+  const [workId, setWorkId] = useState<string | null>(null);
   // A phone gets a page of its own instead of the editor. The pack stays in
   // state, so a window narrowed for a moment loses nothing.
   const isPhone = usePhoneScreen();
@@ -447,8 +461,9 @@ export function EditorPage() {
   const [keyboardScale, setKeyboardScale] = useState(1);
 
   useEffect(() => {
-    // The keyboard is on the page only in the workspace, and the phone page
-    // takes it off: coming back mounts a new container to observe.
+    // The keyboard is shown only in the workspace: the start screens hide it
+    // (its container then measures 0x0) and the phone page takes it off.
+    // Coming back measures again, from the container shown by then.
     if (!isWorkspace || isPhone) return;
     const el = keyboardAreaRef.current;
     // Measure the parent, not the keyboard wrapper: the wrapper now shrinks to the
@@ -724,15 +739,17 @@ export function EditorPage() {
     [resetHistory],
   );
 
-  // Empty the pack and close whatever was open over it.
-  const clearPack = () => {
-    resetView();
-    startFrom(createBlankSnapshot(), null);
+  // The work stays as it is while the start screens show, but nothing of the
+  // workspace may go on over them: what was open over the pack closes, a
+  // sound playing stops, and the tour would point at nothing.
+  const leaveWorkspace = () => {
     setShowMyPacks(false);
     setShowEditPackModal(false);
     setPendingPackType(null);
     setConfirmDiscardAction(null);
     exitPreview();
+    // Playing again stops it.
+    if (isPlaying) playSelectedSegment();
     tourRef.current?.destroy();
   };
 
@@ -749,10 +766,9 @@ export function EditorPage() {
     }
   };
 
-  // Show a screen before the workspace. Leaving the workspace empties the
-  // pack, so nothing of it lingers behind the start screen.
+  // Show a screen before the workspace, or the work kept behind them.
   const showScreen = (next: EditorScreen) => {
-    if (isWorkspace && next !== 'workspace') clearPack();
+    if (isWorkspace && next !== 'workspace') leaveWorkspace();
     if (next !== 'pack-type') setPendingFiles([]);
     if (next !== 'start') dropStartLink();
     setOpenFileError(null);
@@ -768,15 +784,14 @@ export function EditorPage() {
     window.history.pushState(screenState(next, true), '');
   };
 
-  // The workspace takes over the history entry it was entered from, so Back
-  // never lands on the step that started it. Whether that entry was added on
-  // top of the start screen's carries over, for Start over to step back.
+  // Show new work, which the pack state already holds, in place of the work
+  // there was. The workspace takes over the history entry it was entered
+  // from, so Back never lands on the step that started it.
   const enterWorkspace = () => {
+    const id = newWorkId();
     dropStartLink();
-    window.history.replaceState(
-      screenState('workspace', readScreenState(window.history.state)?.pushed),
-      '',
-    );
+    window.history.replaceState(workspaceState(window.history.state, id), '');
+    setWorkId(id);
     setScreen('workspace');
   };
 
@@ -784,9 +799,10 @@ export function EditorPage() {
   // its popstate is not taken for the visitor's Back.
   const steppingBackRef = useRef(false);
 
-  // Steps back onto the start screen's entry when it lies right below, rather
-  // than turn this entry into a second one that Back would have to step over.
-  const startOver = () => {
+  // The on-page Back of the screens before the workspace. Steps back onto
+  // the start screen's entry when it lies right below, rather than turn this
+  // entry into a second one that Back would have to step over.
+  const goBackToStart = () => {
     if (backToStart(window.history.state) === 'history-back') {
       steppingBackRef.current = true;
       window.history.back();
@@ -796,12 +812,23 @@ export function EditorPage() {
     showScreen('start');
   };
 
-  // Ask first when there is work to lose.
-  const handleStartOver = () => {
-    if (isDirty) {
-      setConfirmDiscardAction('start-over');
+  // Start over keeps the work, so it asks nothing: the start screen goes on
+  // top of the workspace, and Back or Back to returns to it.
+  const startOver = () => {
+    if (!workId) return;
+    showScreen('start');
+    window.history.pushState(startOverState(workId), '');
+  };
+
+  // Back to the work kept behind the start screen, as it was left.
+  const returnToKeptWork = () => {
+    if (!workId) return;
+    if (returnToWork(window.history.state, workId) === 'history-back') {
+      // Its popstate shows the workspace.
+      window.history.back();
     } else {
-      startOver();
+      window.history.pushState(screenState('workspace', true, workId), '');
+      showScreen('workspace');
     }
   };
 
@@ -837,14 +864,27 @@ export function EditorPage() {
     if (files.length > 0) handleAddSources(files);
   };
 
+  // Each way in replaces the work there is, so it asks first over changes
+  // that are not saved.
+  const asksFirst = asksBeforeReplacing({ workId, isDirty });
+
+  const chooseNewPack = (packType: PackType) => {
+    if (asksFirst) {
+      setConfirmDiscardAction({ packType });
+    } else {
+      startNewPack(packType);
+    }
+  };
+
   const confirmDiscard = () => {
     const action = confirmDiscardAction;
     setConfirmDiscardAction(null);
-    if (action === 'start-over') {
-      startOver();
-    } else if (action && 'file' in action) {
+    if (!action) return;
+    if ('packType' in action) {
+      startNewPack(action.packType);
+    } else if ('file' in action) {
       openPackFile(action.file);
-    } else if (action) {
+    } else {
       openLibraryPack(action.pack);
     }
   };
@@ -916,7 +956,12 @@ export function EditorPage() {
   const handlePackFileChosen = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (file) openPackFile(file);
+    if (!file) return;
+    if (asksFirst) {
+      setConfirmDiscardAction({ file });
+    } else {
+      openPackFile(file);
+    }
   };
 
   // Open one of the visitor's library packs through the same path as a pack file.
@@ -956,7 +1001,7 @@ export function EditorPage() {
 
   const handleOpenLibraryPack = (pack: LibraryPackSummary) => {
     if (!canOpenPack(pack)) return;
-    if (isDirty) {
+    if (asksFirst) {
       setShowMyPacks(false);
       setConfirmDiscardAction({ pack });
     } else {
@@ -1204,32 +1249,38 @@ export function EditorPage() {
     document.getElementById(SCREEN_HEADING_ID)?.focus({ preventScroll: true });
   }, [screen]);
 
-  // The browser's Back and Forward move between the start screens. Leaving
-  // the workspace that way asks first when there is work to lose.
+  // The browser's Back and Forward move between the start screens and the
+  // workspace. Leaving the workspace that way keeps the work, as Start over does.
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      const entry = readScreenState(event.state);
       if (steppingBackRef.current) {
-        // The start screen already shows; the entry now stands for it.
+        // The start screen already shows. A start screen entry stays as it
+        // is, with the work it lies above; any other now stands for it.
         steppingBackRef.current = false;
-        window.history.replaceState(
-          screenState('start', readScreenState(event.state)?.pushed),
-          '',
-        );
+        if (entry?.editorScreen !== 'start') {
+          window.history.replaceState(screenState('start', entry?.pushed), '');
+        }
         return;
       }
       const outcome = resolvePopState(screen, event.state, {
-        hasUnsavedChanges: isDirty,
+        workId,
         isBusy:
           isExporting || isUpdating || isOpeningFile || openingPackId !== null,
       });
       if (outcome.kind === 'show') {
         showScreen(outcome.screen);
+        if (outcome.replaceEntry) {
+          window.history.replaceState(
+            screenState(outcome.screen, entry?.pushed),
+            '',
+          );
+        }
       } else if (outcome.kind === 'return-to-workspace') {
         window.history.pushState(
-          screenState('workspace', outcome.aboveStart),
+          screenState('workspace', outcome.aboveStart, workId),
           '',
         );
-        if (outcome.confirm) setConfirmDiscardAction('start-over');
       } else if (!isWorkspace) {
         window.history.replaceState(screenState(screen, true), '');
       }
@@ -1376,7 +1427,7 @@ export function EditorPage() {
   const dropOverlay = (
     <FileDropOverlay
       enabled={canDrop}
-      context={{ onStart: screen === 'start', isDirty }}
+      context={{ onStart: screen === 'start', isDirty: asksFirst }}
       onDrop={handleDrop}
     />
   );
@@ -1434,7 +1485,7 @@ export function EditorPage() {
                     packName: packInfo.name,
                     packType: packInfo.packType,
                     onEditPack: () => setShowEditPackModal(true),
-                    onStartOver: handleStartOver,
+                    onStartOver: startOver,
                     onExport: handleExport,
                     isExporting,
                     onPreview: () => setIsPreview(true),
@@ -1469,12 +1520,13 @@ export function EditorPage() {
           isOpen={confirmDiscardAction !== null}
           onCancel={() => setConfirmDiscardAction(null)}
           onConfirm={confirmDiscard}
-          {...(confirmDiscardAction === 'start-over' && {
+          // Away from the workspace, the work asked about is the one kept
+          // behind the start screens.
+          {...(!isWorkspace && {
             title: 'Start over?',
             message:
               'Your changes in this tab will be lost. Download a .zip first to keep them.',
-            cancelLabel: 'Keep editing',
-            confirmLabel: 'Start over',
+            confirmLabel: 'Discard and continue',
           })}
         />
 
@@ -1560,6 +1612,11 @@ export function EditorPage() {
             isOpeningFile={isOpeningFile}
             openFileError={openFileError}
             onMakeNewPack={() => askPackType()}
+            keptWork={
+              workId
+                ? { packName: packInfo.name, onReturn: returnToKeptWork }
+                : null
+            }
           />
         )}
         {screen === 'my-packs' && (
@@ -1567,7 +1624,7 @@ export function EditorPage() {
             session={session}
             onRetrySession={refreshSession}
             signInHref={startSignInHref}
-            onBack={startOver}
+            onBack={goBackToStart}
             openingId={openingPackId}
             onOpen={handleOpenLibraryPack}
             openError={libraryOpenError}
@@ -1579,16 +1636,20 @@ export function EditorPage() {
         {screen === 'pack-type' && (
           <PackTypeScreen
             fileCount={pendingFiles.length}
-            onBack={startOver}
-            onChoose={startNewPack}
+            onBack={goBackToStart}
+            onChoose={chooseNewPack}
           />
         )}
 
-        {isWorkspace && (
-          <>
-            <ScreenHeading className="sr-only">
-              Editing {packInfo.name}
-            </ScreenHeading>
+        {/* Hidden rather than unmounted behind the start screens, so the work
+        comes back with its waveform still decoded and at the same zoom. */}
+        {workId && (
+          <div className={isWorkspace ? 'contents' : 'hidden'}>
+            {isWorkspace && (
+              <ScreenHeading className="sr-only">
+                Editing {packInfo.name}
+              </ScreenHeading>
+            )}
             {/* Notices sit outside the keyboard column, whose fit-to-height
             scale only accounts for its own rows. */}
             {notice && (
@@ -1952,7 +2013,7 @@ export function EditorPage() {
                 </div>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </>

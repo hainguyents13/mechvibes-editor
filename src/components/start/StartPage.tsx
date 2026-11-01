@@ -56,16 +56,22 @@ export function ScreenHeading({
   );
 }
 
-/** Back to the start screen. */
-export function BackButton({ onClick }: { onClick: () => void }) {
+/** Back to the start screen, or `label` to where else it leads. */
+export function BackButton({
+  onClick,
+  label = 'Back',
+}: {
+  onClick: () => void;
+  label?: string;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="btn btn-sm btn-ghost rounded-box -ml-2 px-2"
+      className="btn btn-sm btn-ghost rounded-box -ml-2 max-w-full px-2"
     >
-      <ChevronLeft className="h-4 w-4" />
-      Back
+      <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 truncate">{label}</span>
     </button>
   );
 }

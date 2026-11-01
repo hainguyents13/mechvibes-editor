@@ -7,6 +7,12 @@ import { canOpenPack, type LibraryPackSummary } from '@/lib/websiteApi';
 // question each get their own history entry, so the browser's Back moves
 // between them. The workspace replaces the entry it was entered from instead
 // of adding one: Back from it never lands on the question that started it.
+//
+// Leaving the workspace keeps the work in it. Start over adds a start screen
+// entry on top of the workspace's, so Back, or Back to on that screen, returns
+// to the same work. The work is replaced only when the visitor picks another
+// way in, and each work gets an id, so an entry of work that was replaced is
+// told apart from the work kept now.
 
 /** `start` is the three ways in; `my-packs` lists library packs; `pack-type` asks Keyboard or Mouse. */
 export type EditorScreen = 'start' | 'my-packs' | 'pack-type' | 'workspace';
@@ -14,8 +20,13 @@ export type EditorScreen = 'start' | 'my-packs' | 'pack-type' | 'workspace';
 /** What the editor keeps in `history.state`. */
 export type ScreenHistoryState = {
   editorScreen: EditorScreen;
-  /** Whether the entry was added on top of the start screen's, so going back is a history step. */
+  /** Whether the entry was added on top of another of the editor's, so going back is a history step. */
   pushed: boolean;
+  /**
+   * On a workspace entry, the work it shows. On a start screen entry that
+   * Start over added, the work whose entry lies right below it.
+   */
+  workId: string | null;
 };
 
 const SCREENS: readonly EditorScreen[] = [
@@ -28,65 +39,120 @@ const SCREENS: readonly EditorScreen[] = [
 export function screenState(
   screen: EditorScreen,
   pushed = false,
+  workId: string | null = null,
 ): ScreenHistoryState {
-  return { editorScreen: screen, pushed };
+  return { editorScreen: screen, pushed, workId };
 }
 
 /** The editor's state in a history entry, or null for an entry it did not write. */
 export function readScreenState(state: unknown): ScreenHistoryState | null {
   if (typeof state !== 'object' || state === null) return null;
-  const { editorScreen, pushed } = state as Record<string, unknown>;
+  const { editorScreen, pushed, workId } = state as Record<string, unknown>;
   if (!SCREENS.includes(editorScreen as EditorScreen)) return null;
   return {
     editorScreen: editorScreen as EditorScreen,
     pushed: pushed === true,
+    workId: typeof workId === 'string' ? workId : null,
   };
+}
+
+/** A new id for the work in the workspace, unique across reloads of the tab. */
+export function newWorkId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * The entry the workspace writes over the one it was entered from, for the
+ * work `workId`. Whether that entry was added on top of another carries over.
+ */
+export function workspaceState(state: unknown, workId: string) {
+  return screenState('workspace', readScreenState(state)?.pushed, workId);
+}
+
+/** The start screen entry Start over adds on top of the workspace of `workId`. */
+export function startOverState(workId: string) {
+  return screenState('start', true, workId);
+}
+
+/**
+ * How Back to returns from the start screen to the kept work `workId`: a
+ * history step when Start over added this entry right above the work's own,
+ * otherwise by adding a workspace entry, which drops the ones ahead.
+ */
+export function returnToWork(
+  state: unknown,
+  workId: string,
+): 'history-back' | 'push' {
+  const entry = readScreenState(state);
+  return entry?.editorScreen === 'start' && entry.workId === workId
+    ? 'history-back'
+    : 'push';
+}
+
+/**
+ * Whether picking another way in asks first: it replaces the work there is,
+ * in the workspace or kept behind the start screens, and that work has
+ * changes not saved yet.
+ */
+export function asksBeforeReplacing(work: {
+  workId: string | null;
+  isDirty: boolean;
+}) {
+  return work.workId !== null && work.isDirty;
 }
 
 /**
  * What to do when the browser moves to another history entry:
- * - `show`: go to the entry's screen. Leaving the workspace this way starts over.
- * - `return-to-workspace`: the pack has work that would be lost, so add the
- *   workspace's entry back and ask before starting over (`confirm`), or stay
- *   put while it saves or opens something. `aboveStart`: the entry goes back
- *   on top of the start screen's, as one added there.
- * - `stay`: the entry is a workspace that was already left; it now stands for
- *   the current screen.
+ * - `show`: go to the entry's screen. Leaving the workspace this way keeps
+ *   the work. `replaceEntry`: the entry is a workspace of work that was
+ *   replaced since, so it is written over as the screen shown.
+ * - `return-to-workspace`: the workspace is saving or opening something, so
+ *   add its entry back and stay. `aboveStart`: the entry goes back on top of
+ *   the start screen's.
+ * - `stay`: nothing to show. Away from the workspace the entry is one of work
+ *   that was replaced; it now stands for the current screen.
  */
 export type PopStateOutcome =
-  | { kind: 'show'; screen: EditorScreen }
-  | { kind: 'return-to-workspace'; confirm: boolean; aboveStart: boolean }
+  | { kind: 'show'; screen: EditorScreen; replaceEntry: boolean }
+  | { kind: 'return-to-workspace'; aboveStart: boolean }
   | { kind: 'stay' };
 
 export function resolvePopState(
   current: EditorScreen,
   state: unknown,
-  pack: { hasUnsavedChanges: boolean; isBusy: boolean },
+  work: { workId: string | null; isBusy: boolean },
 ): PopStateOutcome {
+  const entry = readScreenState(state);
   // Entries the editor did not write come before it took over the tab.
-  const target = readScreenState(state)?.editorScreen ?? 'start';
+  const target = entry?.editorScreen ?? 'start';
+  const isKeptWork =
+    target === 'workspace' &&
+    work.workId !== null &&
+    entry?.workId === work.workId;
+  const isReplacedWork = target === 'workspace' && !isKeptWork;
   if (current === 'workspace') {
-    if (target === 'workspace') return { kind: 'stay' };
-    const aboveStart = target === 'start';
-    if (pack.isBusy) {
-      return { kind: 'return-to-workspace', confirm: false, aboveStart };
+    if (isKeptWork) return { kind: 'stay' };
+    // Back from the workspace past the entry of work it replaced lands on
+    // the start screen, as Back from any workspace does.
+    const screen = isReplacedWork ? 'start' : target;
+    if (work.isBusy) {
+      return { kind: 'return-to-workspace', aboveStart: screen === 'start' };
     }
-    if (pack.hasUnsavedChanges) {
-      return { kind: 'return-to-workspace', confirm: true, aboveStart };
-    }
-    return { kind: 'show', screen: target };
+    return { kind: 'show', screen, replaceEntry: isReplacedWork };
   }
-  // The workspace it pointed to was reset when it was left.
-  if (target === 'workspace') return { kind: 'stay' };
-  return { kind: 'show', screen: target };
+  if (isKeptWork) {
+    return { kind: 'show', screen: 'workspace', replaceEntry: false };
+  }
+  if (isReplacedWork) return { kind: 'stay' };
+  return { kind: 'show', screen: target, replaceEntry: false };
 }
 
 /**
- * How the editor returns to the start screen (the on-page Back, Start over, a
- * reload): a history step when the entry was added on top of the start
- * screen's, so no second start entry is left for Back to step over; otherwise
- * by replacing the entry (a link landed there directly, and stepping back
- * would leave the editor).
+ * How the editor returns to the start screen (the on-page Back, a reload): a
+ * history step when the entry was added on top of the start screen's, so no
+ * second start entry is left for Back to step over; otherwise by replacing
+ * the entry (a link landed there directly, and stepping back would leave the
+ * editor).
  */
 export function backToStart(state: unknown): 'history-back' | 'replace' {
   return readScreenState(state)?.pushed ? 'history-back' : 'replace';

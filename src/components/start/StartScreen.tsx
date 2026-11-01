@@ -9,6 +9,7 @@ import { type ReactNode, useId, useState } from 'react';
 import { siteIdentity, websiteHost } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
 import {
+  BackButton,
   CARD_CLASS,
   ErrorLine,
   ScreenHeading,
@@ -48,6 +49,8 @@ interface StartScreenProps {
   /** Why the last pack file did not open. */
   openFileError: string | null;
   onMakeNewPack: () => void;
+  /** The work Start over kept, and the way back to it; null when there is none. */
+  keptWork: { packName: string; onReturn: () => void } | null;
 }
 
 /**
@@ -145,6 +148,7 @@ export function StartScreen({
   isOpeningFile,
   openFileError,
   onMakeNewPack,
+  keptWork,
 }: StartScreenProps) {
   const [isRetrying, setIsRetrying] = useState(false);
   const retry = async () => {
@@ -240,6 +244,14 @@ export function StartScreen({
 
   return (
     <StartPage centered>
+      {keptWork && (
+        <div className="mb-4">
+          <BackButton
+            label={`Back to "${keptWork.packName}"`}
+            onClick={keptWork.onReturn}
+          />
+        </div>
+      )}
       <div className="text-center">
         <img
           src="/logo.png"

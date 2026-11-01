@@ -18,9 +18,12 @@ export type DropContents<F extends DroppedFile> = {
 };
 
 export type DropContext = {
-  /** The start screen, where there is no pack yet. */
+  /** The start screen, where sounds start a new pack instead of joining one. */
   onStart: boolean;
-  /** The open pack has changes that opening another would lose. */
+  /**
+   * The work a pack would replace, open or kept behind the start screen, has
+   * changes that opening another would lose.
+   */
   isDirty: boolean;
 };
 
@@ -137,8 +140,7 @@ export function routeDrop<F extends DroppedFile>(
     return {
       kind: 'open-zip',
       file: zips[0],
-      // The start screen has no pack to lose.
-      confirm: !onStart && isDirty,
+      confirm: isDirty,
       message: 'Drop to open this pack',
     };
   }
