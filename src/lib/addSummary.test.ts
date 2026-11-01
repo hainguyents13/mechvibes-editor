@@ -278,6 +278,28 @@ describe('summarizeAdd: lines for name patterns', () => {
     ]);
   });
 
+  it('offers one group of takes at a time, the largest first', () => {
+    const files = sources(
+      'click1.wav',
+      'click2.wav',
+      'tap1.wav',
+      'tap2.wav',
+      'tap3.wav',
+    );
+    const idsOf = (keySounds: KeySounds = new Map()) => {
+      const line = lineOf(summary({ files, keySounds })?.lines, 'similar');
+      return line && 'ids' in line ? line.ids : [];
+    };
+    expect(idsOf()).toEqual(['id-tap1.wav', 'id-tap2.wav', 'id-tap3.wav']);
+    const tapsGiven = new Map(
+      ['tap1', 'tap2', 'tap3'].map((name, n) => [
+        `F${n + 1}`,
+        plays(`id-${name}.wav`),
+      ]),
+    );
+    expect(idsOf(tapsGiven)).toEqual(['id-click1.wav', 'id-click2.wav']);
+  });
+
   it('hides the spread once every click plays on a key', () => {
     const files = sources('click1.wav', 'click2.wav');
     const keySounds = new Map([

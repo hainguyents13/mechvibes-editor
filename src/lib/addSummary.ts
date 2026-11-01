@@ -60,7 +60,10 @@ const MAX_SIMILAR = 10;
 
 const stemOf = (name: string) => name.replace(/\.[^.]+$/, '');
 
-/** Files that look like takes of one sound: 2 to 10 sharing a name but the number. */
+/**
+ * Groups of files that look like takes of one sound: 2 to 10 sharing a name
+ * but the number, each in name order.
+ */
 function findSimilar(files: readonly NamedFile[]) {
   const groups = new Map<string, NamedFile[]>();
   for (const file of files) {
@@ -73,8 +76,7 @@ function findSimilar(files: readonly NamedFile[]) {
     .filter(
       (group) => group.length >= MIN_SIMILAR && group.length <= MAX_SIMILAR,
     )
-    .flat()
-    .sort((a, b) => compareFileNames(a.name, b.name));
+    .map((group) => group.sort((a, b) => compareFileNames(a.name, b.name)));
 }
 
 function words(packType: PackType) {
@@ -222,8 +224,14 @@ export function summarizeAdd({
       text: `${free.length} ${free.length === 1 ? 'needs' : 'need'} a ${key}: select ${key}s, then click a file.`,
     });
   }
-  const similar = findSimilar(unmatched);
-  if (similar.some(isFree)) {
+  // One group at a time, so a spread never mixes two sounds: the largest
+  // that still has a file no key plays, then the next.
+  const [similar] = findSimilar(unmatched)
+    .filter((group) => group.some(isFree))
+    .sort(
+      (a, b) => b.length - a.length || compareFileNames(a[0].name, b[0].name),
+    );
+  if (similar) {
     lines.push({
       kind: 'similar',
       text: `${similar.length} similar clicks found.`,
