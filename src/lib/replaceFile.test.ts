@@ -57,6 +57,16 @@ describe('replaceSourceFile', () => {
     expect(next.get('KeyD')).toEqual({ source: 's1', press: [0, 1000] });
   });
 
+  it('keeps the press over all of the old file of a key with a release', () => {
+    const short = { ...typing, duration: 0.3 };
+    const keySounds = sounds({
+      KeyA: { source: 's1', press: [0, 300], release: [150, 300] },
+    });
+    expect(
+      replaceSourceFile(short, audio('b.wav'), 1.5, keySounds).keySounds,
+    ).toBe(keySounds);
+  });
+
   it('leaves a whole file without timing as it is', () => {
     const keySounds = sounds({ KeyA: { source: 's1', press: WHOLE_FILE } });
     expect(

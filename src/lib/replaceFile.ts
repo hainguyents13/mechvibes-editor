@@ -16,7 +16,9 @@ import { findSegmentsPastEnd } from '@/utils/soundPackImport';
  * The file with new audio, and the keys' sounds to match. The file keeps its
  * id and colour, so its keys, its kind and its row stay as they were. Parts
  * cut from it keep their times; a key that played all of the old file plays
- * all of the new one. Returns `keySounds` itself when no key changes.
+ * all of the new one, unless it has a release: its press and release were
+ * cut from the file, so they keep theirs too. Returns `keySounds` itself
+ * when no key changes.
  */
 export function replaceSourceFile(
   source: AudioSource,
@@ -28,6 +30,7 @@ export function replaceSourceFile(
   keySounds.forEach((sound, code) => {
     if (
       sound.source !== source.id ||
+      sound.release ||
       isWholeFile(sound.press) ||
       !playsWholeFile(sound.press, source.duration) ||
       duration <= 0
