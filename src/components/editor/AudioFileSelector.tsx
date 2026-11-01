@@ -65,6 +65,7 @@ export function AudioFileSelector({
 }: AudioFileSelectorProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const listRef = React.useRef<HTMLUListElement>(null);
+  const detailsIdBase = React.useId();
   const [pendingRemoval, setPendingRemoval] =
     React.useState<AudioSource | null>(null);
 
@@ -171,6 +172,9 @@ export function AudioFileSelector({
           const isPlaying = playingSourceId === source.id;
           const Icon = source.file.type.startsWith('video/') ? Video : Music;
           const sizeMb = `${(source.file.size / (1024 * 1024)).toFixed(1)} MB`;
+          // The row is named for what a click does; its length and keys
+          // describe it.
+          const detailsId = `${detailsIdBase}-${source.id}`;
           return (
             <li
               key={source.id}
@@ -209,6 +213,7 @@ export function AudioFileSelector({
                 onClick={() => onSelect(source.id)}
                 aria-pressed={isActive}
                 aria-label={action}
+                aria-describedby={detailsId}
                 title={
                   gives ? `${action}, in place of the sound they have` : action
                 }
@@ -225,7 +230,10 @@ export function AudioFileSelector({
                   >
                     {name}
                   </div>
-                  <div className="text-[10px] text-base-content/70">
+                  <div
+                    id={detailsId}
+                    className="text-[10px] text-base-content/70"
+                  >
                     {isOne ? (
                       <>
                         {formatLength(source.duration)} •{' '}

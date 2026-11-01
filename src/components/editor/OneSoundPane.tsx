@@ -72,8 +72,8 @@ export function OneSoundPane({
         {/* One row where it fits, so a short panel keeps Quick select in view. */}
         <div className="flex flex-wrap items-center gap-3 min-w-0">
           <p className="min-w-0 max-w-full truncate text-sm font-semibold text-base-content">
-            {source.file.name}
-            <span className="ml-2 text-xs font-normal text-base-content/70">
+            {source.file.name}{' '}
+            <span className="ml-1 text-xs font-normal text-base-content/70">
               {formatLength(source.duration)}
             </span>
           </p>
