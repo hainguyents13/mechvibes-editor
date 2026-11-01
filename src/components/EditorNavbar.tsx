@@ -45,7 +45,7 @@ interface WorkspaceControls {
   onEditPack: () => void;
   /** Switch to the other pack type; asks first about sounds it would not show. */
   onSwitchPackType: (packType: PackType) => void;
-  /** Back to the start screen; asks first when there are unsaved changes. */
+  /** To the start screen, keeping the work behind it; asks nothing. */
   onStartOver: () => void;
   /** Set once a key has a sound, as are Try it's. */
   onDownload?: () => void;
