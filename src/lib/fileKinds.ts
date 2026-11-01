@@ -1,5 +1,5 @@
 import {
-  formatLength,
+  formatLengthInText,
   mediaTypeOf,
   sharedPressSegment,
 } from '@/utils/audioUtils';
@@ -89,7 +89,7 @@ export function longFileWarning(
     .filter((seconds) => seconds > LONG_FILE_SECONDS);
   if (long.length === 0) return null;
   const every = packType === 'Mouse' ? 'Every button' : 'Every key';
-  const longest = formatLength(Math.max(...long));
+  const longest = formatLengthInText(Math.max(...long));
   if (sources.length === 1) {
     return {
       title: 'Make this file one sound?',

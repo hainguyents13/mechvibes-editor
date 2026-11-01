@@ -165,11 +165,11 @@ describe('longFileWarning', () => {
   it('asks about one file past 2 s, with its real length', () => {
     expect(longFileWarning([{ duration: 2.01 }], 'Keyboard')).toEqual({
       title: 'Make this file one sound?',
-      message: 'This file is 2 s long. Every key would play all of it.',
+      message: 'This file is 2\u00a0s long. Every key would play all of it.',
       confirmLabel: 'Make it one sound',
     });
     expect(longFileWarning([{ duration: 252 }], 'Keyboard')?.message).toBe(
-      'This file is 4 min 12 s long. Every key would play all of it.',
+      'This file is 4\u00a0min\u00a012\u00a0s long. Every key would play all of it.',
     );
   });
 
@@ -187,18 +187,20 @@ describe('longFileWarning', () => {
     ).toEqual({
       title: 'Make these files one sound?',
       message:
-        '3 of these files are longer than 2 s, up to 4 min 12 s. Every key would play all of each.',
+        '3 of these files are longer than 2 s, up to 4\u00a0min\u00a012\u00a0s. Every key would play all of each.',
       confirmLabel: 'Make them one sound',
     });
     expect(
       longFileWarning([{ duration: 4 }, { duration: 0.2 }], 'Keyboard')
         ?.message,
-    ).toBe('1 of these files is 4 s long. Every key would play all of it.');
+    ).toBe(
+      '1 of these files is 4\u00a0s long. Every key would play all of it.',
+    );
   });
 
   it('says button in a mouse pack', () => {
     expect(longFileWarning([{ duration: 4 }], 'Mouse')?.message).toBe(
-      'This file is 4 s long. Every button would play all of it.',
+      'This file is 4\u00a0s long. Every button would play all of it.',
     );
   });
 });

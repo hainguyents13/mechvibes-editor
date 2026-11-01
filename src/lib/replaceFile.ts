@@ -1,7 +1,7 @@
 import { playsWholeFile } from '@/lib/fileKinds';
 import { keyLabel } from '@/lib/keyNames';
 import { plural } from '@/lib/utils';
-import { formatLength } from '@/utils/audioUtils';
+import { formatLengthInText } from '@/utils/audioUtils';
 import {
   type AudioSource,
   isWholeFile,
@@ -74,6 +74,6 @@ export function replaceWarning(
   const one = codes.length === 1;
   return {
     title: `Replace ${oldName} with ${newName}?`,
-    message: `${plural(codes.length, noun)} ${one ? 'plays' : 'play'} past the end of ${newName}, which is ${formatLength(seconds)} long: ${listKeys(codes.map(keyLabel))}. ${one ? 'It' : 'They'} would be cut short or silent.`,
+    message: `${plural(codes.length, noun)} ${one ? 'plays' : 'play'} past the end of ${newName}, which is ${formatLengthInText(seconds)} long: ${listKeys(codes.map(keyLabel))}. ${one ? 'It' : 'They'} would be cut short or silent.`,
   };
 }

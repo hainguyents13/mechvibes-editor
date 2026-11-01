@@ -208,6 +208,13 @@ export const formatLength = (seconds: number): string => {
   return secs === 0 ? `${mins} min` : `${mins} min ${secs} s`;
 };
 
+/**
+ * `formatLength` inside a sentence: no-break spaces keep "4 min 12 s" on one
+ * line, so a number never wraps away from its unit.
+ */
+export const formatLengthInText = (seconds: number): string =>
+  formatLength(seconds).replaceAll(' ', ' ');
+
 /** Whether two segments, either possibly missing, are the same span. */
 export const isSameSegment = (a: Segment | undefined, b: Segment | undefined) =>
   a === b ||

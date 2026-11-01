@@ -7,6 +7,7 @@ import {
   clearKeySounds,
   formatDuration,
   formatLength,
+  formatLengthInText,
   giveFilesToKeysInOrder,
   giveFilesToTheirKeys,
   giveOneSoundToKeys,
@@ -314,6 +315,13 @@ describe('formatLength', () => {
     [600, '10 min'],
   ])('reads %s seconds as %s', (seconds, text) => {
     expect(formatLength(seconds)).toBe(text);
+  });
+});
+
+describe('formatLengthInText', () => {
+  it('joins the numbers and units with no-break spaces', () => {
+    expect(formatLengthInText(0.2)).toBe('0.2\u00a0s');
+    expect(formatLengthInText(252)).toBe('4\u00a0min\u00a012\u00a0s');
   });
 });
 

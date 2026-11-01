@@ -100,7 +100,7 @@ describe('replaceWarning', () => {
     ).toEqual({
       title: 'Replace a.wav with b.wav?',
       message:
-        '2 keys play past the end of b.wav, which is 0.4 s long: A, S. They would be cut short or silent.',
+        '2 keys play past the end of b.wav, which is 0.4\u00a0s long: A, S. They would be cut short or silent.',
     });
   });
 
@@ -108,7 +108,7 @@ describe('replaceWarning', () => {
     expect(
       replaceWarning('a.wav', 'b.wav', 0.4, ['MouseLeft'], 'button').message,
     ).toBe(
-      '1 button plays past the end of b.wav, which is 0.4 s long: Left button. It would be cut short or silent.',
+      '1 button plays past the end of b.wav, which is 0.4\u00a0s long: Left button. It would be cut short or silent.',
     );
   });
 });
