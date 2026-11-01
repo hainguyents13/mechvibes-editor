@@ -2137,6 +2137,18 @@ export function EditorPage() {
     setIsPlaying(false);
   }, [activeSourceId, stopSound]);
 
+  // A file that stops being one sound, or leaves the pack, takes away the
+  // buttons that stop its sound, so the sound stops with them.
+  useEffect(() => {
+    if (
+      playingSourceId !== null &&
+      (fileKinds.get(playingSourceId) !== 'one' ||
+        !sources.some((source) => source.id === playingSourceId))
+    ) {
+      stopSound();
+    }
+  }, [playingSourceId, fileKinds, sources, stopSound]);
+
   // Space plays or stops the open sound, as the waveform hint says: the
   // waveform's selection, or a file of one sound. The waveform's player
   // stays behind when a file of one sound opens, so the kind decides.
