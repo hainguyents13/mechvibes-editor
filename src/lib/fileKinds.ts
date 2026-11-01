@@ -1,8 +1,13 @@
-import { mediaTypeOf, sharedPressSegment } from '@/utils/audioUtils';
+import {
+  formatLength,
+  mediaTypeOf,
+  sharedPressSegment,
+} from '@/utils/audioUtils';
 import {
   type AudioSource,
   isWholeFile,
   type KeySounds,
+  type PackType,
   type Segment,
 } from '@/utils/soundPack';
 
@@ -68,6 +73,38 @@ export function playsWholeFile(segment: Segment, seconds: number) {
     isWholeFile(segment) ||
     (start === 0 && seconds > 0 && end >= seconds * 1000 - ENCODER_PADDING_MS)
   );
+}
+
+/**
+ * What to ask before files become one sound each, when some are longer than
+ * `LONG_FILE_SECONDS`: a key given such a file would play all of it. Null
+ * when none is. Several files are the ones a Change ▾ turns at once.
+ */
+export function longFileWarning(
+  sources: readonly Pick<AudioSource, 'duration'>[],
+  packType: PackType,
+) {
+  const long = sources
+    .map((source) => source.duration)
+    .filter((seconds) => seconds > LONG_FILE_SECONDS);
+  if (long.length === 0) return null;
+  const every = packType === 'Mouse' ? 'Every button' : 'Every key';
+  const longest = formatLength(Math.max(...long));
+  if (sources.length === 1) {
+    return {
+      title: 'Make this file one sound?',
+      message: `This file is ${longest} long. ${every} would play all of it.`,
+      confirmLabel: 'Make it one sound',
+    };
+  }
+  return {
+    title: 'Make these files one sound?',
+    message:
+      long.length === 1
+        ? `1 of these files is ${longest} long. ${every} would play all of it.`
+        : `${long.length} of these files are longer than ${LONG_FILE_SECONDS} s, up to ${longest}. ${every} would play all of each.`,
+    confirmLabel: 'Make them one sound',
+  };
 }
 
 function kindInPack(source: AudioSource, keySounds: KeySounds): FileKind {

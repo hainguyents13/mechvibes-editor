@@ -60,6 +60,18 @@ export function keyCardOffer(
   return 'add-release';
 }
 
+/**
+ * The keys a file dropped on `code` goes to: every selected key when `code`
+ * is one of them, else `code` alone, so a drop beside the selection does not
+ * change the keys picked for the next file.
+ */
+export function dropTargetCodes(
+  code: string,
+  selectedCodes: readonly string[],
+): string[] {
+  return selectedCodes.includes(code) ? [...selectedCodes] : [code];
+}
+
 /** The length of a part of a file in seconds; a whole file without timing is the file's length. */
 export function segmentSeconds(
   [start, end]: Segment,

@@ -4,6 +4,7 @@ import {
   DROP_MESSAGES,
   type DropContext,
   type DroppedFile,
+  offersKeyDrop,
   routeDrop,
   sortChosenFolder,
 } from '@/lib/dropRouting';
@@ -472,5 +473,39 @@ describe('sortChosenFolder', () => {
       media: [],
       skipped: ['a.txt'],
     });
+  });
+});
+
+describe('offersKeyDrop', () => {
+  it('lets one audio or video file go onto a key while the keyboard takes clicks', () => {
+    expect(offersKeyDrop(drop([dragged('audio/wav')]), true)).toBe(true);
+    expect(offersKeyDrop(drop([file('click.mp4', 'video/mp4')]), true)).toBe(
+      true,
+    );
+  });
+
+  it('covers the page while the keyboard takes no clicks', () => {
+    expect(offersKeyDrop(drop([dragged('audio/wav')]), false)).toBe(false);
+  });
+
+  it.each([
+    ['two files', [dragged('audio/wav'), dragged('audio/wav')]],
+    ['a file and one left out', [file('a.wav'), file('notes.txt')]],
+    ['a .zip', [file('pack.zip', 'application/zip')]],
+    ['a folder', [inFolder('pack/config.json'), inFolder('pack/a.wav')]],
+    ['a file of unknown type', [dragged('')]],
+    ['a file that is no sound', [file('cover.png', 'image/png')]],
+  ])('covers the page for %s', (_, files) => {
+    expect(offersKeyDrop(drop(files), true)).toBe(false);
+  });
+
+  it('covers the start screen, where sounds start a new pack', () => {
+    expect(offersKeyDrop(drop([dragged('audio/wav')], START), true)).toBe(
+      false,
+    );
+  });
+
+  it('covers a link', () => {
+    expect(offersKeyDrop(drop([], WORKSPACE, true), true)).toBe(false);
   });
 });

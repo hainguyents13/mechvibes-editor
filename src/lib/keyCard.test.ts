@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dropTargetCodes,
   keyCardName,
   keyCardOffer,
   sameSoundCount,
@@ -111,6 +112,24 @@ describe('keyCardOffer', () => {
     expect(
       keyCardOffer({ source: 's1', press: WHOLE_FILE }, file, 'many'),
     ).toBe('cut');
+  });
+});
+
+describe('dropTargetCodes', () => {
+  it('gives a file dropped on a selected key to every selected key', () => {
+    expect(dropTargetCodes('KeyW', ['KeyQ', 'KeyW', 'KeyE'])).toEqual([
+      'KeyQ',
+      'KeyW',
+      'KeyE',
+    ]);
+  });
+
+  it('gives a file dropped beside the selection to that key alone', () => {
+    expect(dropTargetCodes('KeyR', ['KeyQ', 'KeyW'])).toEqual(['KeyR']);
+  });
+
+  it('gives a file dropped with nothing selected to that key', () => {
+    expect(dropTargetCodes('KeyA', [])).toEqual(['KeyA']);
   });
 });
 

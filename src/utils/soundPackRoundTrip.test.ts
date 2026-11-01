@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { replaceSourceFile } from '@/lib/replaceFile';
 import { fakeAudio, makePackZip, readPackZip } from '@/test/packZip';
 import { getAudioDuration } from '@/utils/audioUtils';
 import { WHOLE_FILE } from '@/utils/soundPack';
@@ -137,6 +138,55 @@ describe('import then export', () => {
         ],
       },
       KeyB: { timing: [[100, 150.5]] },
+    });
+  });
+
+  it('keeps the times of parts cut from a file whose audio was replaced', async () => {
+    const pack = await parseSoundPackZip(
+      await makePackZip({
+        'config.json': packConfig({
+          definitions: {
+            KeyA: {
+              timing: [
+                [0, 50],
+                [50, 100],
+              ],
+            },
+            KeyB: [[100, 150.5]],
+          },
+        }),
+        'sound.ogg': fakeAudio('main'),
+      }),
+    );
+    const take2 = new File([fakeAudio('take2')], 'take2.ogg', {
+      type: 'audio/ogg',
+    });
+    const replaced = replaceSourceFile(
+      pack.sources[0],
+      take2,
+      1.5,
+      pack.keySounds,
+    );
+    const blob = await buildSoundPackZip({
+      info: pack.info,
+      sources: [replaced.source],
+      keySounds: replaced.keySounds,
+      extras: pack.extras,
+    });
+    const out = await readPackZip(blob);
+    expect(await out.bytes('audio.ogg')).toEqual(fakeAudio('take2'));
+    const reopened = await parseSoundPackZip(
+      new File([blob], 'pack.zip', { type: 'application/zip' }),
+    );
+    const source = reopened.sources[0].id;
+    expect(reopened.keySounds.get('KeyA')).toEqual({
+      source,
+      press: [0, 50],
+      release: [50, 100],
+    });
+    expect(reopened.keySounds.get('KeyB')).toEqual({
+      source,
+      press: [100, 150.5],
     });
   });
 

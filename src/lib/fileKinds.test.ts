@@ -3,6 +3,7 @@ import {
   inferKindsFromPack,
   inferNewFileKind,
   kindFromLength,
+  longFileWarning,
   playsWholeFile,
 } from '@/lib/fileKinds';
 import {
@@ -150,5 +151,54 @@ describe('playsWholeFile', () => {
 
   it('knows no part of a file whose length is unknown as the whole of it', () => {
     expect(playsWholeFile([0, 300], 0)).toBe(false);
+  });
+});
+
+describe('longFileWarning', () => {
+  it('asks nothing up to 2 s', () => {
+    expect(longFileWarning([{ duration: 2 }], 'Keyboard')).toBeNull();
+    expect(
+      longFileWarning([{ duration: 1.5 }, { duration: 0.3 }], 'Keyboard'),
+    ).toBeNull();
+  });
+
+  it('asks about one file past 2 s, with its real length', () => {
+    expect(longFileWarning([{ duration: 2.01 }], 'Keyboard')).toEqual({
+      title: 'Make this file one sound?',
+      message: 'This file is 2 s long. Every key would play all of it.',
+      confirmLabel: 'Make it one sound',
+    });
+    expect(longFileWarning([{ duration: 252 }], 'Keyboard')?.message).toBe(
+      'This file is 4 min 12 s long. Every key would play all of it.',
+    );
+  });
+
+  it('counts the long files of several, up to the longest', () => {
+    expect(
+      longFileWarning(
+        [
+          { duration: 252 },
+          { duration: 4 },
+          { duration: 0.2 },
+          { duration: 30 },
+        ],
+        'Keyboard',
+      ),
+    ).toEqual({
+      title: 'Make these files one sound?',
+      message:
+        '3 of these files are longer than 2 s, up to 4 min 12 s. Every key would play all of each.',
+      confirmLabel: 'Make them one sound',
+    });
+    expect(
+      longFileWarning([{ duration: 4 }, { duration: 0.2 }], 'Keyboard')
+        ?.message,
+    ).toBe('1 of these files is 4 s long. Every key would play all of it.');
+  });
+
+  it('says button in a mouse pack', () => {
+    expect(longFileWarning([{ duration: 4 }], 'Mouse')?.message).toBe(
+      'This file is 4 s long. Every button would play all of it.',
+    );
   });
 });
