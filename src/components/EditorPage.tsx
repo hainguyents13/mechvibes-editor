@@ -3260,6 +3260,7 @@ export function EditorPage() {
                         }
                         onAddRelease={() => addReleaseTo(cardCode)}
                         onSplit={() => splitFileOf(cardCode)}
+                        onFocusLost={focusKeyboard}
                       />
                     )}
                   </div>

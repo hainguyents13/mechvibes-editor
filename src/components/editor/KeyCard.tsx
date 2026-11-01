@@ -1,5 +1,5 @@
 import { Ellipsis, Play, Plus, Square } from 'lucide-react';
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
 import type { SoundSlot } from '@/components/editor/TimeSegmentControls';
 import { NavbarMenu } from '@/components/NavbarMenu';
@@ -28,6 +28,8 @@ interface KeyCardProps {
   onSwap: () => void;
   onAddRelease: () => void;
   onSplit: () => void;
+  /** Where focus goes when Remove sound or Split it takes away its button. */
+  onFocusLost: () => void;
 }
 
 /**
@@ -48,8 +50,10 @@ export function KeyCard({
   onSwap,
   onAddRelease,
   onSplit,
+  onFocusLost,
 }: KeyCardProps) {
   const titleId = useId();
+  const sectionRef = useRef<HTMLElement>(null);
   const isMouse = packType === 'Mouse';
   const noun = isMouse ? 'button' : 'key';
   const label = keyLabel(code);
@@ -87,11 +91,20 @@ export function KeyCard({
     );
   };
 
+  // Remove sound takes the card away, and Split it its own button: focus
+  // that was on them moves on rather than drop to the page.
+  const thenMoveFocus = (action: () => void) => () => {
+    const hadFocus = sectionRef.current?.contains(document.activeElement);
+    action();
+    if (hadFocus) onFocusLost();
+  };
+
   return (
     // Side by side, pinned over the column's bottom padding, which it
     // carries itself: a sticky box stops at the padding, so it is let past
     // it by as much. Stacked, it shares the row with the list.
     <section
+      ref={sectionRef}
       aria-labelledby={titleId}
       data-tour="key-card"
       className="min-w-0 z-10 editor-panel-surface max-lg:flex-1 lg:shrink-0 lg:pt-3 lg:sticky lg:-bottom-3 lg:-mb-3 lg:pb-3"
@@ -136,7 +149,7 @@ export function KeyCard({
             <button
               type="button"
               className="btn btn-xs rounded-box"
-              onClick={onSplit}
+              onClick={thenMoveFocus(onSplit)}
               aria-label={`Split it: ${fileName}`}
               title={`Show ${fileName} on the waveform to cut its press and release`}
             >
@@ -167,7 +180,7 @@ export function KeyCard({
           <button
             type="button"
             className="btn btn-xs rounded-box"
-            onClick={onRemove}
+            onClick={thenMoveFocus(onRemove)}
             aria-label={`Remove sound from ${label}`}
             title={`Make the ${noun} silent (Delete)`}
           >
