@@ -149,7 +149,7 @@ function allSteps(signedIn: boolean, stage: WorkspaceStage): DriveStep[] {
       popover: {
         title: 'Start over',
         description:
-          'Go back to the first screen to open a pack file, open one of your packs or make a new one. It asks first when you have changes you have not downloaded. To open a pack file, you can also drop its .zip anywhere on the page.',
+          'Go back to the first screen to open a pack file, open one of your packs or make a new one. Your work waits there behind Back to, and it asks first if another pack would replace changes you have not downloaded. To open a pack file, you can also drop its .zip anywhere on the page.',
       },
     },
     {
