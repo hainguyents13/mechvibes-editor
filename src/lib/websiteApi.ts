@@ -24,6 +24,13 @@ export function canOpenPack(pack: LibraryPackSummary) {
   return pack.status === 'PUBLISHED' && pack.revision > 0;
 }
 
+/** The pack's public page on the website, which only a published pack has. */
+export function packPageUrl(pack: LibraryPackSummary) {
+  return pack.status === 'PUBLISHED'
+    ? `${websiteUrl}/sound-packs/${pack.slug}`
+    : null;
+}
+
 export class WebsiteApiError extends Error {
   /** HTTP status, or 0 when the website could not be reached. */
   readonly status: number;

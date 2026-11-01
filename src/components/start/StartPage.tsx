@@ -1,16 +1,36 @@
 import { ChevronLeft, CircleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-/** The scrolling frame the screens before the workspace share. */
-export function StartPage({ children }: { children: ReactNode }) {
+/**
+ * The scrolling frame the screens before the workspace share. A centred screen
+ * sits in the middle of the space between navbar and footer; its auto margins
+ * fall to zero when it is taller than that space, so it scrolls instead of
+ * being clipped at the top.
+ */
+export function StartPage({
+  centered = false,
+  children,
+}: {
+  centered?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-4 py-10 md:py-14">
+    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
+      <div
+        className={`mx-auto w-full max-w-5xl shrink-0 px-4 ${centered ? 'my-auto py-8' : 'py-10 md:py-14'}`}
+      >
         {children}
       </div>
     </div>
   );
 }
+
+/** The resting look of a choice card: a border and no shadow. */
+export const CARD_CLASS =
+  'rounded-box border border-base-300 bg-base-100 transition-[border-color,box-shadow]';
+
+/** A card that is a button: it lifts under the pointer and under keyboard focus. */
+export const BUTTON_CARD_CLASS = `${CARD_CLASS} cursor-pointer hover:border-primary/60 hover:shadow-md focus-visible:border-primary/60 focus-visible:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`;
 
 export const SCREEN_HEADING_ID = 'screen-heading';
 
@@ -64,12 +84,10 @@ export function ErrorLine({ message }: { message: string }) {
 }
 
 /**
- * Stretches a card's main button over the whole card, so the card is
- * clickable without nesting controls. The card must be `relative`, and the
- * button `static` so its overlay measures the card. daisyUI nudges a pressed
- * button with `translate`, which would shrink the overlay to the button
- * between press and release, so that is turned off. Other links in the card
- * sit above the overlay with `relative z-10`.
+ * Stretches a card's action over the whole card, so the card is clickable
+ * without nesting controls. The card must be `relative`, and the action
+ * `static` so its overlay measures the card. Other links in the card sit above
+ * the overlay with `relative z-10`.
  */
 export const STRETCHED_ACTION =
-  "static active:translate-none after:absolute after:inset-0 after:rounded-box after:content-['']";
+  "static after:absolute after:inset-0 after:rounded-box after:content-['']";
