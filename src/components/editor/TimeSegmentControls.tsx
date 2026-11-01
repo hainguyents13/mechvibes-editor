@@ -396,7 +396,7 @@ export function TimeSegmentControls({
 
         {/* Explain why the apply button is disabled */}
         {hint && (
-          <p className="mt-2 flex items-center gap-1.5 text-xs text-base-content/60">
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-base-content/70">
             <Info className="h-3.5 w-3.5 shrink-0" />
             {hint}
           </p>

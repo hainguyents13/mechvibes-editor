@@ -72,7 +72,7 @@ export function KeyButton({
       // The file's name as well as its colour, for those who cannot tell colours apart.
       title={!isPreview && sourceName ? `Sound from ${sourceName}` : undefined}
       className={cn(
-        'btn text-xs flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
+        'btn text-[length:var(--key-label-size,0.75rem)] flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
         !isPreview && isSelected ? 'btn-neutral' : '',
         isInert ? 'opacity-30 pointer-events-none' : '',
         isPreview && isModified ? 'btn-primary' : '',

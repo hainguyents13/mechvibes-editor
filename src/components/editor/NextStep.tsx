@@ -32,9 +32,9 @@ export function nextStepText({
 export function NextStep(props: Parameters<typeof nextStepText>[0]) {
   const next = nextStepText(props);
   return (
-    // Smaller below lg, where the row is only as wide as the screen.
+    // Smaller in a narrow row, which is as wide as the keyboard under it.
     <p
-      className="min-w-0 truncate text-xs lg:text-sm text-base-content/70"
+      className="min-w-0 truncate text-xs @min-[40rem]:text-sm text-base-content/70"
       title={`Next: ${next}`}
     >
       <span className="font-medium text-base-content">Next:</span> {next}

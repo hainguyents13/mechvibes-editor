@@ -7,6 +7,10 @@
     dark --prefersdark;
 }
 
+/* A window too short for the editor's rows at their full size: a 768px or
+   720px laptop. */
+@custom-variant short (@media (max-height: 50rem));
+
 /* Error text on a plain background. The theme's error colour is a light pink
    that reads at about 2.9:1 on white, so it is pulled toward the text colour:
    darker on light, lighter on dark. */

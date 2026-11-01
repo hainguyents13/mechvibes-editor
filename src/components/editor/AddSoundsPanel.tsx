@@ -169,7 +169,7 @@ export function AddSoundsPanel({
             />
           ))}
         </div>
-        <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs text-base-content/60">
+        <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs text-base-content/70">
           <p data-tour="drop">
             Or drop files anywhere. MP3, WAV, OGG, FLAC, M4A, MP4, WEBM, MOV
           </p>

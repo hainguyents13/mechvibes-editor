@@ -19,6 +19,9 @@ const BADGE_STYLES: Record<UsageBadge['phase'], string> = {
   mixed: 'badge-outline',
 };
 
+/** The box `waveformHeight` sizes, for telling it from the controls around it. */
+export const WAVEFORM_BOX_SELECTOR = '[data-waveform-box]';
+
 interface WaveformEditorProps {
   audioFile: File | null;
   defaultDuration: number;
@@ -207,7 +210,7 @@ export function WaveformEditor({
       >
         <div style={{ minWidth: '100%', width: 'max-content' }}>
           {/* Waveform */}
-          <div style={{ height: waveformHeight }}>
+          <div data-waveform-box style={{ height: waveformHeight }}>
             <CombinedWaveform
               ref={combinedWaveformRef}
               audioUrl={audioUrl}
@@ -257,7 +260,7 @@ export function WaveformEditor({
         </div>
       </div>
 
-      <div className="shrink-0 px-4 text-xs text-base-content/50">
+      <div className="shrink-0 px-4 text-xs text-base-content/70">
         {soundRegionsMode
           ? 'Auto detect: click a highlighted region to pick that sound • Drag edges to resize • Space to play'
           : 'Drag on the waveform to pick a sound • Drag edges to resize • Space to play • Scroll to pan'}

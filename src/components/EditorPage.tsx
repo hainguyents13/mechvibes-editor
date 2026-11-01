@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -47,7 +48,10 @@ import {
   type SoundSlot,
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
-import { WaveformEditor } from '@/components/editor/WaveformEditor';
+import {
+  WAVEFORM_BOX_SELECTOR,
+  WaveformEditor,
+} from '@/components/editor/WaveformEditor';
 import { FileDropOverlay } from '@/components/FileDropOverlay';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
@@ -132,15 +136,23 @@ const WHEEL_SOUND_INTERVAL_MS = 120;
 
 // Sound editing panel on wide (lg) screens. By default it takes half the
 // viewport, up to the original 524px, and never less than what its controls need
-// with the smallest waveform, unless the screen is too short to also fit a usable
-// keyboard. Dragging its top edge trades keyboard space for
+// with a comfortable waveform, unless the screen is too short to also fit a
+// usable keyboard. Dragging its top edge trades keyboard space for
 // waveform space, and the choice is remembered in this browser. The waveform
 // absorbs every pixel the panel gains or gives up.
 const LG_MIN_WIDTH = 1024;
 const PANEL_MAX_HEIGHT = 524;
 const WAVEFORM_MAX_HEIGHT = 200;
 const WAVEFORM_MIN_HEIGHT = 110;
-/** Panel height taken by everything except the waveform. */
+/**
+ * On a screen too short for both, the waveform gives way to the controls down
+ * to this height before the controls scroll.
+ */
+const WAVEFORM_SQUEEZED_HEIGHT = 64;
+/**
+ * Panel height taken by everything except the waveform, until the panel's
+ * controls are on the page to measure.
+ */
 const PANEL_CONTROLS_HEIGHT = PANEL_MAX_HEIGHT - WAVEFORM_MAX_HEIGHT;
 const PANEL_MIN_HEIGHT = PANEL_CONTROLS_HEIGHT + WAVEFORM_MIN_HEIGHT;
 /** Smallest dragged height; below PANEL_MIN_HEIGHT the controls scroll. */
@@ -149,19 +161,17 @@ const PANEL_DRAG_MIN_HEIGHT = 240;
 const PANEL_DRAG_MAX_HEIGHT = 720;
 /** Viewport height kept for the navbar, the footer and a usable keyboard. */
 const PANEL_RESERVED_HEIGHT = 320;
+/** The drag handle's 4px in the layout and the panel's 2px top border. */
+const PANEL_EDGE_HEIGHT = 6;
 /**
- * Viewport height the default panel leaves for the navbar, the footer and a
- * keyboard that is comfortable to click. On short screens (a 720px laptop) the
- * panel gives way to it, and its controls scroll.
+ * Smallest scale the default panel leaves the keyboard: a full-size keyboard
+ * about 570px wide, with keys about 24px across. On short screens the panel
+ * gives way to it, and its controls scroll.
  */
-const DEFAULT_KEYBOARD_RESERVED_HEIGHT = 360;
-/**
- * Height the stacked panel (below lg) takes besides the waveform, with one
- * file and More closed, at the narrowest width where its rows wrap most. The
- * waveform gets what is left of the panel's 50dvh cap, so the panel fits
- * without scrolling on a portrait tablet.
- */
-const STACKED_PANEL_CONTROLS_HEIGHT = 390;
+const KEYBOARD_MIN_SCALE = 0.44;
+/** Key labels never render smaller than this, however far the keyboard scales down. */
+const KEY_LABEL_MIN_PX = 8;
+const KEY_LABEL_PX = 12;
 const PANEL_RESIZE_STEP = 16;
 /** The panels' collapse takes ~320ms (index.css); the tour waits it out. */
 const AUTO_TOUR_DELAY_MS = 400;
@@ -182,10 +192,12 @@ function getPanelDragMax(viewportHeight: number) {
 /**
  * Panel height in px on lg screens, or null when the panel stacks and sizes to
  * its content. `chosen` is the dragged height, or null for the default.
+ * `room` is the most the default may take and still leave a usable keyboard.
  */
 function getPanelHeight(
   viewport: { width: number; height: number },
   chosen: number | null,
+  room: number,
 ): number | null {
   if (viewport.width < LG_MIN_WIDTH) return null;
   if (chosen === null) {
@@ -194,7 +206,7 @@ function getPanelHeight(
       PANEL_MIN_HEIGHT,
     );
     return clamp(
-      Math.min(preferred, viewport.height - DEFAULT_KEYBOARD_RESERVED_HEIGHT),
+      Math.min(preferred, room),
       PANEL_DRAG_MIN_HEIGHT,
       PANEL_MAX_HEIGHT,
     );
@@ -452,25 +464,6 @@ export function EditorPage() {
   useEffect(() => {
     storePanelHeight(chosenPanelHeight);
   }, [chosenPanelHeight]);
-  const panelHeight = getPanelHeight(viewport, chosenPanelHeight);
-  const panelDragMax = getPanelDragMax(viewport.height);
-  const waveformHeight =
-    panelHeight === null
-      ? clamp(
-          Math.round(viewport.height / 2) - STACKED_PANEL_CONTROLS_HEIGHT,
-          WAVEFORM_MIN_HEIGHT,
-          WAVEFORM_MAX_HEIGHT,
-        )
-      : Math.max(WAVEFORM_MIN_HEIGHT, panelHeight - PANEL_CONTROLS_HEIGHT);
-
-  const panelDragRef = useRef<{ startY: number; startHeight: number } | null>(
-    null,
-  );
-  const resizePanel = (height: number) => {
-    setChosenPanelHeight(
-      Math.round(clamp(height, PANEL_DRAG_MIN_HEIGHT, panelDragMax)),
-    );
-  };
 
   // Keyboard natural dimensions (used to scale-to-fit and avoid a scrollbar)
   const KEYBOARD_UNIT = 54;
@@ -617,9 +610,10 @@ export function EditorPage() {
   // the settings row above, then the hidden-keys tray and the legend below,
   // when shown. Fixed rather than measured: those rows derive
   // their width from keyboardScale, so measuring them would make the scale
-  // depend on its own output. The rows keep a minimum width so they stay on
-  // one line and these heights hold. Preview collapses them all, so the
-  // keyboard gets that space back.
+  // depend on its own output. The rows keep a minimum width, about that of a
+  // full-size keyboard at KEYBOARD_MIN_SCALE, so they stay on one line and
+  // these heights hold. Preview collapses them all, so the keyboard gets that
+  // space back.
   const rowsHeight = isPreview
     ? 0
     : [
@@ -633,6 +627,121 @@ export function EditorPage() {
       ]
         .filter((height) => height > 0)
         .reduce((sum, height) => sum + height + 12, 0);
+
+  // Height the keyboard column (inside its padding), the drag handle and the
+  // panel share: the page below the navbar and any notice, however tall the
+  // notice is. The column is what grows and shrinks between them, so a
+  // change of either shows up as a resize of the column.
+  const [sharedHeight, setSharedHeight] = useState<number | null>(null);
+  const measureSharedHeight = useCallback(() => {
+    const column = keyboardAreaRef.current?.parentElement;
+    const page = column?.parentElement;
+    if (!column || !page) return;
+    const style = getComputedStyle(column);
+    setSharedHeight(
+      Math.round(
+        page.getBoundingClientRect().bottom -
+          column.getBoundingClientRect().top -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
+      ),
+    );
+  }, []);
+
+  // The panel leaves the keyboard its rows and at least its smallest scale.
+  const keyboardMinHeight = keyboardNaturalHeight * KEYBOARD_MIN_SCALE;
+  const panelRoom =
+    sharedHeight === null
+      ? Number.POSITIVE_INFINITY
+      : Math.floor(
+          sharedHeight - PANEL_EDGE_HEIGHT - rowsHeight - keyboardMinHeight,
+        );
+  const panelHeight = getPanelHeight(viewport, chosenPanelHeight, panelRoom);
+  const panelDragMax = getPanelDragMax(viewport.height);
+  // Stacked, the panel sizes to its content up to the same room.
+  const stackedPanelMax = Math.max(panelRoom, PANEL_DRAG_MIN_HEIGHT);
+
+  // Height the panel's content takes besides the waveform, measured so the
+  // waveform can take what is left: More, a second row of chips or, stacked,
+  // each file in the list. It does not depend on the waveform's own height,
+  // so measuring it feeds nothing back.
+  const panelRowRef = useRef<HTMLDivElement>(null);
+  const panelControlsRef = useRef<HTMLDivElement>(null);
+  const [panelControlsHeight, setPanelControlsHeight] = useState<number | null>(
+    null,
+  );
+  const isStacked = panelHeight === null;
+  const measurePanelControls = useCallback(() => {
+    const row = panelRowRef.current;
+    const controls = panelControlsRef.current;
+    const column = controls?.parentElement;
+    const waveform = controls?.querySelector<HTMLElement>(
+      WAVEFORM_BOX_SELECTOR,
+    );
+    if (!row || !controls || !column || !waveform) return;
+    // Stacked, the whole row grows with its content. Side by side, the
+    // panel has a fixed height and only the right column's content counts,
+    // with the column's padding and the row's bottom border.
+    let needed = row.offsetHeight;
+    if (!isStacked) {
+      const columnStyle = getComputedStyle(column);
+      needed =
+        controls.offsetHeight +
+        parseFloat(columnStyle.paddingTop) +
+        parseFloat(columnStyle.paddingBottom) +
+        parseFloat(getComputedStyle(row).borderBottomWidth);
+    }
+    setPanelControlsHeight(needed - waveform.offsetHeight);
+  }, [isStacked]);
+
+  // Measured after every commit, so a row or a notice this page adds is
+  // counted before it paints; the observers catch what changes size without
+  // a render here, such as a row a child opens or chips that wrap.
+  useLayoutEffect(() => {
+    if (!isWorkspace || isPhone) return;
+    measureSharedHeight();
+    measurePanelControls();
+  });
+  const hasPanelControls = Boolean(audioFile && activeSourceId);
+  useLayoutEffect(() => {
+    if (!isWorkspace || isPhone) return;
+    const observer = new ResizeObserver(() => {
+      measureSharedHeight();
+      measurePanelControls();
+    });
+    for (const el of [
+      keyboardAreaRef.current?.parentElement,
+      panelRowRef.current,
+      hasPanelControls ? panelControlsRef.current : null,
+    ]) {
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [
+    isWorkspace,
+    isPhone,
+    hasPanelControls,
+    measureSharedHeight,
+    measurePanelControls,
+  ]);
+
+  // The waveform takes what the panel has besides its controls: the fixed
+  // height side by side, about half the screen stacked.
+  const waveformHeight = clamp(
+    (panelHeight ?? Math.round(viewport.height / 2)) -
+      (panelControlsHeight ?? PANEL_CONTROLS_HEIGHT),
+    WAVEFORM_SQUEEZED_HEIGHT,
+    WAVEFORM_MAX_HEIGHT,
+  );
+
+  const panelDragRef = useRef<{ startY: number; startHeight: number } | null>(
+    null,
+  );
+  const resizePanel = (height: number) => {
+    setChosenPanelHeight(
+      Math.round(clamp(height, PANEL_DRAG_MIN_HEIGHT, panelDragMax)),
+    );
+  };
 
   useEffect(() => {
     // The keyboard is on the page only in the workspace, and the phone page
@@ -1806,12 +1915,14 @@ export function EditorPage() {
               Editing {packInfo.name}
             </ScreenHeading>
             {/* Notices sit outside the keyboard column, whose fit-to-height
-            scale only accounts for its own rows. */}
+            scale only accounts for its own rows; the panel's default height
+            makes room for them. Short screens get a compact notice, and a
+            long list scrolls rather than squeeze the keyboard. */}
             {notice && (
               <div
-                className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${NOTICE_TONE_CLASSES[notice.tone]}`}
+                className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm short:py-1 short:text-xs ${NOTICE_TONE_CLASSES[notice.tone]}`}
               >
-                <div className="min-w-0">
+                <div className="min-w-0 short:max-h-20 short:overflow-y-auto">
                   <p>
                     {notice.message}
                     {notice.link && (
@@ -1849,7 +1960,7 @@ export function EditorPage() {
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
               {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
               <div
-                className="editor-chrome-vertical editor-chrome-top w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+                className="editor-chrome-vertical editor-chrome-top @container w-full min-w-[min(100%,35rem)] mx-auto shrink-0"
                 data-hidden={isPreview}
                 style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
               >
@@ -1912,12 +2023,16 @@ export function EditorPage() {
                   }}
                 >
                   <div
-                    style={{
-                      transform: `scale(${keyboardScale})`,
-                      transformOrigin: 'top left',
-                      width: keyboardNaturalWidth,
-                      height: keyboardNaturalHeight,
-                    }}
+                    style={
+                      {
+                        transform: `scale(${keyboardScale})`,
+                        transformOrigin: 'top left',
+                        width: keyboardNaturalWidth,
+                        height: keyboardNaturalHeight,
+                        // Labels grow as the keyboard shrinks, so they stay readable.
+                        '--key-label-size': `${keyboardScale > 0 ? Math.max(KEY_LABEL_PX, KEY_LABEL_MIN_PX / keyboardScale) : KEY_LABEL_PX}px`,
+                      } as React.CSSProperties
+                    }
                   >
                     {isMousePack ? (
                       // Mouse packs answer the real mouse anywhere on the page.
@@ -1959,7 +2074,7 @@ export function EditorPage() {
               {/* Keys with a sound that the drawn layout leaves out */}
               {hasHiddenKeys && (
                 <div
-                  className="editor-chrome-vertical w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+                  className="editor-chrome-vertical w-full min-w-[min(100%,35rem)] mx-auto shrink-0"
                   data-hidden={isPreview}
                   style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
                 >
@@ -1980,7 +2095,7 @@ export function EditorPage() {
 
               {visibility.legend && (
                 <div
-                  className="editor-chrome-vertical w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+                  className="editor-chrome-vertical w-full min-w-[min(100%,35rem)] mx-auto shrink-0"
                   data-hidden={isPreview}
                   style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
                 >
@@ -2059,21 +2174,27 @@ export function EditorPage() {
             >
               {/* Stacked, the panel sizes to its content; capped so the keyboard keeps room */}
               <div
-                className="max-lg:max-h-[50dvh] max-lg:overflow-y-auto"
+                className="max-lg:overflow-y-auto"
                 style={
-                  panelHeight === null ? undefined : { height: panelHeight }
+                  panelHeight === null
+                    ? { maxHeight: stackedPanelMax }
+                    : { height: panelHeight }
                 }
               >
                 <h2 className="sr-only">Sound editing</h2>
                 {/* Dividers run edge to edge: padding lives inside each column, not on the row */}
-                <div className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20">
-                  {/* Left: audio/video import. Stacked, it is a short dropzone, sizes
-                  to the file card once audio is loaded, and keeps room for the
-                  clip when a video is loaded. */}
+                <div
+                  ref={panelRowRef}
+                  className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20"
+                >
+                  {/* Left: audio/video import. Stacked, it is a short dropzone,
+                  sizes to the file list once audio is loaded (the waveform
+                  gives way to a longer list), and keeps room for the clip when
+                  a video is loaded. */}
                   <div
                     // The tour points only at what is on show.
                     data-tour={visibility.soundPanel ? 'sources' : undefined}
-                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
                   >
                     <AudioFileSelector
                       sources={sources}
@@ -2094,8 +2215,12 @@ export function EditorPage() {
                     className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto"
                   >
                     {audioFile && activeSourceId && (
-                      <div className="min-h-full min-w-0 flex flex-col gap-3">
-                        {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
+                      // Sized to its content, which the panel measures.
+                      <div
+                        ref={panelControlsRef}
+                        className="min-w-0 flex flex-col gap-3"
+                      >
+                        {/* The waveform takes the height the panel has left */}
                         <WaveformEditor
                           audioFile={audioFile}
                           defaultDuration={defaultDuration}
