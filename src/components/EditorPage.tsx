@@ -778,9 +778,12 @@ export function EditorPage() {
 
   // The keyboard of a pack with no file takes no clicks or keys, so a
   // selection left on it (an Undo of the only file) could not be cleared
-  // there, and would come back unseen with the next file.
+  // there, and would come back unseen with the next file. Try it is marked
+  // done for the sounds that were tried, not for the next ones.
   useEffect(() => {
-    if (visibility.stage === 'no-files') setSelectedKeys(new Set());
+    if (visibility.stage !== 'no-files') return;
+    setSelectedKeys(new Set());
+    setHasTriedIt(false);
   }, [visibility.stage, setSelectedKeys]);
 
   // Height the rows around the keyboard take, each with the column's 12px gap:
