@@ -488,6 +488,8 @@ export function EditorPage() {
   const [playingSourceId, setPlayingSourceId] = useState<string | null>(null);
   const playingSourceRef = useRef<string | null>(null);
   const stopSoundRef = useRef<(() => void) | null>(null);
+  // Codes of the keys to keep selected across the next change of layout.
+  const keptSelectionRef = useRef<readonly string[] | null>(null);
 
   // Waveform state
   const [waveformSelection, setWaveformSelection] = useState({
@@ -1172,9 +1174,15 @@ export function EditorPage() {
         (current) => giveFilesToTheirKeys(matches, current),
       );
       // Keys a smaller keyboard leaves out show, as when a pack is opened.
+      // The selected keys stay selected: the give did not use them, and the
+      // bigger keyboard draws them all.
       if (packInfo.packType === 'Keyboard') {
         const codes = matches.flatMap((match) => match.codes);
-        setKeyboardSize((current) => widenKeyboardSize(codes, current));
+        const wider = widenKeyboardSize(codes, keyboardSize);
+        if (wider !== keyboardSize) {
+          keptSelectionRef.current = selectedCodes;
+          setKeyboardSize(wider);
+        }
       }
       return;
     }
@@ -1730,10 +1738,23 @@ export function EditorPage() {
     }
   };
 
-  // Clear selection when changing the keyboard size or the pack type
+  // Clear selection when changing the keyboard size or the pack type, unless
+  // the keyboard grew to show keys just given a sound: then the same keys
+  // stay selected on it. Selection ids differ between layouts, so they are
+  // found again by code.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the layout change is the trigger, not a value the effect reads
   useEffect(() => {
-    setSelectedKeys(new Set());
+    const kept = keptSelectionRef.current;
+    keptSelectionRef.current = null;
+    setSelectedKeys(
+      new Set(
+        kept
+          ? [...keyCodeById]
+              .filter(([, code]) => kept.includes(code))
+              .map(([id]) => id)
+          : [],
+      ),
+    );
   }, [layout, setSelectedKeys]);
 
   // Keep the waveform on a file the pack still has: Undo and Redo can take
