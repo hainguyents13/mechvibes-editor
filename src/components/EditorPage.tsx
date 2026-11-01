@@ -1006,12 +1006,14 @@ export function EditorPage() {
 
   // The work stays as it is while the start screens show, but nothing of the
   // workspace may go on over them: what was open over the pack closes, a
-  // sound playing stops, and the tour would point at nothing.
+  // sound playing stops, and the tour would point at nothing. The emphasis on
+  // Try it is spent too, so coming back does not play it again.
   const leaveWorkspace = () => {
     setShowMyPacks(false);
     setShowEditPackModal(false);
     setShowShortcuts(false);
     setPendingPackType(null);
+    setEmphasizeTryIt(false);
     exitPreview();
     // Playing again stops it.
     if (isPlaying) playSelectedSegment();
