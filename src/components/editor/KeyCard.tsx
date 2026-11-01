@@ -1,5 +1,5 @@
 import { Ellipsis, Play, Plus, Square } from 'lucide-react';
-import { useId, useRef } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
 import type { SoundSlot } from '@/components/editor/TimeSegmentControls';
 import { NavbarMenu } from '@/components/NavbarMenu';
@@ -9,6 +9,9 @@ import { keyLabel } from '@/lib/keyNames';
 import { cn, plural } from '@/lib/utils';
 import { formatLength } from '@/utils/audioUtils';
 import type { AudioSource, KeySound, PackType } from '@/utils/soundPack';
+
+/** How far the pinned card goes past the column's bottom: `lg:-bottom-3`. */
+const BOTTOM_OVERHANG = 12;
 
 interface KeyCardProps {
   code: string;
@@ -54,6 +57,23 @@ export function KeyCard({
 }: KeyCardProps) {
   const titleId = useId();
   const sectionRef = useRef<HTMLElement>(null);
+  // Pinned over the list only while it fits the column whole. Taller, it
+  // would hide the list and Add, and still be cut off, so it scrolls with
+  // the list instead. Pinning moves it without changing either height.
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const section = sectionRef.current;
+    const column = section?.parentElement;
+    if (!section || !column) return;
+    // It is let past the column's bottom padding by its own.
+    const check = () =>
+      setFits(section.offsetHeight <= column.clientHeight + BOTTOM_OVERHANG);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(section);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, []);
   const isMouse = packType === 'Mouse';
   const noun = isMouse ? 'button' : 'key';
   const label = keyLabel(code);
@@ -108,7 +128,10 @@ export function KeyCard({
       ref={sectionRef}
       aria-labelledby={titleId}
       data-tour="key-card"
-      className="min-w-0 z-10 editor-panel-surface max-lg:flex-1 max-lg:self-start lg:shrink-0 lg:pt-3 lg:sticky lg:-bottom-3 lg:-mb-3 lg:pb-3"
+      className={cn(
+        'min-w-0 z-10 editor-panel-surface max-lg:flex-1 max-lg:self-start lg:shrink-0 lg:pt-3 lg:-bottom-3 lg:-mb-3 lg:pb-3',
+        fits && 'lg:sticky',
+      )}
     >
       <div
         className={cn(
