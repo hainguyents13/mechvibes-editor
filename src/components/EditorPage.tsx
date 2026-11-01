@@ -44,8 +44,8 @@ import {
   MouseDisplay,
 } from '@/components/editor/MouseDisplay';
 import { NextStep } from '@/components/editor/NextStep';
+import { QUICK_SELECT_SELECTOR } from '@/components/editor/QuickSelect';
 import {
-  QUICK_SELECT_SELECTOR,
   type SoundSlot,
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
