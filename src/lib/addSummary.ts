@@ -22,6 +22,7 @@ export type AddBatch = { ids: readonly string[]; skipped: readonly string[] };
 /**
  * One line under the heading. `action` names the button the line carries.
  * - `matched`: files whose names match keys; `done` once each key plays its file;
+ * - `replaced`: how many of those keys have a sound that giving them replaces;
  * - `need-key`: files of one sound that no key plays yet;
  * - `no-match`: no name matches, so the files can go to keys in order;
  * - `similar`: numbered files like click1…click5, to spread across keys;
@@ -44,7 +45,10 @@ export type AddSummaryLine =
       action: string;
       ids: string[];
     }
-  | { kind: 'release' | 'other-kind' | 'skipped'; text: string };
+  | {
+      kind: 'replaced' | 'release' | 'other-kind' | 'skipped';
+      text: string;
+    };
 
 export type AddSummary = {
   heading: string;
@@ -154,23 +158,37 @@ function matchedLine(
     .slice(0, 2)
     .map(({ name, codes }) => `${name} -> ${codes.map(keyLabel).join(' and ')}`)
     .join(', ');
+  return {
+    kind: 'matched',
+    text: `${count} ${count === 1 ? 'matches' : 'match'} ${key} names (${examples}).`,
+    action:
+      count === 1 ? `Give it to its ${key}` : `Give them to their ${key}s`,
+    done,
+    matches,
+  };
+}
+
+/**
+ * The warning that giving matched files replaces the sound some of their
+ * keys have, on a line of its own so the button beside the matches never
+ * cuts it off. Null when no key would lose a sound.
+ */
+function replacedLine(
+  matched: ReturnType<typeof matchFilesToKeys>['matched'],
+  keySounds: KeySounds,
+  packType: PackType,
+): AddSummaryLine | null {
+  const { key } = words(packType);
   const replaced = matched.flatMap(({ id, codes }) =>
     codes.filter((code) => {
       const source = keySounds.get(code)?.source;
       return source !== undefined && source !== id;
     }),
   ).length;
-  const replacing =
-    replaced === 0
-      ? ''
-      : ` ${replaced} of these ${key}s ${replaced === 1 ? 'has' : 'have'} a sound now. It gets replaced.`;
+  if (replaced === 0) return null;
   return {
-    kind: 'matched',
-    text: `${count} ${count === 1 ? 'matches' : 'match'} ${key} names (${examples}).${replacing}`,
-    action:
-      count === 1 ? `Give it to its ${key}` : `Give them to their ${key}s`,
-    done,
-    matches,
+    kind: 'replaced',
+    text: `${replaced} of these ${key}s ${replaced === 1 ? 'has' : 'have'} a sound now. It gets replaced.`,
   };
 }
 
@@ -209,7 +227,11 @@ export function summarizeAdd({
   const free = unmatched.filter(isFree);
   const lines: AddSummaryLine[] = [];
 
-  if (matched.length > 0) lines.push(matchedLine(matched, keySounds, packType));
+  if (matched.length > 0) {
+    lines.push(matchedLine(matched, keySounds, packType));
+    const replaced = replacedLine(matched, keySounds, packType);
+    if (replaced) lines.push(replaced);
+  }
   if (free.length > 0 && matched.length === 0) {
     lines.push({
       kind: 'no-match',

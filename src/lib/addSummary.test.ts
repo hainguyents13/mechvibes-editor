@@ -180,15 +180,21 @@ describe('summarizeAdd: files that match keys', () => {
     });
   });
 
-  it('warns that keys with a sound get theirs replaced', () => {
+  it('warns on a line of its own that keys with a sound get theirs replaced', () => {
     const keySounds = new Map([
       ['KeyA', plays('rec')],
       ['Space', plays('rec')],
       ['KeyB', plays('id-b.wav')],
     ]);
-    expect(lineOf(summary({ files, keySounds })?.lines, 'matched')?.text).toBe(
-      '3 match key names (a.wav -> A, b.wav -> B). 2 of these keys have a sound now. It gets replaced.',
-    );
+    const { lines } = summary({ files, keySounds }) ?? { lines: [] };
+    expect(lines.slice(0, 2)).toMatchObject([
+      { kind: 'matched', text: '3 match key names (a.wav -> A, b.wav -> B).' },
+      {
+        kind: 'replaced',
+        text: '2 of these keys have a sound now. It gets replaced.',
+      },
+    ]);
+    expect(lineOf(summary({ files })?.lines, 'replaced')).toBeUndefined();
   });
 
   it('says it gave them once each key plays its file, and offers again after an Undo', () => {
