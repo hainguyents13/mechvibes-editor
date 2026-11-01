@@ -31,8 +31,15 @@ interface AudioFileSelectorProps {
   onAdd: (files: File[]) => void;
   onRemove: (id: string) => void;
   onSetKind: (id: string, kind: FileKind) => void;
+  /** Swap the audio of a file for another, for every key that plays it. */
+  onReplace: (id: string, file: File) => void;
+  /** A file of one sound starts being dragged towards the keys (its id), or stops (null). */
+  onDragFile: (id: string | null) => void;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
+
+/** What a row dragged onto a key carries: the id of its file. */
+export const SOURCE_DRAG_TYPE = 'application/x-mechvibes-source';
 
 /** Short format label from a MIME type, e.g. "audio/mpeg" -> "MPEG". */
 function formatLabel(file: File): string {
@@ -69,9 +76,14 @@ export function AudioFileSelector({
   onAdd,
   onRemove,
   onSetKind,
+  onReplace,
+  onDragFile,
   videoRef,
 }: AudioFileSelectorProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const replaceInputRef = React.useRef<HTMLInputElement>(null);
+  // The file Replace file… was chosen for, while its picker is open.
+  const replacingRef = React.useRef<string | null>(null);
   const listRef = React.useRef<HTMLUListElement>(null);
   const detailsIdBase = React.useId();
   const [pendingRemoval, setPendingRemoval] =
@@ -123,6 +135,23 @@ export function AudioFileSelector({
     />
   );
 
+  const replaceInput = (
+    <input
+      ref={replaceInputRef}
+      type="file"
+      className="hidden"
+      accept="audio/*,video/*"
+      aria-label="Replace file"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        const id = replacingRef.current;
+        replacingRef.current = null;
+        event.target.value = '';
+        if (file && id && isMediaFile(file)) onReplace(id, file);
+      }}
+    />
+  );
+
   // Before the first file the workspace offers its own ways to add one.
   if (sources.length === 0) return null;
 
@@ -160,6 +189,7 @@ export function AudioFileSelector({
           Add
         </button>
         {fileInput}
+        {replaceInput}
       </div>
 
       {/* One row per source in its own fixed colour; the selected one is
@@ -203,6 +233,21 @@ export function AudioFileSelector({
             <li
               key={source.id}
               data-active={isActive || undefined}
+              // A file of one sound drags onto keys. The row, not its button,
+              // since Firefox starts no drag from a button.
+              draggable={isOne || undefined}
+              onDragStart={
+                isOne
+                  ? (event) => {
+                      // Firefox starts a drag only once it carries data. No
+                      // text, so a drop in a text field types nothing.
+                      event.dataTransfer.setData(SOURCE_DRAG_TYPE, source.id);
+                      event.dataTransfer.effectAllowed = 'copy';
+                      onDragFile(source.id);
+                    }
+                  : undefined
+              }
+              onDragEnd={isOne ? () => onDragFile(null) : undefined}
               className={cn(
                 'flex items-center gap-1 rounded-box border border-l-4',
                 color.bg,
@@ -287,6 +332,13 @@ export function AudioFileSelector({
                         label: 'This file is one sound',
                         onSelect: () => onSetKind(source.id, 'one'),
                       },
+                  {
+                    label: 'Replace file…',
+                    onSelect: () => {
+                      replacingRef.current = source.id;
+                      replaceInputRef.current?.click();
+                    },
+                  },
                   { label: 'Remove', onSelect: () => requestRemoval(source) },
                 ]}
               >

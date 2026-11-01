@@ -25,6 +25,7 @@ import {
 import {
   AudioFileSelector,
   FILE_LIST_SELECTOR,
+  SOURCE_DRAG_TYPE,
   SOURCES_HEADING_ID,
 } from '@/components/editor/AudioFileSelector';
 import { ChangeFileDialog } from '@/components/editor/ChangeFileDialog';
@@ -66,7 +67,7 @@ import {
   WAVEFORM_BOX_SELECTOR,
   WaveformEditor,
 } from '@/components/editor/WaveformEditor';
-import { FileDropOverlay } from '@/components/FileDropOverlay';
+import { dropCodeAt, FileDropOverlay } from '@/components/FileDropOverlay';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
@@ -89,12 +90,18 @@ import {
   inferKindsFromPack,
   inferNewFileKind,
   LONG_FILE_SECONDS,
+  longFileWarning,
   playsWholeFile,
 } from '@/lib/fileKinds';
 import { zipFolder } from '@/lib/folderFiles';
-import { sameSoundCount } from '@/lib/keyCard';
+import { dropTargetCodes, sameSoundCount } from '@/lib/keyCard';
 import { guessPackType, keyLabel } from '@/lib/keyNames';
 import { getProgressItems } from '@/lib/progressLine';
+import {
+  keysPastEnd,
+  replaceSourceFile,
+  replaceWarning,
+} from '@/lib/replaceFile';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
   asksBeforeReplacing,
@@ -431,6 +438,9 @@ export function EditorPage() {
     reset: resetHistory,
   } = usePackHistory(createBlankSnapshot);
   const { keySounds, sources, packInfo } = present;
+  // The pack as it is now, for work that ends after an await.
+  const presentRef = useRef(present);
+  presentRef.current = present;
   // What was last imported, opened, exported or updated; leaving loses changes made since.
   const [savedSnapshot, setSavedSnapshot] = useState(present);
   // What the library holds for the open pack: set on open and on each successful Update.
@@ -537,6 +547,24 @@ export function EditorPage() {
   const playingSourceId = playing?.kind === 'file' ? playing.id : null;
   // The key whose file the Change file dialog changes, while it is open.
   const [changeFileFor, setChangeFileFor] = useState<string | null>(null);
+  // New audio read for Replace file…, while the warning about the keys that
+  // would run past its end asks first.
+  const [pendingReplace, setPendingReplace] = useState<{
+    id: string;
+    file: File;
+    duration: number;
+    codes: string[];
+  } | null>(null);
+  // Files about to become one sound each, while the warning about their
+  // length asks first.
+  const [pendingKinds, setPendingKinds] = useState<{
+    ids: string[];
+    warning: NonNullable<ReturnType<typeof longFileWarning>>;
+  } | null>(null);
+  // The file of one sound dragged from the list towards the keys, and the
+  // key a dragged file is over, from the list or from the computer.
+  const [draggedSourceId, setDraggedSourceId] = useState<string | null>(null);
+  const [dropCode, setDropCode] = useState<string | null>(null);
   const stopSoundRef = useRef<(() => void) | null>(null);
   // Codes of the keys to keep selected across the next change of layout.
   const keptSelectionRef = useRef<readonly string[] | null>(null);
@@ -689,6 +717,8 @@ export function EditorPage() {
     showEditPackModal ||
     showShortcuts ||
     changeFileFor !== null ||
+    pendingReplace !== null ||
+    pendingKinds !== null ||
     confirmDiscardAction !== null ||
     pendingPackType !== null ||
     showMyPacks ||
@@ -771,6 +801,11 @@ export function EditorPage() {
   const cardSound = cardCode ? keySounds.get(cardCode) : undefined;
   const cardSource = cardSound ? sourcesById.get(cardSound.source) : undefined;
   const showKeyCard = visibility.soundPanel && cardSource !== undefined;
+  // The keys a dragged file would go to, lit up while it is over one.
+  const dropCodes = useMemo(
+    () => (dropCode ? new Set(dropTargetCodes(dropCode, selectedCodes)) : null),
+    [dropCode, selectedCodes],
+  );
   // How that key plays the file on the waveform, for the Next line.
   const selectedKeyFile =
     !cardSound || !activeSource
@@ -1253,7 +1288,16 @@ export function EditorPage() {
     setLastAdd({ ids: [...group.ids], skipped: [...group.skipped] });
     setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
-    if (givenTo) playSource(added[0], true);
+    if (givenTo) {
+      playSource(added[0], true);
+    } else if (giveTo && giveTo.length > 0) {
+      // The keys it was dropped on, those drawn, wait selected for the part
+      // cut from it.
+      const ids = [...keyCodeById]
+        .filter(([, code]) => giveTo.includes(code))
+        .map(([id]) => id);
+      if (ids.length > 0) setSelectedKeys(new Set(ids));
+    }
   };
 
   // Stop the sound that plays outside the waveform.
@@ -1292,14 +1336,35 @@ export function EditorPage() {
       restart,
     );
 
-  // Give a file of one sound to the selected keys, as one step. Giving it
-  // again to keys that already play it adds none.
-  const giveToSelected = (source: AudioSource) => {
-    if (selectedCodes.length === 0) return;
+  // Give a file of one sound to keys, as one step. Giving it again to keys
+  // that already play it adds none.
+  const giveFileTo = (source: AudioSource, codes: readonly string[]) => {
+    if (codes.length === 0) return;
     commitKeySounds(
-      `Give ${source.file.name} to ${plural(selectedCodes.length, noun)}`,
-      (current) => giveOneSoundToKeys(selectedCodes, source, current),
+      `Give ${source.file.name} to ${plural(codes.length, noun)}`,
+      (current) => giveOneSoundToKeys(codes, source, current),
     );
+  };
+  const giveToSelected = (source: AudioSource) =>
+    giveFileTo(source, selectedCodes);
+
+  // A file of one sound dropped from the list on a key goes to it, or to
+  // every selected key when it is one of them, as a click on the file with
+  // those keys selected would: it plays and opens, and the selection stays.
+  const dropSourceOn = (id: string, code: string) => {
+    const source = sourcesById.get(id);
+    if (!source || fileKinds.get(id) !== 'one') return;
+    giveFileTo(source, dropTargetCodes(code, selectedCodes));
+    playSource(source, true);
+    if (id === activeSourceId) return;
+    setActiveSourceId(id);
+    setWaveformSelection({ start: 0, end: 0 });
+  };
+
+  // The drag of a file from the list ends, dropped or not.
+  const endSourceDrag = () => {
+    setDraggedSourceId(null);
+    setDropCode(null);
   };
 
   // A click on a file opens it; a file of one sound also plays, and goes to
@@ -1321,6 +1386,64 @@ export function EditorPage() {
       const next = new Map(current);
       for (const id of ids) next.set(id, kind);
       return next;
+    });
+  };
+
+  // The person says what files hold. Before a file longer than a key sound
+  // becomes one sound, which keys would then play whole, they are asked.
+  const requestKinds = (ids: readonly string[], kind: FileKind) => {
+    const turning = ids.filter((id) => fileKinds.get(id) !== kind);
+    const warning =
+      kind === 'one'
+        ? longFileWarning(
+            turning.flatMap((id) => sourcesById.get(id) ?? []),
+            packInfo.packType,
+          )
+        : null;
+    if (warning) {
+      setPendingKinds({ ids: [...ids], warning });
+    } else {
+      setKinds(ids, kind);
+    }
+  };
+
+  // Replace the audio of a file for every key that plays it, as one step,
+  // once the new file is read. Parts cut from it keep their times; keys that
+  // would then run past its end are asked about first.
+  const replaceSource = async (id: string, file: File) => {
+    const work = workRef.current;
+    const typed = withMediaType(file);
+    const [duration] = await readSoundLengths([typed], () => {});
+    // Another pack took this one's place while the file was read.
+    if (workRef.current !== work) return;
+    if (duration === 0) {
+      setAddError(unreadableMessage([typed.name]));
+      return;
+    }
+    const { sources: now, keySounds: sounds } = presentRef.current;
+    const source = now.find((s) => s.id === id);
+    if (!source) return;
+    const next = replaceSourceFile(source, typed, duration, sounds);
+    const codes = keysPastEnd(id, [next.source], next.keySounds);
+    if (codes.length > 0) {
+      setPendingReplace({ id, file: typed, duration, codes });
+    } else {
+      commitReplace(id, typed, duration);
+    }
+  };
+
+  const commitReplace = (id: string, file: File, duration: number) => {
+    const old = presentRef.current.sources.find((s) => s.id === id);
+    if (!old) return;
+    // A file an Undo took away meanwhile is not brought back.
+    commit(`Replace ${old.file.name} with ${file.name}`, (current) => {
+      const source = current.sources.find((s) => s.id === id);
+      if (!source) return null;
+      const next = replaceSourceFile(source, file, duration, current.keySounds);
+      return {
+        sources: current.sources.map((s) => (s.id === id ? next.source : s)),
+        keySounds: next.keySounds,
+      };
     });
   };
 
@@ -1370,10 +1493,7 @@ export function EditorPage() {
     const source = sourcesById.get(id);
     if (!source) return;
     if (fileKinds.get(id) === 'one') {
-      commitKeySounds(
-        `Give ${source.file.name} to ${plural(1, noun)}`,
-        (current) => giveOneSoundToKeys([code], source, current),
-      );
+      giveFileTo(source, [code]);
       playSource(source, true);
     } else {
       setSoundSlot('press');
@@ -1530,6 +1650,8 @@ export function EditorPage() {
     setShowEditPackModal(false);
     setShowShortcuts(false);
     setChangeFileFor(null);
+    setPendingReplace(null);
+    setPendingKinds(null);
     setPendingPackType(null);
     setEmphasizeTryIt(false);
     exitPreview();
@@ -1848,7 +1970,7 @@ export function EditorPage() {
       setOpenFileError(message);
     }
   };
-  const handleDrop = (route: DropRoute<File>) => {
+  const handleDrop = (route: DropRoute<File>, target?: { code: string }) => {
     switch (route.kind) {
       case 'open-zip':
         if (route.confirm) {
@@ -1883,7 +2005,11 @@ export function EditorPage() {
         return;
       }
       case 'add-media':
-        handleAddSources(route.files, { skipped: route.skipped });
+        // One sound dropped on a key goes to it, as the list's files do.
+        handleAddSources(route.files, {
+          skipped: route.skipped,
+          giveTo: target && dropTargetCodes(target.code, selectedCodes),
+        });
         return;
       default:
         showDropProblem(route.message);
@@ -2417,7 +2543,10 @@ export function EditorPage() {
     <FileDropOverlay
       enabled={canDrop}
       context={{ onStart: screen === 'start', isDirty: asksFirst }}
+      keyboardReady={isWorkspace && !visibility.fadedKeyboard}
+      noun={noun}
       onDrop={handleDrop}
+      onDropTarget={setDropCode}
     />
   );
 
@@ -2563,6 +2692,38 @@ export function EditorPage() {
             handleAddSources([file], { giveTo: [changeFileFor] });
           }}
           onClose={() => setChangeFileFor(null)}
+        />
+
+        <ConfirmDiscardModal
+          isOpen={pendingReplace !== null}
+          onCancel={() => setPendingReplace(null)}
+          onConfirm={() => {
+            if (pendingReplace) {
+              const { id, file, duration } = pendingReplace;
+              commitReplace(id, file, duration);
+            }
+            setPendingReplace(null);
+          }}
+          {...(pendingReplace &&
+            replaceWarning(
+              sourcesById.get(pendingReplace.id)?.file.name ?? '',
+              pendingReplace.file.name,
+              pendingReplace.duration,
+              pendingReplace.codes,
+              noun,
+            ))}
+          confirmLabel="Replace anyway"
+        />
+
+        <ConfirmDiscardModal
+          isOpen={pendingKinds !== null}
+          onCancel={() => setPendingKinds(null)}
+          onConfirm={() => {
+            if (pendingKinds) setKinds(pendingKinds.ids, 'one');
+            setPendingKinds(null);
+          }}
+          {...pendingKinds?.warning}
+          confirmTone="primary"
         />
 
         <KeyboardShortcutsDialog
@@ -2720,7 +2881,44 @@ export function EditorPage() {
               </div>
             )}
 
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
+            {/* A file of one sound dragged from the list drops on a key here,
+            drawn or in the tray of hidden keys. */}
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: a drop zone for rows dragged from the list; selecting keys then clicking a file does the same from the keyboard */}
+            <div
+              className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3"
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes(SOURCE_DRAG_TYPE)) {
+                  return;
+                }
+                const code = dropCodeAt(event.target);
+                setDropCode(code);
+                // Only a key takes the drop.
+                if (!code) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'copy';
+              }}
+              onDragLeave={(event) => {
+                if (
+                  event.dataTransfer.types.includes(SOURCE_DRAG_TYPE) &&
+                  !(
+                    event.relatedTarget instanceof Node &&
+                    event.currentTarget.contains(event.relatedTarget)
+                  )
+                ) {
+                  setDropCode(null);
+                }
+              }}
+              onDrop={(event) => {
+                if (!event.dataTransfer.types.includes(SOURCE_DRAG_TYPE)) {
+                  return;
+                }
+                event.preventDefault();
+                const code = dropCodeAt(event.target);
+                const id = event.dataTransfer.getData(SOURCE_DRAG_TYPE);
+                endSourceDrag();
+                if (code && id) dropSourceOn(id, code);
+              }}
+            >
               {/* Keyboard Settings — at least as wide as the scaled keyboard, so both align */}
               <div
                 className="editor-chrome-vertical editor-chrome-top w-max max-w-full shrink-0"
@@ -2779,7 +2977,7 @@ export function EditorPage() {
                 the same values on top of that lags behind the layout. Only
                 the fade of an empty pack's keyboard is animated. */}
                 <div
-                  className={`shrink-0 transition-opacity duration-300 ${visibility.fadedKeyboard ? 'opacity-30' : ''}`}
+                  className={`shrink-0 rounded transition-opacity duration-300 ${visibility.fadedKeyboard ? 'opacity-30' : ''} ${draggedSourceId ? 'outline-2 outline-dashed outline-primary -outline-offset-2' : ''}`}
                   // Faded, it shows where the sounds will go, and takes no clicks or focus.
                   inert={visibility.fadedKeyboard}
                   // Inert, the tour leaves it out.
@@ -2814,6 +3012,7 @@ export function EditorPage() {
                         keyboardRef={keyboardRef}
                         isPreview={isPreview}
                         pressedKeyCodes={pressedKeyCodes}
+                        dropCodes={dropCodes}
                         onPreviewTouchDown={pressPreviewKey}
                         onPreviewTouchUp={releasePreviewKey}
                       />
@@ -2831,6 +3030,7 @@ export function EditorPage() {
                         keyboardRef={keyboardRef}
                         isPreview={isPreview}
                         pressedKeyCodes={pressedKeyCodes}
+                        dropCodes={dropCodes}
                         onPreviewKeyDown={pressPreviewKey}
                         onPreviewKeyUp={releasePreviewKey}
                       />
@@ -2857,6 +3057,7 @@ export function EditorPage() {
                       )
                     }
                     onFocusLost={focusKeyboard}
+                    dropCodes={dropCodes}
                   />
                 </div>
               )}
@@ -2968,7 +3169,7 @@ export function EditorPage() {
                     reading={reading}
                     error={addError}
                     onChangeKind={(kind) => {
-                      if (lastAdd) setKinds(lastAdd.ids, kind);
+                      if (lastAdd) requestKinds(lastAdd.ids, kind);
                     }}
                     onAction={handleSummaryAction}
                     onDismiss={() => {
@@ -3011,7 +3212,12 @@ export function EditorPage() {
                       onSelect={handleSelectSource}
                       onAdd={(files) => handleAddSources(files)}
                       onRemove={handleRemoveSource}
-                      onSetKind={(id, kind) => setKinds([id], kind)}
+                      onSetKind={(id, kind) => requestKinds([id], kind)}
+                      onReplace={replaceSource}
+                      onDragFile={(id) => {
+                        if (id) setDraggedSourceId(id);
+                        else endSourceDrag();
+                      }}
                       videoRef={videoPreviewRef}
                     />
                     {showKeyCard && cardCode && cardSound && cardSource && (

@@ -40,6 +40,8 @@ interface KeyboardDisplayProps {
   isPreview?: boolean;
   /** Key codes currently held down, so they can be highlighted. */
   pressedKeyCodes?: Set<string>;
+  /** Codes a file dragged over the keyboard would go to. */
+  dropCodes?: ReadonlySet<string> | null;
   /** Preview only: a click or a tap holds a key down, and lets it go. */
   onPreviewKeyDown?: (keyCode: string) => void;
   onPreviewKeyUp?: (keyCode: string) => void;
@@ -58,6 +60,7 @@ export function KeyboardDisplay({
   keyboardRef,
   isPreview = false,
   pressedKeyCodes,
+  dropCodes,
   onPreviewKeyDown,
   onPreviewKeyUp,
 }: KeyboardDisplayProps) {
@@ -131,6 +134,7 @@ export function KeyboardDisplay({
               key={index}
               keyId={keyId}
               label={key.label}
+              code={keyCode}
               x={key.x}
               y={key.y}
               width={key.width}
@@ -144,6 +148,7 @@ export function KeyboardDisplay({
               sourceName={source?.file.name}
               isPreview={isPreview}
               isPressed={pressedKeyCodes?.has(keyCode) ?? false}
+              isDropTarget={dropCodes?.has(keyCode) ?? false}
               tabIndex={keyId === tabStopId ? 0 : -1}
               onKeyDown={handleKeyKeyDown(index)}
               onFocus={onFocusKey}

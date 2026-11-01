@@ -4,6 +4,8 @@ import { keyRect } from './key-selection';
 
 interface KeyButtonProps {
   label: string;
+  /** The key's code, which a file dropped on it goes to. */
+  code: string;
   x: number;
   y: number;
   width: number;
@@ -24,6 +26,8 @@ interface KeyButtonProps {
   /** Preview mode: unmapped keys are inert, mapped ones light up while held. */
   isPreview?: boolean;
   isPressed?: boolean;
+  /** A file dragged over the keyboard would go to this key. */
+  isDropTarget?: boolean;
   /** Preview only: play the key while a mouse button or a finger holds it. */
   onPreviewPointerDown?: () => void;
   onPreviewPointerUp?: () => void;
@@ -31,6 +35,7 @@ interface KeyButtonProps {
 
 export function KeyButton({
   label,
+  code,
   x,
   y,
   width,
@@ -46,6 +51,7 @@ export function KeyButton({
   onFocus,
   isPreview = false,
   isPressed = false,
+  isDropTarget = false,
   onPreviewPointerDown,
   onPreviewPointerUp,
 }: KeyButtonProps) {
@@ -66,6 +72,7 @@ export function KeyButton({
     <button
       type="button"
       data-key-id={keyId}
+      data-drop-code={isPreview ? undefined : code}
       tabIndex={isPreview ? -1 : tabIndex}
       aria-pressed={isPreview ? undefined : isSelected}
       aria-label={label.trim() ? label.replace(/\n/g, ' ') : 'Space'}
@@ -78,6 +85,9 @@ export function KeyButton({
         isPreview && isModified ? 'btn-primary' : '',
         // An unmapped key plays nothing in preview, so it does not look pressed either.
         isPressed && !isInert ? 'btn-active scale-95' : '',
+        isDropTarget
+          ? 'bg-primary/25 text-base-content ring-2 ring-primary z-10'
+          : '',
       )}
       style={style}
       disabled={isInert}
