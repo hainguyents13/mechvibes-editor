@@ -382,6 +382,23 @@ describe('routeDrop: folders', () => {
     });
   });
 
+  it('opens no pack from a folder that holds several, and says so', () => {
+    const packs = [
+      inFolder('keyboard/cherry/config.json'),
+      inFolder('keyboard/cherry/a.ogg'),
+      inFolder('keyboard/topre/config.json'),
+      inFolder('keyboard/topre/a.ogg'),
+      inFolder('keyboard/nk/sounds/config.json'),
+    ];
+    expect(drop(packs, UNSAVED)).toEqual({
+      kind: 'reject',
+      message: 'This folder holds 2 packs. Drop one pack folder.',
+    });
+    // A config.json at the top is the pack; deeper ones are its files.
+    const withTop = [inFolder('keyboard/config.json'), ...packs];
+    expect(drop(withTop)).toMatchObject({ kind: 'open-folder' });
+  });
+
   it('adds the sounds of a folder without a config.json and names the rest', () => {
     const sounds = [
       inFolder('Keys/a.wav'),

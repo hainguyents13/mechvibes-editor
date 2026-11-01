@@ -1643,6 +1643,13 @@ export function EditorPage() {
       : !isKeyboardOwnedElsewhere);
 
   // Why a drop did nothing shows where a pack file's problem would.
+  const showDropProblem = (message: string) => {
+    if (isWorkspace) {
+      setNotice({ tone: 'error', message });
+    } else {
+      setOpenFileError(message);
+    }
+  };
   const handleDrop = (route: DropRoute<File>) => {
     switch (route.kind) {
       case 'open-zip':
@@ -1653,14 +1660,18 @@ export function EditorPage() {
         }
         return;
       case 'open-folder':
-        // Zipped in memory, the folder opens the way its zip would.
-        zipFolder(route.files).then((file) => {
-          if (route.confirm) {
-            setConfirmDiscardAction({ file });
-          } else {
-            openPackFile(file);
-          }
-        });
+        // Zipped in memory, the folder opens the way its zip would. A file
+        // that cannot be read on the way says so, as a pack that cannot open.
+        zipFolder(route.files).then(
+          (file) => {
+            if (route.confirm) {
+              setConfirmDiscardAction({ file });
+            } else {
+              openPackFile(file);
+            }
+          },
+          () => showDropProblem('Could not open this pack.'),
+        );
         return;
       case 'to-type-question': {
         const incoming = { files: route.files, skipped: route.skipped };
@@ -1677,11 +1688,7 @@ export function EditorPage() {
         handleAddSources(route.files, { skipped: route.skipped });
         return;
       default:
-        if (isWorkspace) {
-          setNotice({ tone: 'error', message: route.message });
-        } else {
-          setOpenFileError(route.message);
-        }
+        showDropProblem(route.message);
     }
   };
 

@@ -146,6 +146,19 @@ function packFoldersOf(files: readonly DroppedFile[]) {
   );
 }
 
+/**
+ * How many packs the files of one dropped folder hold: its config.json files
+ * at the shallowest depth, as opening the folder's zip counts them.
+ */
+function packCountOf(files: readonly DroppedFile[]) {
+  const depths = files
+    .map(relativePathOf)
+    .filter((path) => path.toLowerCase().endsWith('/config.json'))
+    .map((path) => path.split('/').length);
+  const shallowest = Math.min(...depths);
+  return depths.filter((depth) => depth === shallowest).length;
+}
+
 /** Audio and video, and the names of the other files, which are left out. */
 function splitMedia<F extends DroppedFile>(
   files: readonly F[],
@@ -193,9 +206,18 @@ export function routeDrop<F extends DroppedFile>(
     return { kind: 'reject', message: DROP_MESSAGES.oneZip };
   }
   if (packFolders.size === 1) {
+    const packFiles = files.filter(isInPack);
+    // A folder of packs, such as a whole soundpacks folder, opens none.
+    const count = packCountOf(packFiles);
+    if (count > 1) {
+      return {
+        kind: 'reject',
+        message: `This folder holds ${count} packs. Drop one pack folder.`,
+      };
+    }
     return {
       kind: 'open-folder',
-      files: files.filter(isInPack),
+      files: packFiles,
       confirm: isDirty,
       message: 'Drop to open this pack',
     };
