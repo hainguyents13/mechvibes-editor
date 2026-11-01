@@ -227,9 +227,11 @@ export function WaveformEditor({
             />
           </div>
 
-          {/* Indicator badges for applied regions */}
+          {/* Indicator badges for applied regions. A layer of their own, so
+          the badges stay over the waveform but under the panel's pinned
+          Sound row. */}
           <div
-            className="relative bg-base-200 border-t border-base-content/10"
+            className="relative z-[1] bg-base-200 border-t border-base-content/10"
             style={{
               height: '20px',
               width: '100%',

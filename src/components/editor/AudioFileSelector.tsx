@@ -142,7 +142,7 @@ export function AudioFileSelector({
                   >
                     {source.file.name}
                   </div>
-                  <div className="text-[10px] text-base-content/60">
+                  <div className="text-[10px] text-base-content/70">
                     {formatLabel(source.file)} • {sizeMb} •{' '}
                     {formatDuration(source.duration)} •{' '}
                     {keyCount === 1 ? '1 key' : `${keyCount} keys`}

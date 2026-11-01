@@ -157,21 +157,41 @@ const PANEL_CONTROLS_HEIGHT = PANEL_MAX_HEIGHT - WAVEFORM_MAX_HEIGHT;
 const PANEL_MIN_HEIGHT = PANEL_CONTROLS_HEIGHT + WAVEFORM_MIN_HEIGHT;
 /** Smallest dragged height; below PANEL_MIN_HEIGHT the controls scroll. */
 const PANEL_DRAG_MIN_HEIGHT = 240;
+/**
+ * Smallest default height: the waveform's header, a squeezed waveform and the
+ * Sound row, which stays pinned to the panel's bottom while the rest scrolls.
+ * Only a screen too short for that and a usable keyboard goes below it.
+ */
+const PANEL_SQUEEZED_MIN_HEIGHT = 216;
 /** The panel's collapse transition caps it at 48rem (index.css). */
 const PANEL_DRAG_MAX_HEIGHT = 720;
-/** Viewport height kept for the navbar, the footer and a usable keyboard. */
+/**
+ * Viewport height kept for the navbar, the footer and a usable keyboard,
+ * until the keyboard's own room is on the page to measure.
+ */
 const PANEL_RESERVED_HEIGHT = 320;
 /** The drag handle's 4px in the layout and the panel's 2px top border. */
 const PANEL_EDGE_HEIGHT = 6;
-/**
- * Smallest scale the default panel leaves the keyboard: a full-size keyboard
- * about 570px wide, with keys about 24px across. On short screens the panel
- * gives way to it, and its controls scroll.
- */
-const KEYBOARD_MIN_SCALE = 0.44;
-/** Key labels never render smaller than this, however far the keyboard scales down. */
+/** On screen, key labels grow back to this as the keyboard scales down... */
 const KEY_LABEL_MIN_PX = 8;
+/**
+ * ...up to the largest label, before scaling, that the narrowest keys still
+ * fit ("Delete" on one unit). Further down they shrink with the keys.
+ */
+const KEY_LABEL_MAX_PX = 17;
 const KEY_LABEL_PX = 12;
+/**
+ * Smallest scale the panel leaves the keyboard, dragged or not: the last at
+ * which labels read 8px, a full-size keyboard about 600px wide with keys
+ * about 25px across. On short screens the panel gives way to it, and its
+ * controls scroll.
+ */
+const KEYBOARD_MIN_SCALE = KEY_LABEL_MIN_PX / KEY_LABEL_MAX_PX;
+/**
+ * Width the rows around the keyboard need to read in full. When the panel's
+ * controls still fit, a narrower layout (TKL, Compact) is kept this wide.
+ */
+const ROWS_READABLE_WIDTH = 560;
 const PANEL_RESIZE_STEP = 16;
 /** The panels' collapse takes ~320ms (index.css); the tour waits it out. */
 const AUTO_TOUR_DELAY_MS = 400;
@@ -181,37 +201,53 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getPanelDragMax(viewportHeight: number) {
+/** The tallest the panel may be dragged; `room` is as in PanelRoom. */
+function getPanelDragMax(viewportHeight: number, room: number) {
   return clamp(
-    viewportHeight - PANEL_RESERVED_HEIGHT,
+    Number.isFinite(room) ? room : viewportHeight - PANEL_RESERVED_HEIGHT,
     PANEL_DRAG_MIN_HEIGHT,
     PANEL_DRAG_MAX_HEIGHT,
   );
 }
 
+/** Heights in px the panel weighs against the keyboard; Infinity until measured. */
+type PanelRoom = {
+  /** The most the panel may take and still leave a usable keyboard. */
+  usable: number;
+  /** The most it may take and leave the keyboard as wide as its rows read. */
+  readable: number;
+  /** What its controls take with a squeezed waveform. */
+  needed: number;
+};
+
 /**
  * Panel height in px on lg screens, or null when the panel stacks and sizes to
- * its content. `chosen` is the dragged height, or null for the default.
- * `room` is the most the default may take and still leave a usable keyboard.
+ * its content. `chosen` is the dragged height, or null for the default. The
+ * default leaves a usable keyboard first, then fits its controls, then leaves
+ * the keyboard as wide as its rows read, and keeps its squeezed minimum.
  */
 function getPanelHeight(
   viewport: { width: number; height: number },
   chosen: number | null,
-  room: number,
+  room: PanelRoom,
 ): number | null {
   if (viewport.width < LG_MIN_WIDTH) return null;
   if (chosen === null) {
-    const preferred = Math.max(
+    const preferred = clamp(
       Math.round(viewport.height / 2),
       PANEL_MIN_HEIGHT,
-    );
-    return clamp(
-      Math.min(preferred, room),
-      PANEL_DRAG_MIN_HEIGHT,
       PANEL_MAX_HEIGHT,
     );
+    return Math.max(
+      Math.min(preferred, Math.max(room.readable, room.needed), room.usable),
+      PANEL_SQUEEZED_MIN_HEIGHT,
+    );
   }
-  return clamp(chosen, PANEL_DRAG_MIN_HEIGHT, getPanelDragMax(viewport.height));
+  return clamp(
+    chosen,
+    PANEL_DRAG_MIN_HEIGHT,
+    getPanelDragMax(viewport.height, room.usable),
+  );
 }
 
 function readStoredPanelHeight(): number | null {
@@ -610,10 +646,9 @@ export function EditorPage() {
   // the settings row above, then the hidden-keys tray and the legend below,
   // when shown. Fixed rather than measured: those rows derive
   // their width from keyboardScale, so measuring them would make the scale
-  // depend on its own output. The rows keep a minimum width, about that of a
-  // full-size keyboard at KEYBOARD_MIN_SCALE, so they stay on one line and
-  // these heights hold. Preview collapses them all, so the keyboard gets that
-  // space back.
+  // depend on its own output. Each row stays on one line, its text cut short
+  // rather than wrapped, so these heights hold. Preview collapses them all,
+  // so the keyboard gets that space back.
   const rowsHeight = isPreview
     ? 0
     : [
@@ -627,6 +662,12 @@ export function EditorPage() {
       ]
         .filter((height) => height > 0)
         .reduce((sum, height) => sum + height + 12, 0);
+  // The rows line up with the keyboard, and are never narrower than it is at
+  // its smallest scale. The mouse's rows keep the width they need to read.
+  const rowsStyle = {
+    maxWidth: keyboardNaturalWidth * keyboardScale,
+    minWidth: `min(100%, ${layout === 'mouse' ? ROWS_READABLE_WIDTH : keyboardNaturalWidth * KEYBOARD_MIN_SCALE}px)`,
+  };
 
   // Height the keyboard column (inside its padding), the drag handle and the
   // panel share: the page below the navbar and any notice, however tall the
@@ -648,19 +689,6 @@ export function EditorPage() {
     );
   }, []);
 
-  // The panel leaves the keyboard its rows and at least its smallest scale.
-  const keyboardMinHeight = keyboardNaturalHeight * KEYBOARD_MIN_SCALE;
-  const panelRoom =
-    sharedHeight === null
-      ? Number.POSITIVE_INFINITY
-      : Math.floor(
-          sharedHeight - PANEL_EDGE_HEIGHT - rowsHeight - keyboardMinHeight,
-        );
-  const panelHeight = getPanelHeight(viewport, chosenPanelHeight, panelRoom);
-  const panelDragMax = getPanelDragMax(viewport.height);
-  // Stacked, the panel sizes to its content up to the same room.
-  const stackedPanelMax = Math.max(panelRoom, PANEL_DRAG_MIN_HEIGHT);
-
   // Height the panel's content takes besides the waveform, measured so the
   // waveform can take what is left: More, a second row of chips or, stacked,
   // each file in the list. It does not depend on the waveform's own height,
@@ -670,6 +698,32 @@ export function EditorPage() {
   const [panelControlsHeight, setPanelControlsHeight] = useState<number | null>(
     null,
   );
+
+  // The panel leaves the keyboard its rows and at least its smallest scale.
+  // Keyboard sizes narrower than full size are kept as wide as their rows
+  // read while the panel's controls fit; the mouse is no row-wide drawing.
+  const keyboardMinHeight = keyboardNaturalHeight * KEYBOARD_MIN_SCALE;
+  const keyboardReadableHeight =
+    layout === 'mouse'
+      ? keyboardMinHeight
+      : Math.max(
+          keyboardMinHeight,
+          (keyboardNaturalHeight * ROWS_READABLE_WIDTH) / keyboardNaturalWidth,
+        );
+  const panelSpace =
+    sharedHeight === null
+      ? Number.POSITIVE_INFINITY
+      : sharedHeight - PANEL_EDGE_HEIGHT - rowsHeight;
+  const panelRoom: PanelRoom = {
+    usable: Math.floor(panelSpace - keyboardMinHeight),
+    readable: Math.floor(panelSpace - keyboardReadableHeight),
+    needed:
+      (panelControlsHeight ?? PANEL_CONTROLS_HEIGHT) + WAVEFORM_SQUEEZED_HEIGHT,
+  };
+  const panelHeight = getPanelHeight(viewport, chosenPanelHeight, panelRoom);
+  const panelDragMax = getPanelDragMax(viewport.height, panelRoom.usable);
+  // Stacked, the panel sizes to its content up to the same room.
+  const stackedPanelMax = Math.max(panelRoom.usable, PANEL_DRAG_MIN_HEIGHT);
   const isStacked = panelHeight === null;
   const measurePanelControls = useCallback(() => {
     const row = panelRowRef.current;
@@ -1960,9 +2014,9 @@ export function EditorPage() {
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
               {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
               <div
-                className="editor-chrome-vertical editor-chrome-top @container w-full min-w-[min(100%,35rem)] mx-auto shrink-0"
+                className="editor-chrome-vertical editor-chrome-top @container w-full mx-auto shrink-0"
                 data-hidden={isPreview}
-                style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+                style={rowsStyle}
               >
                 <h2 className="sr-only">Keyboard settings</h2>
                 <div className="flex h-6 items-center justify-between gap-4">
@@ -2029,8 +2083,9 @@ export function EditorPage() {
                         transformOrigin: 'top left',
                         width: keyboardNaturalWidth,
                         height: keyboardNaturalHeight,
-                        // Labels grow as the keyboard shrinks, so they stay readable.
-                        '--key-label-size': `${keyboardScale > 0 ? Math.max(KEY_LABEL_PX, KEY_LABEL_MIN_PX / keyboardScale) : KEY_LABEL_PX}px`,
+                        // Labels grow as the keyboard shrinks, so they stay
+                        // readable, but only as far as they fit the keys.
+                        '--key-label-size': `${keyboardScale > 0 ? clamp(KEY_LABEL_MIN_PX / keyboardScale, KEY_LABEL_PX, KEY_LABEL_MAX_PX) : KEY_LABEL_PX}px`,
                       } as React.CSSProperties
                     }
                   >
@@ -2074,9 +2129,9 @@ export function EditorPage() {
               {/* Keys with a sound that the drawn layout leaves out */}
               {hasHiddenKeys && (
                 <div
-                  className="editor-chrome-vertical w-full min-w-[min(100%,35rem)] mx-auto shrink-0"
+                  className="editor-chrome-vertical w-full mx-auto shrink-0"
                   data-hidden={isPreview}
-                  style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+                  style={rowsStyle}
                 >
                   <h2 className="sr-only">Hidden keys</h2>
                   <HiddenKeysTray
@@ -2095,9 +2150,9 @@ export function EditorPage() {
 
               {visibility.legend && (
                 <div
-                  className="editor-chrome-vertical w-full min-w-[min(100%,35rem)] mx-auto shrink-0"
+                  className="editor-chrome-vertical w-full mx-auto shrink-0"
                   data-hidden={isPreview}
-                  style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+                  style={rowsStyle}
                 >
                   <h2 className="sr-only">Key marks</h2>
                   <KeyLegend

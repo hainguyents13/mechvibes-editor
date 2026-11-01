@@ -103,6 +103,23 @@ body[data-editor-preview="true"] footer {
   );
 }
 
+/* The waveform panel's Sound row, pinned to the bottom of a panel too short
+   for everything. Where the browser can tell, it shows an edge while the
+   controls above it scroll beneath. */
+.panel-pinned-row {
+  container-type: scroll-state;
+}
+
+/* biome-ignore format: a space after scroll-state would make it a container name */
+@container scroll-state(stuck: bottom) {
+  .panel-pinned-row > * {
+    box-shadow:
+      0 -1px 0 color-mix(in oklab, var(--color-base-content) 15%, transparent),
+      0 -8px 12px -8px
+      color-mix(in oklab, var(--color-base-content) 25%, transparent);
+  }
+}
+
 /* Guided tour (driver.js): its popover follows the site theme. driver.css is
    unlayered, so these rules repeat its specificity plus the tour class. */
 .editor-tour.driver-popover {
