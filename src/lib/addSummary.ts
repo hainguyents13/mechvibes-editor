@@ -160,7 +160,7 @@ function matchedLine(
     .join(', ');
   return {
     kind: 'matched',
-    text: `${count} ${count === 1 ? 'matches' : 'match'} ${key} names (${examples}).`,
+    text: `${count} ${count === 1 ? `matches a ${key} name` : `match ${key} names`} (${examples}).`,
     action:
       count === 1 ? `Give it to its ${key}` : `Give them to their ${key}s`,
     done,

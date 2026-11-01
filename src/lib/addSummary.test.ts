@@ -172,10 +172,10 @@ describe('summarizeAdd: files that match keys', () => {
   it('names both sides for a name of both, and buttons on a mouse', () => {
     expect(
       lineOf(summary({ files: sources('shift.wav') })?.lines, 'matched')?.text,
-    ).toBe('1 matches key names (shift.wav -> Left Shift and Right Shift).');
+    ).toBe('1 matches a key name (shift.wav -> Left Shift and Right Shift).');
     const mouse = summary({ files: sources('left.wav'), packType: 'Mouse' });
     expect(lineOf(mouse?.lines, 'matched')).toMatchObject({
-      text: '1 matches button names (left.wav -> Left button).',
+      text: '1 matches a button name (left.wav -> Left button).',
       action: 'Give it to its button',
     });
   });

@@ -112,11 +112,13 @@ export function OneSoundPane({
             selectedCodes={selectedCodes}
             keySounds={keySounds}
             onClearSelected={onClearSelected}
+            noun={noun}
           />
           <ResetAllButton
             keySounds={keySounds}
             hiddenCount={hiddenCount}
             commitKeySounds={commitKeySounds}
+            noun={noun}
           />
         </div>
         {count === 0 && (

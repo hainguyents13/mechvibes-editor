@@ -272,8 +272,8 @@ export function AudioFileSelector({
             </h3>
             <p className="py-3 text-sm text-base-content/70">
               {keyCountOf(pendingRemoval.id) === 1
-                ? '1 key uses this file and loses its sound.'
-                : `${keyCountOf(pendingRemoval.id)} keys use this file and lose their sound.`}{' '}
+                ? `1 ${noun} uses this file and loses its sound.`
+                : `${keyCountOf(pendingRemoval.id)} ${noun}s use this file and lose their sound.`}{' '}
               You can undo this.
             </p>
             <div className="modal-action">

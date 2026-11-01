@@ -1043,7 +1043,7 @@ export function EditorPage() {
   const clearSelectedKeySounds = () => {
     const count = selectedCodes.filter((code) => keySounds.has(code)).length;
     if (count === 0) return;
-    commitKeySounds(`Clear ${plural(count, 'key')}`, (current) =>
+    commitKeySounds(`Clear ${plural(count, noun)}`, (current) =>
       clearKeySounds(selectedCodes, current),
     );
   };

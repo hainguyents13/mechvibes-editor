@@ -11,10 +11,13 @@ export function ClearSelectedButton({
   selectedCodes,
   keySounds,
   onClearSelected,
+  noun = 'key',
 }: {
   selectedCodes: readonly string[];
   keySounds: KeySounds;
   onClearSelected: () => void;
+  /** What the pack's keys are called: 'key' or 'button'. */
+  noun?: string;
 }) {
   const withSound = selectedCodes.filter((code) => keySounds.has(code)).length;
   return (
@@ -24,9 +27,9 @@ export function ClearSelectedButton({
         className="btn btn-sm rounded-box"
         onClick={onClearSelected}
         disabled={withSound === 0}
-        title="Remove the press and release sounds of the selected keys (Delete)"
+        title={`Remove the press and release sounds of the selected ${noun}s (Delete)`}
       >
-        Clear {plural(withSound, 'key')}
+        Clear {plural(withSound, noun)}
       </button>
     </div>
   );
@@ -37,6 +40,7 @@ export function ResetAllButton({
   keySounds,
   hiddenCount,
   commitKeySounds,
+  noun = 'key',
 }: {
   keySounds: KeySounds;
   /** Mapped keys the current layout does not draw; Reset all clears them too. */
@@ -46,6 +50,8 @@ export function ResetAllButton({
     label: string,
     update: (keySounds: KeySounds) => KeySounds,
   ) => void;
+  /** What the pack's keys are called: 'key' or 'button'. */
+  noun?: string;
 }) {
   const [showConfirm, setShowConfirm] = React.useState(false);
   return (
@@ -55,7 +61,7 @@ export function ResetAllButton({
         className="btn btn-sm btn-error rounded-box"
         onClick={() => setShowConfirm(true)}
         disabled={keySounds.size === 0}
-        title={`Clear the sound on all ${plural(keySounds.size, 'mapped key')}`}
+        title={`Clear the sound on all ${plural(keySounds.size, `mapped ${noun}`)}`}
       >
         <RotateCcw className="h-3 w-3" />
         Reset all ({keySounds.size})
@@ -67,10 +73,12 @@ export function ResetAllButton({
           onClose={() => setShowConfirm(false)}
         >
           <div className="modal-box">
-            <h3 className="text-base font-semibold">Reset all key mappings?</h3>
+            <h3 className="text-base font-semibold">
+              Reset all {noun} mappings?
+            </h3>
             <p className="py-3 text-sm text-base-content/70">
               This clears the sound on all{' '}
-              {plural(keySounds.size, 'mapped key')}
+              {plural(keySounds.size, `mapped ${noun}`)}
               {hiddenCount > 0 &&
                 `, including ${hiddenCount} not shown on this layout`}
               . The audio files themselves are kept. You can undo this.
@@ -89,7 +97,7 @@ export function ResetAllButton({
                 onClick={() => {
                   // An empty pack has nothing to reset, so no step.
                   commitKeySounds(
-                    `Reset all ${plural(keySounds.size, 'key')}`,
+                    `Reset all ${plural(keySounds.size, noun)}`,
                     (current) => (current.size === 0 ? current : new Map()),
                   );
                   setShowConfirm(false);
