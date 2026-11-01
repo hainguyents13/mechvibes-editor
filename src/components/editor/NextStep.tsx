@@ -29,12 +29,17 @@ export function nextStepText({
 }
 
 /** What to do next, kept to one line. */
-export function NextStep(props: Parameters<typeof nextStepText>[0]) {
+export function NextStep({
+  isLarge,
+  ...props
+}: Parameters<typeof nextStepText>[0] & {
+  /** Over a wide keyboard, the line reads at the larger size. */
+  isLarge: boolean;
+}) {
   const next = nextStepText(props);
   return (
-    // Smaller in a narrow row, which is as wide as the keyboard under it.
     <p
-      className="min-w-0 truncate text-xs @min-[40rem]:text-sm text-base-content/70"
+      className={`min-w-0 truncate ${isLarge ? 'text-sm' : 'text-xs'} text-base-content/70`}
       title={`Next: ${next}`}
     >
       <span className="font-medium text-base-content">Next:</span> {next}

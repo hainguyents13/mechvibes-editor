@@ -198,6 +198,8 @@ const KEYBOARD_MIN_SCALE = KEY_LABEL_MIN_PX / KEY_LABEL_MAX_PX;
  * controls still fit, a narrower layout (TKL, Compact) is kept this wide.
  */
 const ROWS_READABLE_WIDTH = 560;
+/** Keyboard width (40rem) from which the Next line reads at the larger size. */
+const NEXT_STEP_LARGE_WIDTH = 640;
 const PANEL_RESIZE_STEP = 16;
 /** The panels' collapse takes ~320ms (index.css); the tour waits it out. */
 const AUTO_TOUR_DELAY_MS = 400;
@@ -679,9 +681,20 @@ export function EditorPage() {
         .reduce((sum, height) => sum + height + 12, 0);
   // The rows line up with the keyboard, and are never narrower than it is at
   // its smallest scale. The mouse's rows keep the width they need to read.
+  const keyboardWidth = keyboardNaturalWidth * keyboardScale;
+  const rowsMinWidth =
+    layout === 'mouse'
+      ? ROWS_READABLE_WIDTH
+      : keyboardNaturalWidth * KEYBOARD_MIN_SCALE;
   const rowsStyle = {
-    maxWidth: keyboardNaturalWidth * keyboardScale,
-    minWidth: `min(100%, ${layout === 'mouse' ? ROWS_READABLE_WIDTH : keyboardNaturalWidth * KEYBOARD_MIN_SCALE}px)`,
+    maxWidth: keyboardWidth,
+    minWidth: `min(100%, ${rowsMinWidth}px)`,
+  };
+  // The settings row is as wide as the rows, or as wide as its words and the
+  // size switch need over a narrow keyboard, up to the column's width: only a
+  // column too narrow for them cuts the Next line short.
+  const settingsRowStyle = {
+    minWidth: `min(100%, ${Math.max(keyboardWidth, rowsMinWidth)}px)`,
   };
 
   // Height the keyboard column (inside its padding), the drag handle and the
@@ -2088,11 +2101,11 @@ export function EditorPage() {
             )}
 
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
-              {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
+              {/* Keyboard Settings — at least as wide as the scaled keyboard, so both align */}
               <div
-                className="editor-chrome-vertical editor-chrome-top @container w-full mx-auto shrink-0"
+                className="editor-chrome-vertical editor-chrome-top w-max max-w-full shrink-0"
                 data-hidden={isPreview}
-                style={rowsStyle}
+                style={settingsRowStyle}
               >
                 <h2 className="sr-only">Keyboard settings</h2>
                 <div className="flex h-6 items-center justify-between gap-4">
@@ -2100,6 +2113,7 @@ export function EditorPage() {
                     stage={visibility.stage}
                     packType={packInfo.packType}
                     isTouch={isCoarsePointer}
+                    isLarge={keyboardWidth >= NEXT_STEP_LARGE_WIDTH}
                   />
                   {visibility.keyboardSize && (
                     <div className="flex shrink-0 items-center gap-4">
