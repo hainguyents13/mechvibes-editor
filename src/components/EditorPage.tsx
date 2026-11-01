@@ -97,11 +97,7 @@ import { zipFolder } from '@/lib/folderFiles';
 import { dropTargetCodes, sameSoundCount } from '@/lib/keyCard';
 import { guessPackType, keyLabel } from '@/lib/keyNames';
 import { getProgressItems } from '@/lib/progressLine';
-import {
-  keysPastEnd,
-  replaceSourceFile,
-  replaceWarning,
-} from '@/lib/replaceFile';
+import { replaceSourceFile, replaceWarning } from '@/lib/replaceFile';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
   asksBeforeReplacing,
@@ -548,12 +544,12 @@ export function EditorPage() {
   // The key whose file the Change file dialog changes, while it is open.
   const [changeFileFor, setChangeFileFor] = useState<string | null>(null);
   // New audio read for Replace file…, while the warning about the keys that
-  // would run past its end asks first.
+  // would run past its end, or play all of a long file, asks first.
   const [pendingReplace, setPendingReplace] = useState<{
     id: string;
     file: File;
     duration: number;
-    codes: string[];
+    warning: NonNullable<ReturnType<typeof replaceWarning>>;
   } | null>(null);
   // Files about to become one sound each, while the warning about their
   // length asks first.
@@ -1409,7 +1405,8 @@ export function EditorPage() {
 
   // Replace the audio of a file for every key that plays it, as one step,
   // once the new file is read. Parts cut from it keep their times; keys that
-  // would then run past its end are asked about first.
+  // would then run past its end, or play all of a long file, are asked about
+  // first.
   const replaceSource = async (id: string, file: File) => {
     const work = workRef.current;
     const typed = withMediaType(file);
@@ -1423,10 +1420,14 @@ export function EditorPage() {
     const { sources: now, keySounds: sounds } = presentRef.current;
     const source = now.find((s) => s.id === id);
     if (!source) return;
-    const next = replaceSourceFile(source, typed, duration, sounds);
-    const codes = keysPastEnd(id, [next.source], next.keySounds);
-    if (codes.length > 0) {
-      setPendingReplace({ id, file: typed, duration, codes });
+    const warning = replaceWarning(
+      source.file.name,
+      replaceSourceFile(source, typed, duration, sounds),
+      fileKinds.get(id) === 'one',
+      noun,
+    );
+    if (warning) {
+      setPendingReplace({ id, file: typed, duration, warning });
     } else {
       commitReplace(id, typed, duration);
     }
@@ -2704,14 +2705,7 @@ export function EditorPage() {
             }
             setPendingReplace(null);
           }}
-          {...(pendingReplace &&
-            replaceWarning(
-              sourcesById.get(pendingReplace.id)?.file.name ?? '',
-              pendingReplace.file.name,
-              pendingReplace.duration,
-              pendingReplace.codes,
-              noun,
-            ))}
+          {...pendingReplace?.warning}
           confirmLabel="Replace anyway"
         />
 

@@ -94,21 +94,66 @@ describe('keysPastEnd', () => {
 });
 
 describe('replaceWarning', () => {
+  const replaced = (duration: number, keySounds: KeySounds) => ({
+    source: { ...typing, file: audio('b.wav'), duration },
+    keySounds,
+  });
+
   it('names the keys past the end, and the new length', () => {
+    const keySounds = sounds({
+      KeyA: { source: 's1', press: [100, 600] },
+      KeyS: { source: 's1', press: [500, 900] },
+      KeyD: { source: 's1', press: [0, 300] },
+    });
     expect(
-      replaceWarning('a.wav', 'b.wav', 0.4, ['KeyA', 'KeyS'], 'key'),
+      replaceWarning('a.wav', replaced(0.4, keySounds), false, 'key'),
     ).toEqual({
       title: 'Replace a.wav with b.wav?',
       message:
         '2 keys play past the end of b.wav, which is 0.4\u00a0s long: A, S. They would be cut short or silent.',
+      confirmTone: 'error',
     });
   });
 
   it('speaks of one button', () => {
+    const keySounds = sounds({ MouseLeft: { source: 's1', press: [0, 900] } });
     expect(
-      replaceWarning('a.wav', 'b.wav', 0.4, ['MouseLeft'], 'button').message,
+      replaceWarning('a.wav', replaced(0.4, keySounds), false, 'button')
+        ?.message,
     ).toBe(
       '1 button plays past the end of b.wav, which is 0.4\u00a0s long: Left button. It would be cut short or silent.',
     );
+  });
+
+  it('counts the keys that would play all of a file past 2 s', () => {
+    const keySounds = sounds({
+      KeyA: { source: 's1', press: [0, 240000] },
+      KeyS: { source: 's1', press: WHOLE_FILE },
+      // Cut from the file, so not all of it.
+      KeyD: { source: 's1', press: [0, 240000], release: [100, 200] },
+      KeyF: { source: 's2', press: [0, 240000] },
+    });
+    expect(
+      replaceWarning('a.wav', replaced(240, keySounds), false, 'key'),
+    ).toEqual({
+      title: 'Replace a.wav with b.wav?',
+      message: 'b.wav is 4\u00a0min long. 2 keys would play all of it.',
+      confirmTone: 'primary',
+    });
+  });
+
+  it('asks for a file of one sound past 2 s that no key plays yet', () => {
+    expect(
+      replaceWarning('a.wav', replaced(4, new Map()), true, 'button')?.message,
+    ).toBe('b.wav is 4\u00a0s long. Every button would play all of it.');
+  });
+
+  it('asks nothing up to 2 s, or for parts cut from a recording', () => {
+    const whole = sounds({ KeyA: { source: 's1', press: [0, 2000] } });
+    expect(replaceWarning('a.wav', replaced(2, whole), true, 'key')).toBeNull();
+    const part = sounds({ KeyA: { source: 's1', press: [100, 200] } });
+    expect(
+      replaceWarning('a.wav', replaced(240, part), false, 'key'),
+    ).toBeNull();
   });
 });

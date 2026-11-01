@@ -1,4 +1,4 @@
-import { playsWholeFile } from '@/lib/fileKinds';
+import { LONG_FILE_SECONDS, playsWholeFile } from '@/lib/fileKinds';
 import { keyLabel } from '@/lib/keyNames';
 import { plural } from '@/lib/utils';
 import { formatLengthInText } from '@/utils/audioUtils';
@@ -63,17 +63,62 @@ export function keysPastEnd(
   return [...own.keys()].filter((code) => past.has(code));
 }
 
-/** What to ask before new audio leaves keys playing past its end. */
+/** The keys of `sourceId` that play all of its file, `seconds` long. */
+function keysPlayingAll(
+  sourceId: string,
+  seconds: number,
+  keySounds: KeySounds,
+) {
+  return [...keySounds]
+    .filter(
+      ([, sound]) =>
+        sound.source === sourceId &&
+        !sound.release &&
+        playsWholeFile(sound.press, seconds),
+    )
+    .map(([code]) => code);
+}
+
+/**
+ * What to ask before new audio takes the place of `oldName`'s, from the file
+ * and keys `replaceSourceFile` made: keys that would run past its end, and
+ * keys that would play all of a file longer than `LONG_FILE_SECONDS`, as the
+ * keys a file of one sound is given later would. Null when there is nothing
+ * to ask.
+ */
 export function replaceWarning(
   oldName: string,
-  newName: string,
-  seconds: number,
-  codes: readonly string[],
+  replaced: { source: AudioSource; keySounds: KeySounds },
+  isOneSound: boolean,
   noun: string,
 ) {
-  const one = codes.length === 1;
+  const { source, keySounds } = replaced;
+  const newName = source.file.name;
+  const length = formatLengthInText(source.duration);
+  const pastEnd = keysPastEnd(source.id, [source], keySounds);
+  const playingAll = keysPlayingAll(source.id, source.duration, keySounds);
+  const isLong =
+    source.duration > LONG_FILE_SECONDS &&
+    (playingAll.length > 0 || isOneSound);
+  if (pastEnd.length === 0 && !isLong) return null;
+  const sentences: string[] = [];
+  if (pastEnd.length > 0) {
+    const one = pastEnd.length === 1;
+    sentences.push(
+      `${plural(pastEnd.length, noun)} ${one ? 'plays' : 'play'} past the end of ${newName}, which is ${length} long: ${listKeys(pastEnd.map(keyLabel))}. ${one ? 'It' : 'They'} would be cut short or silent.`,
+    );
+  }
+  if (isLong) {
+    const who =
+      playingAll.length > 0 ? plural(playingAll.length, noun) : `Every ${noun}`;
+    sentences.push(
+      `${pastEnd.length > 0 ? '' : `${newName} is ${length} long. `}${who} would play all of it.`,
+    );
+  }
   return {
     title: `Replace ${oldName} with ${newName}?`,
-    message: `${plural(codes.length, noun)} ${one ? 'plays' : 'play'} past the end of ${newName}, which is ${formatLengthInText(seconds)} long: ${listKeys(codes.map(keyLabel))}. ${one ? 'It' : 'They'} would be cut short or silent.`,
+    message: sentences.join(' '),
+    // Keys cut short lose sound; keys playing all of a long file lose none.
+    confirmTone: pastEnd.length > 0 ? ('error' as const) : ('primary' as const),
   };
 }
