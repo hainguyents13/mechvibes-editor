@@ -5,15 +5,27 @@ import {
   applyReleaseToKeys,
   clearKeySounds,
   formatDuration,
+  formatLength,
+  giveFilesToKeysInOrder,
+  giveFilesToTheirKeys,
   isMediaFile,
   isValidWaveformSelection,
   keysAcceptingRelease,
+  keysToFill,
   mediaTypeOf,
+  oneSoundSegment,
   removeReleaseFromKeys,
+  sharedPressSegment,
+  spreadFilesAcrossKeys,
   VIDEO_FILE_ACCEPT,
   withMediaType,
 } from '@/utils/audioUtils';
-import { type KeySound, type KeySounds, WHOLE_FILE } from '@/utils/soundPack';
+import {
+  type AudioSource,
+  type KeySound,
+  type KeySounds,
+  WHOLE_FILE,
+} from '@/utils/soundPack';
 
 const keySounds = () =>
   new Map<string, KeySound>([
@@ -65,6 +77,29 @@ describe('applyPressToKeys', () => {
     );
     expect(result.get('KeyB')).toBe(input.get('KeyB'));
     expect(result.get('KeyC')).toBe(input.get('KeyC'));
+  });
+  it('returns the same map when every key already plays that sound', () => {
+    const input = keySounds();
+    // KeyA keeps its release from the same file, so nothing changes.
+    expect(applyPressToKeys(['KeyA'], 'a', [0, 50], input)).toBe(input);
+    expect(applyPressToKeys(['KeyC', 'KeyC'], 'a', [100, 150], input)).toBe(
+      input,
+    );
+    expect(applyPressToKeys([], 'a', [0, 50], input)).toBe(input);
+  });
+
+  it('changes a key whose sound differs in any part', () => {
+    const input = keySounds();
+    expect(applyPressToKeys(['KeyC'], 'a', [100, 151], input)).not.toBe(input);
+    expect(applyPressToKeys(['KeyC'], 'b', [100, 150], input)).not.toBe(input);
+    // Same press from another file's key: that key loses its release.
+    const withRelease = new Map(input).set('KeyD', {
+      source: 'b',
+      press: [100, 150],
+      release: [150, 200],
+    });
+    const result = applyPressToKeys(['KeyD'], 'a', [100, 150], withRelease);
+    expect(result.get('KeyD')).toEqual({ source: 'a', press: [100, 150] });
   });
 });
 
@@ -259,5 +294,185 @@ describe('withMediaType', () => {
     const other = new File([], 'notes.txt');
     expect(withMediaType(typed)).toBe(typed);
     expect(withMediaType(other)).toBe(other);
+  });
+});
+
+describe('formatLength', () => {
+  it.each([
+    [0.04, '0.04 s'],
+    [0.3, '0.3 s'],
+    [0.25, '0.3 s'],
+    [1, '1 s'],
+    [1.5, '1.5 s'],
+    [9.96, '10 s'],
+    [12.4, '12 s'],
+    [59.6, '1 min'],
+    [252, '4 min 12 s'],
+    [600, '10 min'],
+  ])('reads %s seconds as %s', (seconds, text) => {
+    expect(formatLength(seconds)).toBe(text);
+  });
+});
+
+const source = (id: string, name: string, duration: number): AudioSource => ({
+  id,
+  file: new File([], name, { type: 'audio/wav' }),
+  duration,
+  colorIndex: 0,
+});
+
+describe('sharedPressSegment and oneSoundSegment', () => {
+  it('finds the one part every key of a file plays', () => {
+    const sounds: KeySounds = new Map([
+      ['KeyA', { source: 'a', press: [10, 300] }],
+      ['KeyB', { source: 'a', press: [10, 300] }],
+      ['KeyC', { source: 'b', press: [0, 50] }],
+    ]);
+    expect(sharedPressSegment('a', sounds)).toEqual([10, 300]);
+    expect(oneSoundSegment(source('a', 'a.wav', 0.5), sounds)).toEqual([
+      10, 300,
+    ]);
+  });
+
+  it('plays the whole file when keys differ or none plays it', () => {
+    const sounds: KeySounds = new Map([
+      ['KeyA', { source: 'a', press: [0, 100] }],
+      ['KeyB', { source: 'a', press: [100, 200] }],
+    ]);
+    expect(sharedPressSegment('a', sounds)).toBeNull();
+    expect(sharedPressSegment('b', sounds)).toBeNull();
+    expect(oneSoundSegment(source('a', 'a.wav', 0.5), sounds)).toEqual([
+      0, 500,
+    ]);
+    expect(oneSoundSegment(source('b', 'b.wav', 0.25), sounds)).toEqual([
+      0, 250,
+    ]);
+  });
+
+  it('plays a file of unknown length whole, without timing', () => {
+    expect(oneSoundSegment(source('a', 'a.wav', 0), new Map())).toEqual(
+      WHOLE_FILE,
+    );
+  });
+});
+
+describe('giveFilesToTheirKeys', () => {
+  const a = source('a', 'a.wav', 0.3);
+  const shift = source('shift', 'shift.wav', 0.2);
+
+  it('gives each file the keys its name matched, whole', () => {
+    const result = giveFilesToTheirKeys(
+      [
+        { source: a, codes: ['KeyA'] },
+        { source: shift, codes: ['ShiftLeft', 'ShiftRight'] },
+      ],
+      new Map(),
+    );
+    expect(Object.fromEntries(result)).toEqual({
+      KeyA: { source: 'a', press: [0, 300] },
+      ShiftLeft: { source: 'shift', press: [0, 200] },
+      ShiftRight: { source: 'shift', press: [0, 200] },
+    });
+  });
+
+  it('replaces the sound a key had, release and all', () => {
+    const input: KeySounds = new Map([
+      ['KeyA', { source: 'rec', press: [0, 50], release: [50, 90] }],
+    ]);
+    const result = giveFilesToTheirKeys(
+      [{ source: a, codes: ['KeyA'] }],
+      input,
+    );
+    expect(result.get('KeyA')).toEqual({ source: 'a', press: [0, 300] });
+  });
+
+  it('reuses the part the file already plays on its keys', () => {
+    const input: KeySounds = new Map([
+      ['KeyQ', { source: 'a', press: [20, 120] }],
+    ]);
+    const result = giveFilesToTheirKeys(
+      [{ source: a, codes: ['KeyA'] }],
+      input,
+    );
+    expect(result.get('KeyA')).toEqual({ source: 'a', press: [20, 120] });
+  });
+
+  it('returns the same map when every key already plays its file', () => {
+    const input = giveFilesToTheirKeys(
+      [{ source: a, codes: ['KeyA'] }],
+      new Map(),
+    );
+    expect(giveFilesToTheirKeys([{ source: a, codes: ['KeyA'] }], input)).toBe(
+      input,
+    );
+  });
+});
+
+describe('keysToFill', () => {
+  const layout = ['KeyQ', 'KeyW', 'KeyE', 'KeyA'];
+  const sounds: KeySounds = new Map([['KeyW', { source: 'a', press: [0, 1] }]]);
+
+  it('fills the selected keys, in layout order', () => {
+    expect(keysToFill(layout, ['KeyA', 'KeyW'], sounds)).toEqual([
+      'KeyW',
+      'KeyA',
+    ]);
+  });
+
+  it('fills the silent keys when none is selected', () => {
+    expect(keysToFill(layout, [], sounds)).toEqual(['KeyQ', 'KeyE', 'KeyA']);
+  });
+});
+
+describe('spreadFilesAcrossKeys and giveFilesToKeysInOrder', () => {
+  const clicks = [
+    source('c10', 'click10.wav', 0.1),
+    source('c2', 'click2.wav', 0.1),
+    source('c1', 'click1.wav', 0.1),
+  ];
+  const keys = ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT'];
+  const sourceOf = (sounds: KeySounds) =>
+    Object.fromEntries([...sounds].map(([code, { source }]) => [code, source]));
+
+  it('spreads files round the keys in name order', () => {
+    const result = spreadFilesAcrossKeys(clicks, keys, new Map());
+    expect(sourceOf(result)).toEqual({
+      KeyQ: 'c1',
+      KeyW: 'c2',
+      KeyE: 'c10',
+      KeyR: 'c1',
+      KeyT: 'c2',
+    });
+    expect(result.get('KeyQ')).toEqual({ source: 'c1', press: [0, 100] });
+  });
+
+  it('gives files one key each and leaves the rest of either alone', () => {
+    const input: KeySounds = new Map([
+      ['KeyT', { source: 'x', press: [0, 5] }],
+    ]);
+    const fewerKeys = giveFilesToKeysInOrder(clicks, ['KeyQ', 'KeyW'], input);
+    expect(sourceOf(fewerKeys)).toEqual({ KeyQ: 'c1', KeyW: 'c2', KeyT: 'x' });
+    const moreKeys = giveFilesToKeysInOrder(clicks, keys, input);
+    expect(sourceOf(moreKeys)).toEqual({
+      KeyQ: 'c1',
+      KeyW: 'c2',
+      KeyE: 'c10',
+      KeyT: 'x',
+    });
+  });
+
+  it('drops a release from another file, as giving a press does', () => {
+    const input: KeySounds = new Map([
+      ['KeyQ', { source: 'rec', press: [0, 50], release: [50, 90] }],
+    ]);
+    const result = spreadFilesAcrossKeys(clicks, ['KeyQ'], input);
+    expect(result.get('KeyQ')).toEqual({ source: 'c1', press: [0, 100] });
+  });
+
+  it('returns the same map when nothing changes', () => {
+    const input = spreadFilesAcrossKeys(clicks, keys, new Map());
+    expect(spreadFilesAcrossKeys(clicks, keys, input)).toBe(input);
+    expect(giveFilesToKeysInOrder([], keys, input)).toBe(input);
+    expect(spreadFilesAcrossKeys(clicks, [], input)).toBe(input);
   });
 });

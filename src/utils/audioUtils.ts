@@ -1,9 +1,12 @@
 import {
+  type AudioSource,
+  compareFileNames,
   getExtension,
   isWholeFile,
   type KeySound,
   type KeySounds,
   type Segment,
+  WHOLE_FILE,
 } from '@/utils/soundPack';
 
 // Types for media files the browser hands over without one: Windows often
@@ -152,9 +155,29 @@ export const formatDuration = (seconds: number): string => {
 };
 
 /**
+ * A file's length in words: "0.3 s", "12 s", "4 min 12 s". Short files read
+ * to a tenth of a second, the shortest to a hundredth.
+ */
+export const formatLength = (seconds: number): string => {
+  if (seconds < 0.1) return `${Number(seconds.toFixed(2))} s`;
+  if (seconds < 9.95) return `${Number(seconds.toFixed(1))} s`;
+  const total = Math.round(seconds);
+  if (total < 60) return `${total} s`;
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return secs === 0 ? `${mins} min` : `${mins} min ${secs} s`;
+};
+
+const isSameSegment = (a: Segment | undefined, b: Segment | undefined) =>
+  a === b ||
+  (a !== undefined && b !== undefined && a[0] === b[0] && a[1] === b[1]);
+
+/**
  * Give keys a press sound from `source`. A key that already had a release
  * sound from the same source keeps it; one from another source loses it,
- * because both halves of a key's sound come from one file.
+ * because both halves of a key's sound come from one file. Returns
+ * `keySounds` itself when every key already plays that sound, so giving it
+ * again records no change.
  */
 export const applyPressToKeys = (
   keyCodes: string[],
@@ -162,17 +185,139 @@ export const applyPressToKeys = (
   segment: Segment,
   keySounds: KeySounds,
 ): KeySounds => {
-  const next = new Map(keySounds);
+  let next: KeySounds | null = null;
   for (const code of keyCodes) {
     const current = keySounds.get(code);
     const sound: KeySound = { source, press: segment };
     if (current?.source === source && current.release) {
       sound.release = current.release;
     }
+    if (
+      current?.source === source &&
+      isSameSegment(current.press, sound.press) &&
+      isSameSegment(current.release, sound.release)
+    ) {
+      continue;
+    }
+    next ??= new Map(keySounds);
     next.set(code, sound);
   }
-  return next;
+  return next ?? keySounds;
 };
+
+/**
+ * The press segment every key that plays `sourceId` shares, or null when no
+ * key plays it or they play different parts of it.
+ */
+export const sharedPressSegment = (
+  sourceId: string,
+  keySounds: KeySounds,
+): Segment | null => {
+  let shared: Segment | null = null;
+  for (const { source, press } of keySounds.values()) {
+    if (source !== sourceId) continue;
+    if (shared === null) shared = press;
+    else if (!isSameSegment(shared, press)) return null;
+  }
+  return shared;
+};
+
+/**
+ * The segment a key gets from a file that is one sound: the part its keys
+ * already share, so a new key sounds like them, else the whole file. A file
+ * of unknown length plays whole without timing.
+ */
+export const oneSoundSegment = (
+  source: Pick<AudioSource, 'id' | 'duration'>,
+  keySounds: KeySounds,
+): Segment =>
+  sharedPressSegment(source.id, keySounds) ??
+  (source.duration > 0 ? [0, source.duration * 1000] : WHOLE_FILE);
+
+/**
+ * Give each file the keys its name matched, each as one sound. Returns
+ * `keySounds` itself when every key already plays its file.
+ */
+export const giveFilesToTheirKeys = (
+  matches: readonly { source: AudioSource; codes: string[] }[],
+  keySounds: KeySounds,
+): KeySounds =>
+  matches.reduce(
+    (next, { source, codes }) =>
+      applyPressToKeys(
+        codes,
+        source.id,
+        oneSoundSegment(source, keySounds),
+        next,
+      ),
+    keySounds,
+  );
+
+/**
+ * The keys a spread or an in-order give fills, in layout order: the selected
+ * ones, or with none selected, the drawn keys that have no sound.
+ */
+export const keysToFill = (
+  layoutCodes: Iterable<string>,
+  selectedCodes: readonly string[],
+  keySounds: KeySounds,
+) => {
+  const selected = new Set(selectedCodes);
+  return [...layoutCodes].filter((code) =>
+    selected.size > 0 ? selected.has(code) : !keySounds.has(code),
+  );
+};
+
+// Files in name order onto `targetCodes`: round and round when `cycle`, else
+// one key each until either runs out.
+function giveInTurn(
+  sources: readonly AudioSource[],
+  targetCodes: readonly string[],
+  keySounds: KeySounds,
+  cycle: boolean,
+) {
+  const ordered = [...sources].sort((a, b) =>
+    compareFileNames(a.file.name, b.file.name),
+  );
+  if (ordered.length === 0) return keySounds;
+  const count = cycle
+    ? targetCodes.length
+    : Math.min(targetCodes.length, ordered.length);
+  const codesBySource = new Map<AudioSource, string[]>();
+  for (let index = 0; index < count; index++) {
+    const source = ordered[index % ordered.length];
+    const codes = codesBySource.get(source) ?? [];
+    codes.push(targetCodes[index]);
+    codesBySource.set(source, codes);
+  }
+  let next = keySounds;
+  for (const [source, codes] of codesBySource) {
+    next = applyPressToKeys(
+      codes,
+      source.id,
+      oneSoundSegment(source, keySounds),
+      next,
+    );
+  }
+  return next;
+}
+
+/** Spread similar files across keys, in turn, so each key plays one of them. */
+export const spreadFilesAcrossKeys = (
+  sources: readonly AudioSource[],
+  targetCodes: readonly string[],
+  keySounds: KeySounds,
+): KeySounds => giveInTurn(sources, targetCodes, keySounds, true);
+
+/**
+ * Give files to keys one each, in name order (key_2 before key_10). Files
+ * left over keep no key; keys left over stay as they are.
+ */
+export const giveFilesToKeysInOrder = (
+  sources: readonly AudioSource[],
+  targetCodes: readonly string[],
+  keySounds: KeySounds,
+): KeySounds => giveInTurn(sources, targetCodes, keySounds, false);
 
 /**
  * Keys that can take a release sound from `source`: those whose press sound
