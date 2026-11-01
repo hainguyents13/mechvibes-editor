@@ -64,8 +64,23 @@ export function AudioFileSelector({
   videoRef,
 }: AudioFileSelectorProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const listRef = React.useRef<HTMLUListElement>(null);
   const [pendingRemoval, setPendingRemoval] =
     React.useState<AudioSource | null>(null);
+
+  // The open file's row stays in view: an add opens a file at the end of a
+  // long list, and a selected key opens the file it plays. Only the list
+  // scrolls, not the page around it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a file added or removed moves the row too
+  React.useLayoutEffect(() => {
+    const list = listRef.current;
+    const row = list?.querySelector<HTMLElement>('[data-active]');
+    if (!list || !row) return;
+    const view = list.getBoundingClientRect();
+    const { top, bottom } = row.getBoundingClientRect();
+    if (top < view.top) list.scrollTop -= view.top - top;
+    else if (bottom > view.bottom) list.scrollTop += bottom - view.bottom;
+  }, [activeSourceId, sources.length]);
 
   const addFiles = (files: FileList | null) => {
     const media = Array.from(files ?? []).filter(isMediaFile);
@@ -134,6 +149,7 @@ export function AudioFileSelector({
           shown beside the list. Stacked, a long list scrolls on its own, so
           the open file's controls stay near. */}
       <ul
+        ref={listRef}
         className={cn(
           'min-h-0 overflow-y-auto flex flex-col gap-2',
           isVideo ? 'shrink-0 max-h-28' : 'flex-1 max-lg:max-h-72',
@@ -158,6 +174,7 @@ export function AudioFileSelector({
           return (
             <li
               key={source.id}
+              data-active={isActive || undefined}
               className={cn(
                 'flex items-center gap-1 rounded-box border border-l-4',
                 color.bg,
