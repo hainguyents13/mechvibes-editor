@@ -144,37 +144,13 @@ export function TimeSegmentControls({
 
   return (
     <>
-      {groupMatches.length > 0 && (
-        <fieldset className="fieldset py-0 px-4 shrink-0 min-w-0">
-          <legend className="fieldset-legend">
-            <h2 className="text-xs font-medium text-base-content">
-              Quick select
-            </h2>
-          </legend>
-          <div className="flex flex-wrap items-center gap-2">
-            {groupMatches.map(({ group, ids }) => (
-              <button
-                type="button"
-                key={group.id}
-                className={cn(
-                  'btn btn-sm rounded-box',
-                  isGroupSelected(ids) ? 'btn-active' : '',
-                )}
-                onClick={() => selectGroup(ids)}
-                title={`Select all ${ids.size} ${group.label}`}
-              >
-                {group.label} ({group.hint})
-              </button>
-            ))}
-          </div>
-        </fieldset>
-      )}
-
-      {/* Pinned to the bottom of a panel too short for everything, so Apply
-      stays in sight while what is above it scrolls. The bottom padding is
-      the panel's own, lent to the pinned row and handed back below it; side
-      by side, the row pins over that padding too. A wrapper carries the
-      background, which a fieldset leaves off above its legend's middle. */}
+      {/* Right under the waveform, with Quick select below, so a short panel
+      cuts the chips rather than Apply. A panel too short even for this row
+      pins it to its bottom while what is above it scrolls. The bottom
+      padding is the panel's own, lent to the pinned row and handed back
+      below it; side by side, the row pins over that padding too. A wrapper
+      carries the background, which a fieldset leaves off above its legend's
+      middle. */}
       <div className="panel-pinned-row sticky bottom-0 lg:-bottom-3 z-10 -mb-3 shrink-0 min-w-0">
         <div className="editor-panel-surface pb-3">
           <fieldset className="fieldset py-0 px-4 min-w-0">
@@ -431,6 +407,32 @@ export function TimeSegmentControls({
           </fieldset>
         </div>
       </div>
+
+      {groupMatches.length > 0 && (
+        <fieldset className="fieldset py-0 px-4 shrink-0 min-w-0">
+          <legend className="fieldset-legend">
+            <h2 className="text-xs font-medium text-base-content">
+              Quick select
+            </h2>
+          </legend>
+          <div className="flex flex-wrap items-center gap-2">
+            {groupMatches.map(({ group, ids }) => (
+              <button
+                type="button"
+                key={group.id}
+                className={cn(
+                  'btn btn-sm rounded-box',
+                  isGroupSelected(ids) ? 'btn-active' : '',
+                )}
+                onClick={() => selectGroup(ids)}
+                title={`Select all ${ids.size} ${group.label}`}
+              >
+                {group.label} ({group.hint})
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       {showResetConfirm && (
         <dialog

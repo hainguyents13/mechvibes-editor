@@ -2415,6 +2415,13 @@ export function EditorPage() {
                         />
                       </div>
                     )}
+                    {/* The column's bottom padding, kept over what the panel is
+                    too short for, so cut content fades out at the edge
+                    rather than ending in a sliver. */}
+                    <div
+                      aria-hidden
+                      className="editor-panel-surface mask-t-from-0% pointer-events-none sticky bottom-0 lg:-bottom-3 z-10 -mb-3 h-3"
+                    />
                   </div>
                 </div>
               </div>
