@@ -22,6 +22,9 @@ function formatLabel(file: File): string {
   return (subtype.replace(/^x-/, '') || 'unknown').toUpperCase();
 }
 
+/** Takes the focus when the first file comes in and the ways to add one go. */
+export const SOURCES_HEADING_ID = 'audio-sources-heading';
+
 // Files dropped here reach the page-wide drop handler, which adds them the
 // same way as the file picker.
 export function AudioFileSelector({
@@ -76,7 +79,11 @@ export function AudioFileSelector({
   return (
     <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2 shrink-0">
-        <h2 className="text-xs font-medium text-base-content">
+        <h2
+          id={SOURCES_HEADING_ID}
+          tabIndex={-1}
+          className="text-xs font-medium text-base-content focus:outline-none"
+        >
           Audio sources ({sources.length})
         </h2>
         <button

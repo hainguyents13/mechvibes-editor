@@ -211,6 +211,7 @@ function PackControls({
       {onUpdate && (
         <div
           className="tooltip tooltip-bottom"
+          data-tour="update"
           data-tip="Publish these changes as the pack's next revision"
         >
           <button
@@ -274,8 +275,9 @@ function PackTypeChip({
       ]}
     >
       <Icon className="h-3.5 w-3.5" />
-      {/* Named from lg; below that the icon says it and the pack name keeps the room */}
-      <span className="hidden lg:inline">{packType} pack</span>
+      {/* Named at every width: an icon alone does not say this sets the
+      pack's type. The pack name beside it gives up room first. */}
+      <span>{packType} pack</span>
       <ChevronDown className="h-3 w-3" />
     </NavbarMenu>
   );

@@ -96,6 +96,9 @@ function AddTile({
       <div className="mt-auto pt-3">
         <button
           type="button"
+          // Named with its tile, so the three tell apart in a list of
+          // buttons: Choose file and Choose files differ by one letter.
+          aria-label={`${tile.action}: ${tile.title}`}
           // The workspace opens under the pointer that chose Keyboard or
           // Mouse, so the second click of a double click would land here.
           onClick={(event) => {
@@ -126,6 +129,9 @@ function AddTile({
   );
 }
 
+/** Takes the focus when the last file goes and these ways in come back. */
+export const ADD_SOUNDS_HEADING_ID = 'add-sounds-heading';
+
 /**
  * The empty workspace: ways to add the pack's first sounds, each opening a
  * file picker that fits it. A drop anywhere on the page works too.
@@ -144,10 +150,14 @@ export function AddSoundsPanel({
       className="shrink-0 max-h-[60dvh] overflow-y-auto editor-panel-surface border-t-2 border-base-content/20"
     >
       <div className="mx-auto w-full max-w-4xl px-4 py-4">
-        <h2 className="text-center text-sm font-semibold">
+        <h2
+          id={ADD_SOUNDS_HEADING_ID}
+          tabIndex={-1}
+          className="text-center text-sm font-semibold focus:outline-none"
+        >
           What sounds do you have?
         </h2>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div data-tour="add-tiles" className="mt-3 grid gap-3 md:grid-cols-3">
           {tilesFor(packType).map((tile) => (
             <AddTile
               key={tile.title}
@@ -160,7 +170,7 @@ export function AddSoundsPanel({
           ))}
         </div>
         <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs text-base-content/60">
-          <p>
+          <p data-tour="drop">
             Or drop files anywhere. MP3, WAV, OGG, FLAC, M4A, MP4, WEBM, MOV
           </p>
           {packType === 'Mouse' && (

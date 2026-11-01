@@ -10,8 +10,14 @@ import { ConfirmDiscardModal } from '@/components/ConfirmDiscardModal';
 import { ConfirmPackTypeModal } from '@/components/ConfirmPackTypeModal';
 import { EditorNavbar } from '@/components/EditorNavbar';
 import { EditPackModal } from '@/components/EditPackModal';
-import { AddSoundsPanel } from '@/components/editor/AddSoundsPanel';
-import { AudioFileSelector } from '@/components/editor/AudioFileSelector';
+import {
+  ADD_SOUNDS_HEADING_ID,
+  AddSoundsPanel,
+} from '@/components/editor/AddSoundsPanel';
+import {
+  AudioFileSelector,
+  SOURCES_HEADING_ID,
+} from '@/components/editor/AudioFileSelector';
 import { HiddenKeysTray } from '@/components/editor/HiddenKeysTray';
 import {
   codesOfOtherKind,
@@ -58,6 +64,7 @@ import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { useSessionFlag } from '@/hooks/useSessionFlag';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
+import { autoTourFlow, hasSeenTour, type TourFlow } from '@/lib/editorTourFlow';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
   backToStart,
@@ -83,6 +90,7 @@ import {
   countDrawnKeys,
   getVisibility,
   getWorkspaceStage,
+  type WorkspaceStage,
 } from '@/lib/workspaceVisibility';
 import {
   clearKeySounds,
@@ -155,6 +163,8 @@ const DEFAULT_KEYBOARD_RESERVED_HEIGHT = 360;
  */
 const STACKED_PANEL_CONTROLS_HEIGHT = 390;
 const PANEL_RESIZE_STEP = 16;
+/** The panels' collapse takes ~320ms (index.css); the tour waits it out. */
+const AUTO_TOUR_DELAY_MS = 400;
 const PANEL_HEIGHT_STORAGE_KEY = 'mechvibes-editor:panel-height';
 
 function clamp(value: number, min: number, max: number) {
@@ -314,6 +324,9 @@ export function EditorPage() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   // Set when a pack is opened, for Try it to draw the eye for a moment.
   const [emphasizeTryIt, setEmphasizeTryIt] = useState(false);
+  // The tour asked to open by itself on entering a pack, until it does or
+  // is passed over.
+  const [autoTour, setAutoTour] = useState<TourFlow | null>(null);
   // config.id of an imported zip, kept on export. The editor never invents
   // one: the library issues ids, and the app mints imported-<uuid> otherwise.
   const [loadedPackId, setLoadedPackId] = useState<string | null>(null);
@@ -585,6 +598,21 @@ export function EditorPage() {
     [keySounds, layout],
   );
 
+  // Release is a choice made for keys that have a press. Without the switch
+  // the controls assign presses, and once it shows again it starts on Press:
+  // applying a press to a silent key must not turn the next Apply into a
+  // release the visitor never picked.
+  useEffect(() => {
+    if (!visibility.pressReleaseToggle) setSoundSlot('press');
+  }, [visibility.pressReleaseToggle]);
+
+  // The keyboard of a pack with no file takes no clicks or keys, so a
+  // selection left on it (an Undo of the only file) could not be cleared
+  // there, and would come back unseen with the next file.
+  useEffect(() => {
+    if (visibility.stage === 'no-files') setSelectedKeys(new Set());
+  }, [visibility.stage, setSelectedKeys]);
+
   // Height the rows around the keyboard take, each with the column's 12px gap:
   // the settings row above, then the hidden-keys tray and the legend below,
   // when shown. Fixed rather than measured: those rows derive
@@ -778,6 +806,7 @@ export function EditorPage() {
     setWaveformSelection({ start: 0, end: 0 });
     setNotice(null);
     setEmphasizeTryIt(false);
+    setAutoTour(null);
   }, [setSelectedKeys]);
 
   // Start a new history from `snapshot` with nothing unsaved. `published` is what the library holds.
@@ -901,7 +930,12 @@ export function EditorPage() {
     resetView();
     startFrom(createBlankSnapshot(packType), null);
     enterWorkspace();
-    if (files.length > 0) handleAddSources(files);
+    // Files on their way skip the empty pack the tour would show.
+    if (files.length > 0) {
+      handleAddSources(files);
+    } else {
+      setAutoTour('new-pack');
+    }
   };
 
   const confirmDiscard = () => {
@@ -944,6 +978,15 @@ export function EditorPage() {
     setActiveSourceId(imported.sources[0]?.id ?? null);
     // A pack that opens already makes sound: point at the way to hear it.
     setEmphasizeTryIt(true);
+    setAutoTour(
+      autoTourFlow(
+        getWorkspaceStage({
+          sourceCount: imported.sources.length,
+          keySounds: imported.keySounds,
+          packType: imported.info.packType,
+        }),
+      ),
+    );
     if (imported.warnings.length > 0) {
       setNotice({
         tone: 'error',
@@ -1222,17 +1265,53 @@ export function EditorPage() {
     return () => window.clearTimeout(timer);
   }, [emphasizeTryIt]);
 
-  // Guided tour of the workspace, opened from the Help menu. The start screen
-  // already says where to begin, so it never opens by itself.
-  const tourRef = useRef<ReturnType<typeof startEditorTour> | null>(null);
-  const startTour = () => {
+  // Guided tour of the workspace: every step from the Help menu, or the
+  // steps for the way in, opened by itself the first time a pack is entered.
+  const tourRef = useRef<ReturnType<typeof startEditorTour>>(null);
+  const startTour = (flow: TourFlow = 'all') => {
     tourRef.current?.destroy();
     tourRef.current = startEditorTour({
+      flow,
       signedIn: session.status === 'signed-in',
       stage: visibility.stage,
+      isMouse: isMousePack,
     });
   };
   useEffect(() => () => tourRef.current?.destroy(), []);
+
+  // Read when the delay below runs out, for the pack and account as they are then.
+  const startTourRef = useRef(startTour);
+  startTourRef.current = startTour;
+
+  // Not on a phone, not over a dialog or Try it, and not once this browser
+  // has seen the tour. Anything that changes meanwhile (a dialog, a file
+  // dropped, leaving the workspace) passes it over instead of postponing it.
+  useEffect(() => {
+    if (!autoTour) return;
+    if (
+      !isWorkspace ||
+      isPhone ||
+      isKeyboardOwnedElsewhere ||
+      autoTourFlow(visibility.stage) !== autoTour ||
+      hasSeenTour()
+    ) {
+      setAutoTour(null);
+      return;
+    }
+    // Once the keyboard has scaled to its space, so each step points at
+    // where its element ends up.
+    const timer = window.setTimeout(() => {
+      setAutoTour(null);
+      startTourRef.current(autoTour);
+    }, AUTO_TOUR_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    autoTour,
+    isWorkspace,
+    isPhone,
+    isKeyboardOwnedElsewhere,
+    visibility.stage,
+  ]);
 
   // The phone page hides the workspace, so nothing of it may go on running:
   // preview would play the keyboard, and the tour would point at nothing.
@@ -1301,6 +1380,27 @@ export function EditorPage() {
     focusedScreenRef.current = screen;
     document.getElementById(SCREEN_HEADING_ID)?.focus({ preventScroll: true });
   }, [screen]);
+
+  // The first file takes away the tiles, and removing the last one takes
+  // away the file list and puts the panel away. Focus inside them drops to
+  // the page, so it goes to the heading of what shows instead, for the Tab
+  // order and a screen reader to pick up there. Focus anywhere else stays.
+  // After the screen heading's effect, which owns the focus on entering.
+  const focusedStageRef = useRef<WorkspaceStage | null>(null);
+  useEffect(() => {
+    const previous = focusedStageRef.current;
+    focusedStageRef.current = isWorkspace ? visibility.stage : null;
+    if (previous === null || !isWorkspace) return;
+    const emptied = visibility.stage === 'no-files';
+    if (emptied === (previous === 'no-files')) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && !active.closest('[inert]')) {
+      return;
+    }
+    document
+      .getElementById(emptied ? ADD_SOUNDS_HEADING_ID : SOURCES_HEADING_ID)
+      ?.focus({ preventScroll: true });
+  }, [isWorkspace, visibility.stage]);
 
   // The browser's Back and Forward move between the start screens. Leaving
   // the workspace that way asks first when there is work to lose.
@@ -1553,7 +1653,7 @@ export function EditorPage() {
                       ? handleUpdate
                       : undefined,
                     isUpdating,
-                    onStartTour: startTour,
+                    onStartTour: () => startTour(),
                     onShowShortcuts: () => setShowShortcuts(true),
                     undoLabel,
                     redoLabel,
@@ -1755,7 +1855,11 @@ export function EditorPage() {
               >
                 <h2 className="sr-only">Keyboard settings</h2>
                 <div className="flex h-6 items-center justify-between gap-4">
-                  <NextStep stage={visibility.stage} />
+                  <NextStep
+                    stage={visibility.stage}
+                    packType={packInfo.packType}
+                    isTouch={isCoarsePointer}
+                  />
                   {visibility.keyboardSize && (
                     <div className="flex shrink-0 items-center gap-4">
                       <div className="join">

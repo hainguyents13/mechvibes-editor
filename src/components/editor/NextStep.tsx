@@ -1,22 +1,43 @@
 import type { WorkspaceStage } from '@/lib/workspaceVisibility';
+import type { PackType } from '@/utils/soundPack';
 
-const NEXT_STEPS: Record<WorkspaceStage, string> = {
-  'no-files': 'add your sounds.',
-  'no-sounds': 'pick a sound on the waveform, select keys, then apply.',
-  'has-sounds': 'keep giving keys a sound, or press Try it and type.',
-};
+/**
+ * What to do next, for how far the pack has come. A mouse pack names its
+ * buttons, and a touch screen, where Try it plays what is tapped, says so.
+ */
+export function nextStepText({
+  stage,
+  packType,
+  isTouch,
+}: {
+  stage: WorkspaceStage;
+  packType: PackType;
+  isTouch: boolean;
+}) {
+  const isMouse = packType === 'Mouse';
+  const noun = isMouse ? 'button' : 'key';
+  switch (stage) {
+    case 'no-files':
+      return 'add your sounds.';
+    case 'no-sounds':
+      return `pick a sound on the waveform, select ${noun}s, then apply.`;
+    default: {
+      const tryIt = isTouch ? `tap the ${noun}s` : isMouse ? 'click' : 'type';
+      return `keep giving ${noun}s a sound, or press Try it and ${tryIt}.`;
+    }
+  }
+}
 
-/** What to do next, for how far the pack has come. Kept to one line. */
-export function NextStep({ stage }: { stage: WorkspaceStage }) {
-  const text = `Next: ${NEXT_STEPS[stage]}`;
+/** What to do next, kept to one line. */
+export function NextStep(props: Parameters<typeof nextStepText>[0]) {
+  const next = nextStepText(props);
   return (
     // Smaller below lg, where the row is only as wide as the screen.
     <p
       className="min-w-0 truncate text-xs lg:text-sm text-base-content/70"
-      title={text}
+      title={`Next: ${next}`}
     >
-      <span className="font-medium text-base-content">Next:</span>{' '}
-      {NEXT_STEPS[stage]}
+      <span className="font-medium text-base-content">Next:</span> {next}
     </p>
   );
 }
