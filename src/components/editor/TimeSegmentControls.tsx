@@ -82,7 +82,7 @@ export function TimeSegmentControls({
   const exactTimesId = React.useId();
   const exactTimesRef = React.useRef<HTMLDivElement>(null);
   const hasValidSelection = isValidWaveformSelection(waveformSelection);
-  // Whole file ends at the exact length; typed ends are whole milliseconds.
+  // A sound may end at the exact length; typed ends are whole milliseconds.
   const fileLengthMs = Math.ceil(audioDuration * 1000);
   const endsPastFile =
     audioDuration > 0 && waveformSelection.end > fileLengthMs;
@@ -174,22 +174,6 @@ export function TimeSegmentControls({
                   </div>
                 </div>
               )}
-              <div>
-                <button
-                  type="button"
-                  className="btn btn-sm rounded-box"
-                  onClick={() =>
-                    setWaveformSelection({
-                      start: 0,
-                      end: audioDuration * 1000,
-                    })
-                  }
-                  disabled={!(audioDuration > 0)}
-                  title="Select the whole file, for a file that holds one sound"
-                >
-                  Whole file
-                </button>
-              </div>
               <div>
                 <button
                   type="button"

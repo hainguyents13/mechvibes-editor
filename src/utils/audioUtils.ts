@@ -107,21 +107,60 @@ export const getDecodedDuration = async (file: File): Promise<number> => {
   }
 };
 
-/** Play part of a file once, outside preview. Returns a function that stops it. */
+/**
+ * The length of each file, read as an import reads it, once the browser has
+ * shown it can decode the sound; 0 for a file whose sound it cannot read.
+ * Decodes at most `limit` files at a time, and reports each one read.
+ */
+export const readSoundLengths = async (
+  files: readonly File[],
+  onRead: (count: number) => void,
+  limit = 4,
+): Promise<number[]> => {
+  const lengths = new Array<number>(files.length).fill(0);
+  let next = 0;
+  let read = 0;
+  const work = async () => {
+    while (next < files.length) {
+      const index = next++;
+      const decoded = await getDecodedDuration(files[index]);
+      // Metadata first, as on import, so a key given the whole file still
+      // ends within it when the pack is opened again.
+      lengths[index] =
+        decoded > 0 ? (await getAudioDuration(files[index])) || decoded : 0;
+      read += 1;
+      onRead(read);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, files.length) }, work),
+  );
+  return lengths;
+};
+
+/**
+ * Play part of a file once, outside preview. Returns a function that stops
+ * it; `onEnd` runs once, when it ends or is stopped.
+ */
 export const playFileSegment = (
   file: File,
   [startMs, endMs]: Segment,
+  onEnd?: () => void,
 ): (() => void) => {
   const media: HTMLMediaElement = file.type.startsWith('video/')
     ? document.createElement('video')
     : new Audio();
   const url = URL.createObjectURL(file);
   let timer = 0;
+  let stopped = false;
   const stop = () => {
+    if (stopped) return;
+    stopped = true;
     window.clearTimeout(timer);
     media.pause();
     media.removeAttribute('src');
     URL.revokeObjectURL(url);
+    onEnd?.();
   };
   media.addEventListener(
     'loadedmetadata',
