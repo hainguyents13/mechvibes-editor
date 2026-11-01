@@ -30,7 +30,7 @@ export function PackTypeScreen({
   onChoose: (packType: PackType) => void;
 }) {
   return (
-    <StartPage>
+    <StartPage centered>
       <BackButton onClick={onBack} />
       <ScreenHeading className="mt-4 text-center text-2xl md:text-3xl font-bold">
         {question(fileCount)}

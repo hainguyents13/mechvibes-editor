@@ -30,7 +30,7 @@ export const CARD_CLASS =
   'rounded-box border border-base-300 bg-base-100 transition-[border-color,box-shadow]';
 
 /** A card that is a button: it lifts under the pointer and under keyboard focus. */
-export const BUTTON_CARD_CLASS = `${CARD_CLASS} cursor-pointer hover:border-primary/60 hover:shadow-md focus-visible:border-primary/60 focus-visible:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`;
+export const BUTTON_CARD_CLASS = `${CARD_CLASS} cursor-pointer hover:border-primary/60 hover:shadow-lg focus-visible:border-primary/60 focus-visible:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`;
 
 export const SCREEN_HEADING_ID = 'screen-heading';
 

@@ -19,12 +19,12 @@ import {
 } from './StartPage';
 
 const ACTION_CLASS = `${STRETCHED_ACTION} cursor-pointer text-left text-sm font-semibold focus-visible:outline-none disabled:cursor-default disabled:text-base-content/60`;
-const CROSS_LINK_CLASS = 'link relative z-10 font-medium';
+const CROSS_LINK_CLASS = 'link relative z-10 font-medium whitespace-nowrap';
 
 // The card lifts while its action is hovered or keyboard-focused. Keyed on the
 // action rather than the card, so hovering a cross link leaves it at rest.
 const LIFT_WITH_ACTION_CLASS =
-  'has-[[data-card-action]:not(:disabled):hover]:border-primary/60 has-[[data-card-action]:not(:disabled):hover]:shadow-md has-[[data-card-action]:focus-visible]:border-primary/60 has-[[data-card-action]:focus-visible]:shadow-md has-[[data-card-action]:focus-visible]:outline-2 outline-offset-2 outline-primary';
+  'has-[[data-card-action]:not(:disabled):hover]:border-primary/60 has-[[data-card-action]:not(:disabled):hover]:shadow-lg has-[[data-card-action]:focus-visible]:border-primary/60 has-[[data-card-action]:focus-visible]:shadow-lg has-[[data-card-action]:focus-visible]:outline-2 outline-offset-2 outline-primary';
 
 /** What clicking a card does, named in a line at its foot. */
 type CardAction = {
