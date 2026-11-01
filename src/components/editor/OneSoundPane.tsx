@@ -29,6 +29,7 @@ export function OneSoundPane({
   isPlaying,
   onPlay,
   onGive,
+  given,
   selectedKeys,
   setSelectedKeys,
   selectedCodes,
@@ -48,6 +49,8 @@ export function OneSoundPane({
   onPlay: () => void;
   /** Give the file to the selected keys. */
   onGive: () => void;
+  /** The selected keys play the file already, so giving it changes nothing. */
+  given: boolean;
   selectedKeys: Set<string>;
   setSelectedKeys: React.Dispatch<React.SetStateAction<Set<string>>>;
   selectedCodes: string[];
@@ -100,8 +103,12 @@ export function OneSoundPane({
               type="button"
               className="btn btn-sm btn-primary rounded-box"
               onClick={onGive}
-              disabled={count === 0}
-              title={`Give ${source.file.name} to the selected ${noun}s, in place of the sound they have`}
+              disabled={count === 0 || given}
+              title={
+                given
+                  ? `The selected ${noun}s play ${source.file.name} already`
+                  : `Give ${source.file.name} to the selected ${noun}s, in place of the sound they have`
+              }
             >
               {count === 0
                 ? `Give to selected ${noun}s`

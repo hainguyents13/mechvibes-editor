@@ -2858,6 +2858,14 @@ export function EditorPage() {
                             giveToSelected(activeSource);
                             playSource(activeSource, true);
                           }}
+                          given={
+                            selectedCodes.length > 0 &&
+                            giveOneSoundToKeys(
+                              selectedCodes,
+                              activeSource,
+                              keySounds,
+                            ) === keySounds
+                          }
                           selectedKeys={selectedKeys}
                           setSelectedKeys={setSelectedKeys}
                           selectedCodes={selectedCodes}
