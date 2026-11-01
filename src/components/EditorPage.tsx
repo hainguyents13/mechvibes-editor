@@ -38,8 +38,8 @@ import {
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
 import { KeyboardShortcutsDialog } from '@/components/editor/KeyboardShortcuts';
 import {
-  KEY_LEGEND_HEIGHT,
-  KEY_LEGEND_WITH_COUNT_HEIGHT,
+  KEY_LEGEND_ROWS_HEIGHT,
+  KEY_LEGEND_ROWS_MIN_WIDTH,
   KeyLegend,
 } from '@/components/editor/KeyLegend';
 import {
@@ -54,6 +54,7 @@ import {
 } from '@/components/editor/MouseDisplay';
 import { NextStep } from '@/components/editor/NextStep';
 import { OneSoundPane } from '@/components/editor/OneSoundPane';
+import { ProgressLine } from '@/components/editor/ProgressLine';
 import { QUICK_SELECT_SELECTOR } from '@/components/editor/QuickSelect';
 import {
   type SoundSlot,
@@ -88,6 +89,7 @@ import {
 } from '@/lib/fileKinds';
 import { zipFolder } from '@/lib/folderFiles';
 import { guessPackType } from '@/lib/keyNames';
+import { getProgressItems } from '@/lib/progressLine';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
   asksBeforeReplacing,
@@ -410,7 +412,14 @@ export function EditorPage() {
   // What was last imported, opened, exported or updated; leaving loses changes made since.
   const [savedSnapshot, setSavedSnapshot] = useState(present);
   // What the library holds for the open pack: set on open and on each successful Update.
-  const publishedSnapshotRef = useRef<PackSnapshot | null>(null);
+  const [publishedSnapshot, setPublishedSnapshot] =
+    useState<PackSnapshot | null>(null);
+  // What the last Download wrote, or the zip just opened: the file on disk.
+  // Update leaves it alone, unlike savedSnapshot.
+  const [downloadedSnapshot, setDownloadedSnapshot] =
+    useState<PackSnapshot | null>(null);
+  // Try it was entered with this pack; the progress line marks it.
+  const [hasTriedIt, setHasTriedIt] = useState(false);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   // Whether the sound controls assign press or release sounds.
   const [soundSlot, setSoundSlot] = useState<SoundSlot>('press');
@@ -745,6 +754,19 @@ export function EditorPage() {
     () => countDrawnKeys(keySounds, getLayoutCodes(layout)),
     [keySounds, layout],
   );
+  // Saving is Update for a library pack, Download .zip otherwise; each is
+  // done while the pack is as it was last saved that way.
+  const saveMark = visibility.library ? publishedSnapshot : downloadedSnapshot;
+  const progressItems = getProgressItems({
+    stage: visibility.stage,
+    withSound: keyCount.withSound,
+    drawn: keyCount.withSound + keyCount.silent,
+    isMousePack: packInfo.packType === 'Mouse',
+    hasTriedIt,
+    canTryIt: playableCount > 0,
+    library: visibility.library,
+    isSaved: saveMark !== null && !hasUnsavedChanges(present, saveMark),
+  });
 
   // Release is a choice made for keys that have a press. Without the switch
   // the controls assign presses, and once it shows again it starts on Press:
@@ -762,8 +784,8 @@ export function EditorPage() {
   }, [visibility.stage, setSelectedKeys]);
 
   // Height the rows around the keyboard take, each with the column's 12px gap:
-  // the settings row above, then the hidden-keys tray and the legend below,
-  // when shown. Fixed rather than measured: those rows derive
+  // the settings row above, then the hidden-keys tray and the legend with the
+  // progress line below, when shown. Fixed rather than measured: those rows derive
   // their width from keyboardScale, so measuring them would make the scale
   // depend on its own output. Each row stays on one line, its text cut short
   // rather than wrapped, so these heights hold. Preview collapses them all,
@@ -773,21 +795,21 @@ export function EditorPage() {
     : [
         24,
         hasHiddenKeys ? 24 : 0,
-        visibility.legend
-          ? visibility.keyCount
-            ? KEY_LEGEND_WITH_COUNT_HEIGHT
-            : KEY_LEGEND_HEIGHT
-          : 0,
+        visibility.legend ? KEY_LEGEND_ROWS_HEIGHT : 0,
       ]
         .filter((height) => height > 0)
         .reduce((sum, height) => sum + height + 12, 0);
   // The rows line up with the keyboard, and are never narrower than it is at
-  // its smallest scale. The mouse's rows keep the width they need to read.
+  // its smallest scale, nor than the legend and progress line need. The
+  // mouse's rows keep the width they need to read.
   const keyboardWidth = keyboardNaturalWidth * keyboardScale;
   const rowsMinWidth =
     layout === 'mouse'
       ? ROWS_READABLE_WIDTH
-      : keyboardNaturalWidth * KEYBOARD_MIN_SCALE;
+      : Math.max(
+          keyboardNaturalWidth * KEYBOARD_MIN_SCALE,
+          KEY_LEGEND_ROWS_MIN_WIDTH,
+        );
   const rowsStyle = {
     maxWidth: keyboardWidth,
     minWidth: `min(100%, ${rowsMinWidth}px)`,
@@ -1332,15 +1354,22 @@ export function EditorPage() {
     readGroupRef.current = null;
     setReading(null);
     setAddError(null);
+    setHasTriedIt(false);
     stopSound();
   }, [setSelectedKeys, stopSound]);
 
-  // Start a new history from `snapshot` with nothing unsaved. `published` is what the library holds.
+  // Start a new history from `snapshot` with nothing unsaved. `published` is
+  // what the library holds, `downloaded` what a file on disk holds.
   const startFrom = useCallback(
-    (snapshot: PackSnapshot, published: PackSnapshot | null) => {
+    (
+      snapshot: PackSnapshot,
+      published: PackSnapshot | null,
+      downloaded: PackSnapshot | null,
+    ) => {
       resetHistory(snapshot);
       setSavedSnapshot(snapshot);
-      publishedSnapshotRef.current = published;
+      setPublishedSnapshot(published);
+      setDownloadedSnapshot(downloaded);
     },
     [resetHistory],
   );
@@ -1476,7 +1505,7 @@ export function EditorPage() {
   ) => {
     setPendingFiles(NO_FILES);
     resetView();
-    startFrom(createBlankSnapshot(packType), null);
+    startFrom(createBlankSnapshot(packType), null, null);
     enterWorkspace();
     // Files on their way skip the empty pack the tour would show.
     if (files.length > 0) {
@@ -1530,7 +1559,12 @@ export function EditorPage() {
       sources: imported.sources,
       keySounds: imported.keySounds,
     };
-    startFrom(snapshot, fromLibrary ? snapshot : null);
+    // A zip from disk is that file, so it counts as downloaded.
+    startFrom(
+      snapshot,
+      fromLibrary ? snapshot : null,
+      fromLibrary ? null : snapshot,
+    );
     // How the keys play each file tells what it holds.
     setFileKinds(inferKindsFromPack(imported.sources, imported.keySounds));
     // Show every mapped key. Outside the history, like any size change.
@@ -1732,7 +1766,7 @@ export function EditorPage() {
         current ? { ...current, revision: pack.revision } : current,
       );
       setSavedSnapshot(published);
-      publishedSnapshotRef.current = published;
+      setPublishedSnapshot(published);
       setNotice({
         tone: 'success',
         message: `Published revision ${pack.revision} of ${libraryPack.name}.`,
@@ -1781,6 +1815,7 @@ export function EditorPage() {
       });
       // A download cannot tell a cancelled save dialog, so starting it counts as saved.
       setSavedSnapshot(exported);
+      setDownloadedSnapshot(exported);
       if (!libraryPack) {
         setNotice({
           tone: 'success',
@@ -2292,6 +2327,7 @@ export function EditorPage() {
                     onTryIt: visibility.tryIt
                       ? () => {
                           setEmphasizeTryIt(false);
+                          setHasTriedIt(true);
                           setIsPreview(true);
                         }
                       : undefined,
@@ -2650,16 +2686,17 @@ export function EditorPage() {
 
               {visibility.legend && (
                 <div
-                  className="editor-chrome-vertical w-full mx-auto shrink-0"
+                  className="editor-chrome-vertical w-full mx-auto shrink-0 flex flex-col gap-1 text-xs"
                   data-hidden={isPreview}
                   style={rowsStyle}
                 >
                   <h2 className="sr-only">Key marks</h2>
                   <KeyLegend
                     showRelease={visibility.releaseLegend}
-                    count={visibility.keyCount ? keyCount : null}
+                    showSilent={keyCount.withSound > 0 && keyCount.silent > 0}
                     isMousePack={isMousePack}
                   />
+                  <ProgressLine items={progressItems} />
                 </div>
               )}
             </div>

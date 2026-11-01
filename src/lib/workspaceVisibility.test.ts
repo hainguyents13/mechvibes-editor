@@ -39,7 +39,6 @@ describe('getVisibility', () => {
     expect(v.keyGroups).toBe(false);
     expect(v.legend).toBe(false);
     expect(v.releaseLegend).toBe(false);
-    expect(v.keyCount).toBe(false);
     expect(v.tryIt).toBe(false);
     expect(v.download).toBe(false);
     expect(v.pressReleaseToggle).toBe(false);
@@ -59,7 +58,6 @@ describe('getVisibility', () => {
     expect(v.keyGroups).toBe(true);
     expect(v.legend).toBe(true);
     expect(v.releaseLegend).toBe(false);
-    expect(v.keyCount).toBe(false);
     expect(v.tryIt).toBe(false);
     expect(v.download).toBe(false);
   });
@@ -71,7 +69,6 @@ describe('getVisibility', () => {
     expect(v.stage).toBe('has-sounds');
     expect(v.soundPanel).toBe(true);
     expect(v.legend).toBe(true);
-    expect(v.keyCount).toBe(true);
     expect(v.tryIt).toBe(true);
     expect(v.download).toBe(true);
     expect(v.updateOnline).toBe(false);

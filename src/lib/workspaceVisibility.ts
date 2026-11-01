@@ -45,8 +45,6 @@ export interface WorkspaceVisibility {
   legend: boolean;
   /** Release sound in the legend, once some key has one. */
   releaseLegend: boolean;
-  /** How many keys have a sound and how many stay silent. */
-  keyCount: boolean;
   tryIt: boolean;
   download: boolean;
   /** Same as `library`: Update online publishes to the open library pack. */
@@ -90,7 +88,6 @@ export function getVisibility(facts: WorkspaceFacts): WorkspaceVisibility {
     keyGroups: hasFiles && isKeyboard,
     legend: hasFiles,
     releaseLegend: hasFiles && hasRelease,
-    keyCount: hasSounds,
     tryIt: hasSounds,
     download: hasSounds,
     updateOnline: library,
