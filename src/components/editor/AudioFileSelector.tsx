@@ -21,6 +21,8 @@ interface AudioFileSelectorProps {
   noun: string;
   /** Stacked, the most the list takes before it scrolls, when less than usual. */
   listMaxHeight?: number;
+  /** The key card follows in the column: the list gives way to it down to one row. */
+  hasKeyCard?: boolean;
   /** The file whose sound is playing from its row, if any. */
   playingSourceId: string | null;
   onPlay: (id: string) => void;
@@ -60,6 +62,7 @@ export function AudioFileSelector({
   selectedCount,
   noun,
   listMaxHeight,
+  hasKeyCard = false,
   playingSourceId,
   onPlay,
   onSelect,
@@ -77,7 +80,7 @@ export function AudioFileSelector({
   // The open file's row stays in view: an add opens a file at the end of a
   // long list, and a selected key opens the file it plays. Only the list
   // scrolls, not the page around it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a file added or removed, or a shorter list, moves the row too
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a file added or removed, or a shorter list, moves the row too, as does the key card taking room
   React.useLayoutEffect(() => {
     const list = listRef.current;
     const row = list?.querySelector<HTMLElement>('[data-active]');
@@ -86,7 +89,7 @@ export function AudioFileSelector({
     const { top, bottom } = row.getBoundingClientRect();
     if (top < view.top) list.scrollTop -= view.top - top;
     else if (bottom > view.bottom) list.scrollTop += bottom - view.bottom;
-  }, [activeSourceId, sources.length, listMaxHeight]);
+  }, [activeSourceId, sources.length, listMaxHeight, hasKeyCard]);
 
   const addFiles = (files: FileList | null) => {
     const media = Array.from(files ?? []).filter(isMediaFile);
@@ -130,7 +133,15 @@ export function AudioFileSelector({
     kinds.get(activeSource?.id ?? '') !== 'one';
 
   return (
-    <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-3">
+    <div
+      className={cn(
+        'flex-1 min-w-0 flex flex-col gap-3',
+        // With the card, the column scrolls rather than squeeze the list
+        // below its heading and one row, or the heading and the short list
+        // over a clip, which gives way first.
+        hasKeyCard ? (isVideo ? 'min-h-37' : 'min-h-23') : 'min-h-0',
+      )}
+    >
       <div className="flex items-center justify-between gap-2 shrink-0">
         <h2
           id={SOURCES_HEADING_ID}
@@ -160,6 +171,7 @@ export function AudioFileSelector({
         className={cn(
           'min-h-0 overflow-y-auto flex flex-col gap-2',
           isVideo ? 'shrink-0 max-h-28' : 'flex-1 max-lg:max-h-72',
+          hasKeyCard && 'min-h-14',
         )}
         // Never taller than max-h-72.
         style={

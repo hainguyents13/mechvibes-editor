@@ -85,3 +85,43 @@ describe('nextStepText', () => {
     ).toBe('keep giving buttons a sound, or press Try it and tap the buttons.');
   });
 });
+
+describe('nextStepText for the one selected key', () => {
+  const many = {
+    stage: 'has-sounds',
+    packType: 'Keyboard',
+    isTouch: false,
+    activeFileKind: 'many',
+    selectedCount: 1,
+  } as const;
+
+  it('says to cut the press out of a whole file, as after Split it', () => {
+    expect(nextStepText({ ...many, selectedKeyFile: 'whole' })).toBe(
+      'drag over the press on the waveform and apply it, then switch to Release.',
+    );
+  });
+
+  it('says to cut a sound for the key from another file', () => {
+    expect(nextStepText({ ...many, selectedKeyFile: 'other' })).toBe(
+      'drag over a sound on the waveform and apply it to the selected key.',
+    );
+    expect(
+      nextStepText({ ...many, packType: 'Mouse', selectedKeyFile: 'other' }),
+    ).toBe(
+      'drag over a sound on the waveform and apply it to the selected button.',
+    );
+  });
+
+  it('keeps the usual line for several keys, or a file of one sound', () => {
+    expect(
+      nextStepText({ ...many, selectedCount: 2, selectedKeyFile: 'whole' }),
+    ).toBe('keep giving keys a sound, or press Try it and type.');
+    expect(
+      nextStepText({
+        ...many,
+        activeFileKind: 'one',
+        selectedKeyFile: 'whole',
+      }),
+    ).toBe('click a sound to give it to the selected key.');
+  });
+});

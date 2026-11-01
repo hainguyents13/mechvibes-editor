@@ -158,6 +158,13 @@ function allSteps(
     },
     soundStep(stage, isMouse, activeFileKind),
     {
+      element: target('key-card'),
+      popover: {
+        title: `The selected ${noun}`,
+        description: `The sound of the ${noun} you selected: play it, give it another file, or remove it. Swap press and release in its ... menu.`,
+      },
+    },
+    {
       element: target('try-it'),
       popover: { title: '4. Try it', description: tryItDescription(isMouse) },
     },

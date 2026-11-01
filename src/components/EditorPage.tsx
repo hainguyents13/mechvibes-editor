@@ -27,6 +27,7 @@ import {
   FILE_LIST_SELECTOR,
   SOURCES_HEADING_ID,
 } from '@/components/editor/AudioFileSelector';
+import { ChangeFileDialog } from '@/components/editor/ChangeFileDialog';
 import { HiddenKeysTray } from '@/components/editor/HiddenKeysTray';
 import {
   codesOfOtherKind,
@@ -37,6 +38,7 @@ import {
 } from '@/components/editor/hidden-keys';
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
 import { KeyboardShortcutsDialog } from '@/components/editor/KeyboardShortcuts';
+import { KeyCard } from '@/components/editor/KeyCard';
 import {
   KEY_LEGEND_ROWS_HEIGHT,
   KEY_LEGEND_ROWS_MIN_WIDTH,
@@ -86,9 +88,12 @@ import {
   type FileKind,
   inferKindsFromPack,
   inferNewFileKind,
+  LONG_FILE_SECONDS,
+  playsWholeFile,
 } from '@/lib/fileKinds';
 import { zipFolder } from '@/lib/folderFiles';
-import { guessPackType } from '@/lib/keyNames';
+import { sameSoundCount } from '@/lib/keyCard';
+import { guessPackType, keyLabel } from '@/lib/keyNames';
 import { getProgressItems } from '@/lib/progressLine';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
@@ -124,6 +129,7 @@ import {
   type WorkspaceStage,
 } from '@/lib/workspaceVisibility';
 import {
+  addFileToKeys,
   clearKeySounds,
   giveFilesToKeysInOrder,
   giveFilesToTheirKeys,
@@ -133,6 +139,7 @@ import {
   playFileSegment,
   readSoundLengths,
   spreadFilesAcrossKeys,
+  swapPressAndRelease,
   withMediaType,
 } from '@/utils/audioUtils';
 import {
@@ -151,6 +158,7 @@ import {
   listKeys,
   type PackExtras,
   type PackType,
+  type Segment,
 } from '@/utils/soundPack';
 import { buildSoundPackZip, exportSoundPack } from '@/utils/soundPackExport';
 import {
@@ -317,6 +325,20 @@ function storePanelHeight(height: number | null) {
 function readViewport() {
   return { width: window.innerWidth, height: window.innerHeight };
 }
+
+/**
+ * A sound playing outside the waveform: a file of one sound from its row or
+ * pane, or half of the selected key's sound from its card.
+ */
+type Playing =
+  | { kind: 'file'; id: string }
+  | { kind: 'key'; code: string; slot: SoundSlot };
+
+const isSamePlaying = (a: Playing | null, b: Playing) =>
+  a !== null &&
+  (a.kind === 'file'
+    ? b.kind === 'file' && a.id === b.id
+    : b.kind === 'key' && a.code === b.code && a.slot === b.slot);
 
 /** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
 type Notice = {
@@ -509,9 +531,12 @@ export function EditorPage() {
     skipped: string[];
     unreadable: string[];
   } | null>(null);
-  // The file of one sound playing outside the waveform, and how to stop it.
-  const [playingSourceId, setPlayingSourceId] = useState<string | null>(null);
-  const playingSourceRef = useRef<string | null>(null);
+  // What plays outside the waveform, and how to stop it.
+  const [playing, setPlaying] = useState<Playing | null>(null);
+  const playingRef = useRef<Playing | null>(null);
+  const playingSourceId = playing?.kind === 'file' ? playing.id : null;
+  // The key whose file the Change file dialog changes, while it is open.
+  const [changeFileFor, setChangeFileFor] = useState<string | null>(null);
   const stopSoundRef = useRef<(() => void) | null>(null);
   // Codes of the keys to keep selected across the next change of layout.
   const keptSelectionRef = useRef<readonly string[] | null>(null);
@@ -663,6 +688,7 @@ export function EditorPage() {
     isPreview ||
     showEditPackModal ||
     showShortcuts ||
+    changeFileFor !== null ||
     confirmDiscardAction !== null ||
     pendingPackType !== null ||
     showMyPacks ||
@@ -736,6 +762,26 @@ export function EditorPage() {
     activeFileKind,
   });
   const noun = packInfo.packType === 'Mouse' ? 'button' : 'key';
+  // The one selected key or button, when it has a sound: its card shows
+  // under the file list.
+  const cardCode =
+    selectedCodes.length === 1 && keySounds.has(selectedCodes[0])
+      ? selectedCodes[0]
+      : null;
+  const cardSound = cardCode ? keySounds.get(cardCode) : undefined;
+  const cardSource = cardSound ? sourcesById.get(cardSound.source) : undefined;
+  const showKeyCard = visibility.soundPanel && cardSource !== undefined;
+  // How that key plays the file on the waveform, for the Next line.
+  const selectedKeyFile =
+    !cardSound || !activeSource
+      ? null
+      : cardSound.source !== activeSource.id
+        ? 'other'
+        : !cardSound.release &&
+            playsWholeFile(cardSound.press, activeSource.duration)
+          ? 'whole'
+          : null;
+
   // What the last add brought in, read from the pack as it is now.
   const addSummary = useMemo(
     () =>
@@ -999,11 +1045,15 @@ export function EditorPage() {
   // chips wait below the fold whole rather than show a slice.
   const panelView = panelHeight ?? stackedPanelMax;
   // Stacked, the pane of a file of one sound has no waveform to give way, so
-  // the file list does: the summary and the pane's chips stay in the panel.
-  const fileListMax =
-    isStacked && visibility.oneSoundPane && stackedListRest !== null
+  // the file list does: the summary, the key card and the pane's chips stay
+  // in the panel. Over the waveform, the list gives the key card its room.
+  const fileListMax = !isStacked
+    ? undefined
+    : visibility.oneSoundPane && stackedListRest !== null
       ? Math.max(STACKED_LIST_MIN_HEIGHT, stackedPanelMax - stackedListRest)
-      : undefined;
+      : visibility.waveform && showKeyCard
+        ? STACKED_LIST_MIN_HEIGHT
+        : undefined;
   const panelControls = panelControlsHeight ?? PANEL_CONTROLS_HEIGHT;
   const waveformHeight = clamp(
     quickSelectStart !== null &&
@@ -1107,10 +1157,15 @@ export function EditorPage() {
   // way in the visitor chose, which says what kind the files are. An add
   // that starts while another is read joins it, so the reading line
   // counts the files of both until the last is read, and the summary and the
-  // error cover them all.
+  // error cover them all. A single file for `giveTo` keys, short enough to be
+  // one key sound, goes to them in the same step.
   const handleAddSources = async (
     files: File[],
-    { tile, skipped = [] }: AddOptions = {},
+    {
+      tile,
+      skipped = [],
+      giveTo,
+    }: AddOptions & { giveTo?: readonly string[] } = {},
   ) => {
     const work = workRef.current;
     if (files.length === 0) {
@@ -1158,20 +1213,38 @@ export function EditorPage() {
       lengths[index] > 0 ? [createAudioSource(file, lengths[index])] : [],
     );
     if (added.length === 0) return;
+    // A longer file is a recording: it opens on the waveform for the keys,
+    // still selected, to get the part cut for them.
+    const givenTo =
+      giveTo &&
+      giveTo.length > 0 &&
+      added.length === 1 &&
+      added[0].duration <= LONG_FILE_SECONDS
+        ? giveTo
+        : null;
     // Appends to the latest files, and picks colours against them: an Undo
     // can land while the files are read.
-    commit(
-      added.length === 1
-        ? `Add ${added[0].file.name}`
-        : `Add ${added.length} files`,
-      (current) => ({ sources: addSources(current.sources, added) }),
-    );
+    if (givenTo) {
+      commit(
+        `Add ${added[0].file.name} and give it to ${plural(givenTo.length, noun)}`,
+        (current) => addFileToKeys(current, added[0], givenTo),
+      );
+    } else {
+      commit(
+        added.length === 1
+          ? `Add ${added[0].file.name}`
+          : `Add ${added.length} files`,
+        (current) => ({ sources: addSources(current.sources, added) }),
+      );
+    }
     setFileKinds((current) => {
       const next = new Map(current);
       for (const source of added) {
         next.set(
           source.id,
-          inferNewFileKind(source.file, source.duration, tile),
+          givenTo
+            ? 'one'
+            : inferNewFileKind(source.file, source.duration, tile),
         );
       }
       return next;
@@ -1180,32 +1253,44 @@ export function EditorPage() {
     setLastAdd({ ids: [...group.ids], skipped: [...group.skipped] });
     setActiveSourceId(added[0].id);
     setWaveformSelection({ start: 0, end: 0 });
+    if (givenTo) playSource(added[0], true);
   };
 
-  // Stop the file of one sound that plays outside the waveform.
+  // Stop the sound that plays outside the waveform.
   const stopSound = useCallback(() => {
     stopSoundRef.current?.();
     stopSoundRef.current = null;
   }, []);
 
-  // Play a file of one sound as its keys do: the part they share, else the
-  // whole file. Played again while it plays, it stops, unless `restart`.
-  const playSource = (source: AudioSource, restart = false) => {
-    const wasPlaying = playingSourceRef.current === source.id;
+  // Play part of a file outside the waveform, one sound at a time. Played
+  // again while it plays, it stops, unless `restart`.
+  const playPart = (
+    what: Playing,
+    file: File,
+    segment: Segment,
+    restart = false,
+  ) => {
+    const wasPlaying = isSamePlaying(playingRef.current, what);
     stopSound();
     if (wasPlaying && !restart) return;
-    playingSourceRef.current = source.id;
-    setPlayingSourceId(source.id);
-    stopSoundRef.current = playFileSegment(
+    playingRef.current = what;
+    setPlaying(what);
+    stopSoundRef.current = playFileSegment(file, segment, () => {
+      if (playingRef.current !== what) return;
+      playingRef.current = null;
+      setPlaying(null);
+    });
+  };
+
+  // Play a file of one sound as its keys do: the part they share, else the
+  // whole file.
+  const playSource = (source: AudioSource, restart = false) =>
+    playPart(
+      { kind: 'file', id: source.id },
       source.file,
       oneSoundSegment(source, keySounds),
-      () => {
-        if (playingSourceRef.current !== source.id) return;
-        playingSourceRef.current = null;
-        setPlayingSourceId(null);
-      },
+      restart,
     );
-  };
 
   // Give a file of one sound to the selected keys, as one step. Giving it
   // again to keys that already play it adds none.
@@ -1237,6 +1322,65 @@ export function EditorPage() {
       for (const id of ids) next.set(id, kind);
       return next;
     });
+  };
+
+  // Half of the key's sound, from its card.
+  const playKeySound = (code: string, slot: SoundSlot) => {
+    const sound = keySounds.get(code);
+    const source = sound && sourcesById.get(sound.source);
+    const segment = slot === 'press' ? sound?.press : sound?.release;
+    if (!source || !segment) return;
+    playPart({ kind: 'key', code, slot }, source.file, segment);
+  };
+
+  // A key's whole file goes on the waveform, its press over all of it, to be
+  // cut into a press and a release. How the file shows is no change to the
+  // pack, so it adds no step.
+  const splitFileOf = (code: string) => {
+    const sound = keySounds.get(code);
+    const source = sound && sourcesById.get(sound.source);
+    if (!sound || !source) return;
+    setKinds([source.id], 'many');
+    setActiveSourceId(source.id);
+    setSoundSlot('press');
+    const [start, end] = sound.press;
+    setWaveformSelection(
+      end > start ? { start, end } : { start: 0, end: source.duration * 1000 },
+    );
+  };
+
+  // The key's file goes on the waveform for its release, cut there and
+  // applied as usual. Only the waveform cuts a release, so a file of one
+  // sound shows as many.
+  const addReleaseTo = (code: string) => {
+    const sound = keySounds.get(code);
+    if (!sound) return;
+    if (fileKinds.get(sound.source) === 'one') {
+      setKinds([sound.source], 'many');
+    }
+    setActiveSourceId(sound.source);
+    setSoundSlot('release');
+    setWaveformSelection({ start: 0, end: 0 });
+  };
+
+  // Change file: a file of one sound goes to the key as one step; a file of
+  // many opens on the waveform for the key, still selected, to cut its part.
+  const pickFileFor = (code: string, id: string) => {
+    setChangeFileFor(null);
+    const source = sourcesById.get(id);
+    if (!source) return;
+    if (fileKinds.get(id) === 'one') {
+      commitKeySounds(
+        `Give ${source.file.name} to ${plural(1, noun)}`,
+        (current) => giveOneSoundToKeys([code], source, current),
+      );
+      playSource(source, true);
+    } else {
+      setSoundSlot('press');
+    }
+    if (id === activeSourceId) return;
+    setActiveSourceId(id);
+    setWaveformSelection({ start: 0, end: 0 });
   };
 
   // The buttons of the summary of the last add, each one step.
@@ -1385,6 +1529,7 @@ export function EditorPage() {
     setShowMyPacks(false);
     setShowEditPackModal(false);
     setShowShortcuts(false);
+    setChangeFileFor(null);
     setPendingPackType(null);
     setEmphasizeTryIt(false);
     exitPreview();
@@ -2194,9 +2339,17 @@ export function EditorPage() {
   // Another file opens: what played from the one before stops, unless the
   // click that opened it plays it.
   useEffect(() => {
-    if (playingSourceRef.current !== activeSourceId) stopSound();
+    const now = playingRef.current;
+    if (now?.kind !== 'file' || now.id !== activeSourceId) stopSound();
     setIsPlaying(false);
   }, [activeSourceId, stopSound]);
+
+  // A key's sound from its card stops when another key is selected or the
+  // sound changes, as the card it played from does.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the card's key and sound changing are the trigger, not values the effect reads
+  useEffect(() => {
+    if (playingRef.current?.kind === 'key') stopSound();
+  }, [cardCode, cardSound, stopSound]);
 
   // A file that stops being one sound, or leaves the pack, takes away the
   // buttons that stop its sound, so the sound stops with them.
@@ -2392,6 +2545,26 @@ export function EditorPage() {
           }}
         />
 
+        <ChangeFileDialog
+          keyName={changeFileFor === null ? null : keyLabel(changeFileFor)}
+          sources={sources}
+          kinds={fileKinds}
+          currentId={
+            changeFileFor === null
+              ? null
+              : (keySounds.get(changeFileFor)?.source ?? null)
+          }
+          onPick={(id) => {
+            if (changeFileFor !== null) pickFileFor(changeFileFor, id);
+          }}
+          onChooseFile={(file) => {
+            if (changeFileFor === null) return;
+            setChangeFileFor(null);
+            handleAddSources([file], { giveTo: [changeFileFor] });
+          }}
+          onClose={() => setChangeFileFor(null)}
+        />
+
         <KeyboardShortcutsDialog
           isOpen={showShortcuts}
           onClose={() => setShowShortcuts(false)}
@@ -2562,6 +2735,7 @@ export function EditorPage() {
                     isTouch={isCoarsePointer}
                     activeFileKind={activeFileKind}
                     selectedCount={selectedCodes.length}
+                    selectedKeyFile={selectedKeyFile}
                     isLarge={keyboardWidth >= NEXT_STEP_LARGE_WIDTH}
                   />
                   {visibility.keyboardSize && (
@@ -2815,7 +2989,7 @@ export function EditorPage() {
                   <div
                     // The tour points only at what is on show.
                     data-tour={visibility.soundPanel ? 'sources' : undefined}
-                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : visibility.waveform && audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : visibility.waveform && audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3 ${showKeyCard ? 'lg:overflow-y-auto' : ''}`}
                   >
                     <AudioFileSelector
                       sources={sources}
@@ -2825,6 +2999,7 @@ export function EditorPage() {
                       selectedCount={selectedCodes.length}
                       noun={noun}
                       listMaxHeight={fileListMax}
+                      hasKeyCard={showKeyCard}
                       playingSourceId={playingSourceId}
                       onPlay={(id) => {
                         const source = sourcesById.get(id);
@@ -2836,6 +3011,38 @@ export function EditorPage() {
                       onSetKind={(id, kind) => setKinds([id], kind)}
                       videoRef={videoPreviewRef}
                     />
+                    {showKeyCard && cardCode && cardSound && cardSource && (
+                      <KeyCard
+                        code={cardCode}
+                        sound={cardSound}
+                        source={cardSource}
+                        kind={fileKinds.get(cardSource.id) ?? 'many'}
+                        packType={packInfo.packType}
+                        sameCount={sameSoundCount(cardCode, keySounds)}
+                        playingSlot={
+                          playing?.kind === 'key' && playing.code === cardCode
+                            ? playing.slot
+                            : null
+                        }
+                        onPlay={(slot) => playKeySound(cardCode, slot)}
+                        onChangeFile={() => setChangeFileFor(cardCode)}
+                        onRemove={() =>
+                          commitKeySounds(
+                            `Remove the sound of ${keyLabel(cardCode)}`,
+                            (current) => clearKeySounds([cardCode], current),
+                          )
+                        }
+                        onSwap={() =>
+                          commitKeySounds(
+                            `Swap press and release of ${keyLabel(cardCode)}`,
+                            (current) =>
+                              swapPressAndRelease([cardCode], current),
+                          )
+                        }
+                        onAddRelease={() => addReleaseTo(cardCode)}
+                        onSplit={() => splitFileOf(cardCode)}
+                      />
+                    )}
                   </div>
 
                   {/* Right: waveform / mode-specific controls — fills the container height.
