@@ -2212,6 +2212,7 @@ export function EditorPage() {
       stage: visibility.stage,
       isMouse: isMousePack,
       activeFileKind,
+      selectedHasRelease: cardSound?.release !== undefined,
     });
   };
   useEffect(() => () => tourRef.current?.destroy(), []);

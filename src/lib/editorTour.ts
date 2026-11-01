@@ -115,6 +115,7 @@ function allSteps(
   stage: WorkspaceStage,
   isMouse: boolean,
   activeFileKind: FileKind | null,
+  selectedHasRelease: boolean,
 ): DriveStep[] {
   const noun = isMouse ? 'button' : 'key';
   return [
@@ -161,7 +162,8 @@ function allSteps(
       element: target('key-card'),
       popover: {
         title: `The selected ${noun}`,
-        description: `The sound of the ${noun} you selected: play it, give it another file, or remove it. Swap press and release in its ... menu.`,
+        // Its ... menu is there only with a release to swap.
+        description: `The sound of the ${noun} you selected: play it, give it another file, or remove it.${selectedHasRelease ? ' Swap press and release in its ... menu.' : ''}`,
       },
     },
     {
@@ -228,6 +230,7 @@ function buildSteps(
   stage: WorkspaceStage,
   isMouse: boolean,
   activeFileKind: FileKind | null,
+  selectedHasRelease: boolean,
 ) {
   switch (flow) {
     case 'new-pack':
@@ -235,7 +238,13 @@ function buildSteps(
     case 'opened-pack':
       return openedPackSteps(isMouse, activeFileKind);
     default:
-      return allSteps(signedIn, stage, isMouse, activeFileKind);
+      return allSteps(
+        signedIn,
+        stage,
+        isMouse,
+        activeFileKind,
+        selectedHasRelease,
+      );
   }
 }
 
@@ -251,12 +260,15 @@ export function startEditorTour({
   stage,
   isMouse,
   activeFileKind = null,
+  selectedHasRelease = false,
 }: {
   flow?: TourFlow;
   signedIn: boolean;
   stage: WorkspaceStage;
   isMouse: boolean;
   activeFileKind?: FileKind | null;
+  /** The key whose card is on show has a release, so its ... menu too. */
+  selectedHasRelease?: boolean;
 }) {
   const steps = buildSteps(
     flow,
@@ -264,6 +276,7 @@ export function startEditorTour({
     stage,
     isMouse,
     activeFileKind,
+    selectedHasRelease,
   ).filter(
     (step) => typeof step.element !== 'string' || isOnShow(step.element),
   );
