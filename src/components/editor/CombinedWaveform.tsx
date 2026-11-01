@@ -259,6 +259,9 @@ export const CombinedWaveform = forwardRef<
         return;
       }
 
+      // Set once this waveform is torn down, which can happen while the
+      // library still loads (the visitor leaves the workspace right away).
+      let isCancelled = false;
       const initWaveform = async () => {
         try {
           const { default: WaveSurfer } = await import('wavesurfer.js');
@@ -268,6 +271,7 @@ export const CombinedWaveform = forwardRef<
           const { default: TimelinePlugin } = await import(
             'wavesurfer.js/dist/plugins/timeline.esm.js'
           );
+          if (isCancelled || !containerRef.current) return;
 
           // Clear container
           if (containerRef.current) {
@@ -399,6 +403,7 @@ export const CombinedWaveform = forwardRef<
       initWaveform();
 
       return () => {
+        isCancelled = true;
         setIsReady(false);
         selectionRegionRef.current = null;
         if (wavesurferRef.current) {

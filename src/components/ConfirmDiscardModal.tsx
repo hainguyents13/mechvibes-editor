@@ -9,7 +9,7 @@ export function ConfirmDiscardModal({
   onCancel,
   onConfirm,
   title = 'Discard changes?',
-  message = 'Changes you have not exported or updated will be lost.',
+  message = 'Changes you have not downloaded or updated will be lost.',
   cancelLabel = 'Cancel',
   confirmLabel = 'Discard',
 }: {

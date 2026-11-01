@@ -40,6 +40,7 @@ interface KeyboardDisplayProps {
   isPreview?: boolean;
   /** Key codes currently held down, so they can be highlighted. */
   pressedKeyCodes?: Set<string>;
+  /** Preview only: a click or a tap holds a key down, and lets it go. */
   onPreviewKeyDown?: (keyCode: string) => void;
   onPreviewKeyUp?: (keyCode: string) => void;
 }
@@ -113,8 +114,9 @@ export function KeyboardDisplay({
           width: `${keyboardWidth}px`,
           height: `${keyboardHeight}px`,
           userSelect: 'none',
-          // A drag on a tablet draws a marquee instead of scrolling.
-          touchAction: isPreview ? undefined : 'none',
+          // A drag on a tablet draws a marquee instead of scrolling. In
+          // preview, quick taps on one key play it rather than zoom.
+          touchAction: isPreview ? 'manipulation' : 'none',
         }}
         {...(isPreview ? {} : pointerHandlers)}
       >
@@ -145,8 +147,8 @@ export function KeyboardDisplay({
               tabIndex={keyId === tabStopId ? 0 : -1}
               onKeyDown={handleKeyKeyDown(index)}
               onFocus={onFocusKey}
-              onPreviewMouseDown={() => onPreviewKeyDown?.(keyCode)}
-              onPreviewMouseUp={() => onPreviewKeyUp?.(keyCode)}
+              onPreviewPointerDown={() => onPreviewKeyDown?.(keyCode)}
+              onPreviewPointerUp={() => onPreviewKeyUp?.(keyCode)}
             />
           );
         })}

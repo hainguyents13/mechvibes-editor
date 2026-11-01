@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -10,15 +11,28 @@ import { ConfirmDiscardModal } from '@/components/ConfirmDiscardModal';
 import { ConfirmPackTypeModal } from '@/components/ConfirmPackTypeModal';
 import { EditorNavbar } from '@/components/EditorNavbar';
 import { EditPackModal } from '@/components/EditPackModal';
-import { AudioFileSelector } from '@/components/editor/AudioFileSelector';
+import {
+  ADD_SOUNDS_HEADING_ID,
+  AddSoundsPanel,
+} from '@/components/editor/AddSoundsPanel';
+import {
+  AudioFileSelector,
+  SOURCES_HEADING_ID,
+} from '@/components/editor/AudioFileSelector';
 import { HiddenKeysTray } from '@/components/editor/HiddenKeysTray';
 import {
   codesOfOtherKind,
   findHiddenKeys,
+  getLayoutCodes,
   inferKeyboardSize,
 } from '@/components/editor/hidden-keys';
 import { KeyboardDisplay } from '@/components/editor/KeyboardDisplay';
-import { KeyboardShortcuts } from '@/components/editor/KeyboardShortcuts';
+import { KeyboardShortcutsDialog } from '@/components/editor/KeyboardShortcuts';
+import {
+  KEY_LEGEND_HEIGHT,
+  KEY_LEGEND_WITH_COUNT_HEIGHT,
+  KeyLegend,
+} from '@/components/editor/KeyLegend';
 import {
   type KeyboardSize,
   keyboardLayouts,
@@ -29,11 +43,16 @@ import {
   MOUSE_DISPLAY_SIZE,
   MouseDisplay,
 } from '@/components/editor/MouseDisplay';
+import { NextStep } from '@/components/editor/NextStep';
 import {
+  QUICK_SELECT_SELECTOR,
   type SoundSlot,
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
-import { WaveformEditor } from '@/components/editor/WaveformEditor';
+import {
+  WAVEFORM_BOX_SELECTOR,
+  WaveformEditor,
+} from '@/components/editor/WaveformEditor';
 import { FileDropOverlay } from '@/components/FileDropOverlay';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
@@ -45,10 +64,12 @@ import { websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
 import { usePackHistory } from '@/hooks/usePackHistory';
-import { usePhoneScreen } from '@/hooks/usePhoneScreen';
+import { useCoarsePointer, usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
+import { useSessionFlag } from '@/hooks/useSessionFlag';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
+import { autoTourFlow, hasSeenTour, type TourFlow } from '@/lib/editorTourFlow';
 import { shouldIgnoreShortcut, spaceOperatesTarget } from '@/lib/shortcuts';
 import {
   asksBeforeReplacing,
@@ -76,6 +97,12 @@ import {
   updatePackZip,
   WebsiteApiError,
 } from '@/lib/websiteApi';
+import {
+  countDrawnKeys,
+  getVisibility,
+  getWorkspaceStage,
+  type WorkspaceStage,
+} from '@/lib/workspaceVisibility';
 import {
   clearKeySounds,
   getAudioDuration,
@@ -116,65 +143,120 @@ const WHEEL_SOUND_INTERVAL_MS = 120;
 
 // Sound editing panel on wide (lg) screens. By default it takes half the
 // viewport, up to the original 524px, and never less than what its controls need
-// with the smallest waveform, unless the screen is too short to also fit a usable
-// keyboard. Dragging its top edge trades keyboard space for
+// with a comfortable waveform, unless the screen is too short to also fit a
+// usable keyboard. Dragging its top edge trades keyboard space for
 // waveform space, and the choice is remembered in this browser. The waveform
 // absorbs every pixel the panel gains or gives up.
 const LG_MIN_WIDTH = 1024;
 const PANEL_MAX_HEIGHT = 524;
 const WAVEFORM_MAX_HEIGHT = 200;
 const WAVEFORM_MIN_HEIGHT = 110;
-/** Panel height taken by everything except the waveform. */
+/**
+ * On a screen too short for both, the waveform gives way to the controls down
+ * to this height before the controls scroll.
+ */
+const WAVEFORM_SQUEEZED_HEIGHT = 64;
+/**
+ * Panel height taken by everything except the waveform, until the panel's
+ * controls are on the page to measure.
+ */
 const PANEL_CONTROLS_HEIGHT = PANEL_MAX_HEIGHT - WAVEFORM_MAX_HEIGHT;
 const PANEL_MIN_HEIGHT = PANEL_CONTROLS_HEIGHT + WAVEFORM_MIN_HEIGHT;
 /** Smallest dragged height; below PANEL_MIN_HEIGHT the controls scroll. */
 const PANEL_DRAG_MIN_HEIGHT = 240;
+/**
+ * Smallest default height: the waveform's header, a squeezed waveform and the
+ * Sound row, which stays pinned to the panel's bottom while the rest scrolls.
+ * Only a screen too short for that and a usable keyboard goes below it.
+ */
+const PANEL_SQUEEZED_MIN_HEIGHT = 216;
 /** The panel's collapse transition caps it at 48rem (index.css). */
 const PANEL_DRAG_MAX_HEIGHT = 720;
-/** Viewport height kept for the navbar, the footer and a usable keyboard. */
-const PANEL_RESERVED_HEIGHT = 320;
 /**
- * Viewport height the default panel leaves for the navbar, the footer and a
- * keyboard that is comfortable to click. On short screens (a 720px laptop) the
- * panel gives way to it, and its controls scroll.
+ * Viewport height kept for the navbar, the footer and a usable keyboard,
+ * until the keyboard's own room is on the page to measure.
  */
-const DEFAULT_KEYBOARD_RESERVED_HEIGHT = 360;
+const PANEL_RESERVED_HEIGHT = 320;
+/** The drag handle's 4px in the layout and the panel's 2px top border. */
+const PANEL_EDGE_HEIGHT = 6;
+/** On screen, key labels grow back to this as the keyboard scales down... */
+const KEY_LABEL_MIN_PX = 8;
+/**
+ * ...up to the largest label, before scaling, that the narrowest keys still
+ * fit ("Delete" on one unit). Further down they shrink with the keys.
+ */
+const KEY_LABEL_MAX_PX = 17;
+const KEY_LABEL_PX = 12;
+/**
+ * Smallest scale the panel leaves the keyboard, dragged or not: the last at
+ * which labels read 8px, a full-size keyboard about 600px wide with keys
+ * about 25px across. On short screens the panel gives way to it, and its
+ * controls scroll.
+ */
+const KEYBOARD_MIN_SCALE = KEY_LABEL_MIN_PX / KEY_LABEL_MAX_PX;
+/**
+ * Width the rows around the keyboard need to read in full. When the panel's
+ * controls still fit, a narrower layout (TKL, Compact) is kept this wide.
+ */
+const ROWS_READABLE_WIDTH = 560;
+/** Keyboard width (40rem) from which the Next line reads at the larger size. */
+const NEXT_STEP_LARGE_WIDTH = 640;
 const PANEL_RESIZE_STEP = 16;
+/** The panels' collapse takes ~320ms (index.css); the tour waits it out. */
+const AUTO_TOUR_DELAY_MS = 400;
 const PANEL_HEIGHT_STORAGE_KEY = 'mechvibes-editor:panel-height';
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getPanelDragMax(viewportHeight: number) {
+/** The tallest the panel may be dragged; `room` is as in PanelRoom. */
+function getPanelDragMax(viewportHeight: number, room: number) {
   return clamp(
-    viewportHeight - PANEL_RESERVED_HEIGHT,
+    Number.isFinite(room) ? room : viewportHeight - PANEL_RESERVED_HEIGHT,
     PANEL_DRAG_MIN_HEIGHT,
     PANEL_DRAG_MAX_HEIGHT,
   );
 }
 
+/** Heights in px the panel weighs against the keyboard; Infinity until measured. */
+type PanelRoom = {
+  /** The most the panel may take and still leave a usable keyboard. */
+  usable: number;
+  /** The most it may take and leave the keyboard as wide as its rows read. */
+  readable: number;
+  /** What its controls take with a squeezed waveform. */
+  needed: number;
+};
+
 /**
  * Panel height in px on lg screens, or null when the panel stacks and sizes to
- * its content. `chosen` is the dragged height, or null for the default.
+ * its content. `chosen` is the dragged height, or null for the default. The
+ * default leaves a usable keyboard first, then fits its controls, then leaves
+ * the keyboard as wide as its rows read, and keeps its squeezed minimum.
  */
 function getPanelHeight(
   viewport: { width: number; height: number },
   chosen: number | null,
+  room: PanelRoom,
 ): number | null {
   if (viewport.width < LG_MIN_WIDTH) return null;
   if (chosen === null) {
-    const preferred = Math.max(
+    const preferred = clamp(
       Math.round(viewport.height / 2),
       PANEL_MIN_HEIGHT,
-    );
-    return clamp(
-      Math.min(preferred, viewport.height - DEFAULT_KEYBOARD_RESERVED_HEIGHT),
-      PANEL_DRAG_MIN_HEIGHT,
       PANEL_MAX_HEIGHT,
     );
+    return Math.max(
+      Math.min(preferred, Math.max(room.readable, room.needed), room.usable),
+      PANEL_SQUEEZED_MIN_HEIGHT,
+    );
   }
-  return clamp(chosen, PANEL_DRAG_MIN_HEIGHT, getPanelDragMax(viewport.height));
+  return clamp(
+    chosen,
+    PANEL_DRAG_MIN_HEIGHT,
+    getPanelDragMax(viewport.height, room.usable),
+  );
 }
 
 function readStoredPanelHeight(): number | null {
@@ -290,8 +372,18 @@ export function EditorPage() {
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   // Whether the sound controls assign press or release sounds.
   const [soundSlot, setSoundSlot] = useState<SoundSlot>('press');
+  // Start, End, Duration and the Auto detect threshold, under More.
+  const [showExactTimes, setShowExactTimes] = useSessionFlag(
+    'mechvibes-editor:exact-times-open',
+  );
   const [defaultDuration, setDefaultDuration] = useState(100);
   const [showEditPackModal, setShowEditPackModal] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  // Set when a pack is opened, for Try it to draw the eye for a moment.
+  const [emphasizeTryIt, setEmphasizeTryIt] = useState(false);
+  // The tour asked to open by itself on entering a pack, until it does or
+  // is passed over.
+  const [autoTour, setAutoTour] = useState<TourFlow | null>(null);
   // config.id of an imported zip, kept on export. The editor never invents
   // one: the library issues ids, and the app mints imported-<uuid> otherwise.
   const [loadedPackId, setLoadedPackId] = useState<string | null>(null);
@@ -426,21 +518,6 @@ export function EditorPage() {
   useEffect(() => {
     storePanelHeight(chosenPanelHeight);
   }, [chosenPanelHeight]);
-  const panelHeight = getPanelHeight(viewport, chosenPanelHeight);
-  const panelDragMax = getPanelDragMax(viewport.height);
-  const waveformHeight =
-    panelHeight === null
-      ? WAVEFORM_MAX_HEIGHT
-      : Math.max(WAVEFORM_MIN_HEIGHT, panelHeight - PANEL_CONTROLS_HEIGHT);
-
-  const panelDragRef = useRef<{ startY: number; startHeight: number } | null>(
-    null,
-  );
-  const resizePanel = (height: number) => {
-    setChosenPanelHeight(
-      Math.round(clamp(height, PANEL_DRAG_MIN_HEIGHT, panelDragMax)),
-    );
-  };
 
   // Keyboard natural dimensions (used to scale-to-fit and avoid a scrollbar)
   const KEYBOARD_UNIT = 54;
@@ -461,6 +538,332 @@ export function EditorPage() {
   const keyboardAreaRef = useRef<HTMLDivElement>(null);
   const [keyboardScale, setKeyboardScale] = useState(1);
 
+  // Create unique key IDs — stable identity so consumers can memoise on it
+  const getKeyId = useCallback((key: LayoutKey, index: number) => {
+    return `${key.label || 'key'}-${index}-${key.x}-${key.y}`;
+  }, []);
+
+  // Selection ids to key codes.
+  const keyCodeById = useMemo(() => {
+    const codes = new Map<string, string>();
+    keys.forEach((key, index) => {
+      codes.set(getKeyId(key, index), key.code);
+    });
+    return codes;
+  }, [keys, getKeyId]);
+
+  // Play function ref
+  const playSelectedSegmentRef = React.useRef<(() => void) | null>(null);
+  const playSelectedSegment = React.useCallback(() => {
+    if (playSelectedSegmentRef.current) {
+      playSelectedSegmentRef.current();
+    }
+  }, []);
+
+  // Preview plays the real keyboard, and a dialog or a busy overlay holds a
+  // copy of the pack, so page-wide shortcuts stay off meanwhile. The start
+  // screens have no pack to edit, and the phone page shows none.
+  const isKeyboardOwnedElsewhere =
+    !isWorkspace ||
+    isPhone ||
+    isPreview ||
+    showEditPackModal ||
+    showShortcuts ||
+    confirmDiscardAction !== null ||
+    pendingPackType !== null ||
+    showMyPacks ||
+    isExporting ||
+    isUpdating ||
+    isOpeningFile ||
+    openingPackId !== null;
+
+  // Keyboard selection hook
+  const {
+    selectedKeys,
+    setSelectedKeys,
+    marquee,
+    tabStopId,
+    setFocusKeyId,
+    selectKey,
+    keyboardRef,
+    pointerHandlers,
+  } = useKeyboardSelection({
+    keys,
+    getKeyId,
+    // The keyboard of a pack with no file yet is drawn faded and takes no clicks.
+    enabled:
+      !isKeyboardOwnedElsewhere &&
+      getWorkspaceStage({
+        sourceCount: sources.length,
+        keySounds,
+        packType: packInfo.packType,
+      }) !== 'no-files',
+    // Declared below, once the selected codes are known; called later from events.
+    onClearSelected: () => clearSelectedKeySounds(),
+    onSingleKeySelect: (keyCode) => {
+      // Show the key's file and the half of its sound being edited.
+      const sound = keySounds.get(keyCode);
+      if (!sound) return;
+      const segment =
+        soundSlot === 'release' && sound.release ? sound.release : sound.press;
+      setActiveSourceId(sound.source);
+      setWaveformSelection({ start: segment[0], end: segment[1] });
+    },
+  });
+
+  // Where focus goes when the control that had it goes away: the keyboard's
+  // key in the Tab order.
+  const focusKeyboard = useCallback(() => {
+    keyboardRef.current
+      ?.querySelector<HTMLElement | SVGElement>('[data-key-id][tabindex="0"]')
+      ?.focus();
+  }, [keyboardRef]);
+
+  const selectedCodes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Array.from(selectedKeys, (id) => keyCodeById.get(id)).filter(
+            (code): code is string => Boolean(code),
+          ),
+        ),
+      ),
+    [selectedKeys, keyCodeById],
+  );
+
+  // What the workspace shows, from how far the pack has come.
+  const visibility = getVisibility({
+    sourceCount: sources.length,
+    keySounds,
+    packType: packInfo.packType,
+    isLibraryPack: libraryPack !== null,
+    isSignedIn: session.status === 'signed-in',
+    selectedCodes,
+  });
+  const keyCount = useMemo(
+    () => countDrawnKeys(keySounds, getLayoutCodes(layout)),
+    [keySounds, layout],
+  );
+
+  // Release is a choice made for keys that have a press. Without the switch
+  // the controls assign presses, and once it shows again it starts on Press:
+  // applying a press to a silent key must not turn the next Apply into a
+  // release the visitor never picked.
+  useEffect(() => {
+    if (!visibility.pressReleaseToggle) setSoundSlot('press');
+  }, [visibility.pressReleaseToggle]);
+
+  // The keyboard of a pack with no file takes no clicks or keys, so a
+  // selection left on it (an Undo of the only file) could not be cleared
+  // there, and would come back unseen with the next file.
+  useEffect(() => {
+    if (visibility.stage === 'no-files') setSelectedKeys(new Set());
+  }, [visibility.stage, setSelectedKeys]);
+
+  // Height the rows around the keyboard take, each with the column's 12px gap:
+  // the settings row above, then the hidden-keys tray and the legend below,
+  // when shown. Fixed rather than measured: those rows derive
+  // their width from keyboardScale, so measuring them would make the scale
+  // depend on its own output. Each row stays on one line, its text cut short
+  // rather than wrapped, so these heights hold. Preview collapses them all,
+  // so the keyboard gets that space back.
+  const rowsHeight = isPreview
+    ? 0
+    : [
+        24,
+        hasHiddenKeys ? 24 : 0,
+        visibility.legend
+          ? visibility.keyCount
+            ? KEY_LEGEND_WITH_COUNT_HEIGHT
+            : KEY_LEGEND_HEIGHT
+          : 0,
+      ]
+        .filter((height) => height > 0)
+        .reduce((sum, height) => sum + height + 12, 0);
+  // The rows line up with the keyboard, and are never narrower than it is at
+  // its smallest scale. The mouse's rows keep the width they need to read.
+  const keyboardWidth = keyboardNaturalWidth * keyboardScale;
+  const rowsMinWidth =
+    layout === 'mouse'
+      ? ROWS_READABLE_WIDTH
+      : keyboardNaturalWidth * KEYBOARD_MIN_SCALE;
+  const rowsStyle = {
+    maxWidth: keyboardWidth,
+    minWidth: `min(100%, ${rowsMinWidth}px)`,
+  };
+  // The settings row is as wide as the rows, or as wide as its words and the
+  // size switch need over a narrow keyboard, up to the column's width: only a
+  // column too narrow for them cuts the Next line short.
+  const settingsRowStyle = {
+    minWidth: `min(100%, ${Math.max(keyboardWidth, rowsMinWidth)}px)`,
+  };
+
+  // Height the keyboard column (inside its padding), the drag handle and the
+  // panel share: the page below the navbar and any notice, however tall the
+  // notice is. The column is what grows and shrinks between them, so a
+  // change of either shows up as a resize of the column.
+  const [sharedHeight, setSharedHeight] = useState<number | null>(null);
+  const measureSharedHeight = useCallback(() => {
+    const column = keyboardAreaRef.current?.parentElement;
+    // The wrapper that hides the workspace behind the start screens has no
+    // box of its own while it shows (display: contents), so the page is the
+    // first ancestor laid out as one.
+    let page = column?.parentElement;
+    while (page && getComputedStyle(page).display === 'contents') {
+      page = page.parentElement;
+    }
+    if (!column || !page) return;
+    const style = getComputedStyle(column);
+    setSharedHeight(
+      Math.round(
+        page.getBoundingClientRect().bottom -
+          column.getBoundingClientRect().top -
+          parseFloat(style.paddingTop) -
+          parseFloat(style.paddingBottom),
+      ),
+    );
+  }, []);
+
+  // Height the panel's content takes besides the waveform, measured so the
+  // waveform can take what is left: More, a second row of chips or, stacked,
+  // each file in the list. It does not depend on the waveform's own height,
+  // so measuring it feeds nothing back.
+  const panelRowRef = useRef<HTMLDivElement>(null);
+  const panelControlsRef = useRef<HTMLDivElement>(null);
+  const [panelControlsHeight, setPanelControlsHeight] = useState<number | null>(
+    null,
+  );
+  // The same, up to where Quick select starts; null without Quick select.
+  const [quickSelectStart, setQuickSelectStart] = useState<number | null>(null);
+
+  // The panel leaves the keyboard its rows and at least its smallest scale.
+  // Keyboard sizes narrower than full size are kept as wide as their rows
+  // read while the panel's controls fit; the mouse is no row-wide drawing.
+  const keyboardMinHeight = keyboardNaturalHeight * KEYBOARD_MIN_SCALE;
+  const keyboardReadableHeight =
+    layout === 'mouse'
+      ? keyboardMinHeight
+      : Math.max(
+          keyboardMinHeight,
+          (keyboardNaturalHeight * ROWS_READABLE_WIDTH) / keyboardNaturalWidth,
+        );
+  const panelSpace =
+    sharedHeight === null
+      ? Number.POSITIVE_INFINITY
+      : sharedHeight - PANEL_EDGE_HEIGHT - rowsHeight;
+  const panelRoom: PanelRoom = {
+    usable: Math.floor(panelSpace - keyboardMinHeight),
+    readable: Math.floor(panelSpace - keyboardReadableHeight),
+    needed:
+      (panelControlsHeight ?? PANEL_CONTROLS_HEIGHT) + WAVEFORM_SQUEEZED_HEIGHT,
+  };
+  const panelHeight = getPanelHeight(viewport, chosenPanelHeight, panelRoom);
+  const panelDragMax = getPanelDragMax(viewport.height, panelRoom.usable);
+  // Stacked, the panel sizes to its content up to the same room.
+  const stackedPanelMax = Math.max(panelRoom.usable, PANEL_DRAG_MIN_HEIGHT);
+  const isStacked = panelHeight === null;
+  const measurePanelControls = useCallback(() => {
+    const row = panelRowRef.current;
+    const controls = panelControlsRef.current;
+    const column = controls?.parentElement;
+    const waveform = controls?.querySelector<HTMLElement>(
+      WAVEFORM_BOX_SELECTOR,
+    );
+    if (!row || !controls || !column || !waveform) return;
+    const quickSelect = controls.querySelector<HTMLElement>(
+      QUICK_SELECT_SELECTOR,
+    );
+    // Within the controls, which scroll as one, so their scroll is no matter.
+    const toQuickSelect = quickSelect
+      ? quickSelect.getBoundingClientRect().top -
+        controls.getBoundingClientRect().top
+      : null;
+    // Stacked, the whole row grows with its content and scrolls in the
+    // panel. Side by side, the panel has a fixed height and only the right
+    // column's content counts, with the column's padding and the row's
+    // bottom border, which stays below the column's fold.
+    let needed = row.offsetHeight;
+    let start =
+      toQuickSelect === null
+        ? null
+        : controls.getBoundingClientRect().top -
+          row.getBoundingClientRect().top +
+          toQuickSelect;
+    if (!isStacked) {
+      const columnStyle = getComputedStyle(column);
+      const paddingTop = parseFloat(columnStyle.paddingTop);
+      const border = parseFloat(getComputedStyle(row).borderBottomWidth);
+      needed =
+        controls.offsetHeight +
+        paddingTop +
+        parseFloat(columnStyle.paddingBottom) +
+        border;
+      start =
+        toQuickSelect === null ? null : paddingTop + toQuickSelect + border;
+    }
+    setPanelControlsHeight(needed - waveform.offsetHeight);
+    setQuickSelectStart(
+      start === null ? null : Math.round(start - waveform.offsetHeight),
+    );
+  }, [isStacked]);
+
+  // Measured after every commit, so a row or a notice this page adds is
+  // counted before it paints; the observers catch what changes size without
+  // a render here, such as a row a child opens or chips that wrap.
+  useLayoutEffect(() => {
+    if (!isWorkspace || isPhone) return;
+    measureSharedHeight();
+    measurePanelControls();
+  });
+  const hasPanelControls = Boolean(audioFile && activeSourceId);
+  useLayoutEffect(() => {
+    if (!isWorkspace || isPhone) return;
+    const observer = new ResizeObserver(() => {
+      measureSharedHeight();
+      measurePanelControls();
+    });
+    for (const el of [
+      keyboardAreaRef.current?.parentElement,
+      panelRowRef.current,
+      hasPanelControls ? panelControlsRef.current : null,
+    ]) {
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [
+    isWorkspace,
+    isPhone,
+    hasPanelControls,
+    measureSharedHeight,
+    measurePanelControls,
+  ]);
+
+  // The waveform takes what the panel has besides its controls: the fixed
+  // height side by side, about half the screen stacked, within the most the
+  // panel shows before its controls scroll. A panel too short for them all
+  // ends where Quick select starts and the waveform takes the rest, so the
+  // chips wait below the fold whole rather than show a slice.
+  const panelView = panelHeight ?? stackedPanelMax;
+  const panelControls = panelControlsHeight ?? PANEL_CONTROLS_HEIGHT;
+  const waveformHeight = clamp(
+    quickSelectStart !== null &&
+      panelControls + WAVEFORM_SQUEEZED_HEIGHT > panelView
+      ? panelView - quickSelectStart
+      : Math.min(panelHeight ?? Math.round(viewport.height / 2), panelView) -
+          panelControls,
+    WAVEFORM_SQUEEZED_HEIGHT,
+    WAVEFORM_MAX_HEIGHT,
+  );
+
+  const panelDragRef = useRef<{ startY: number; startHeight: number } | null>(
+    null,
+  );
+  const resizePanel = (height: number) => {
+    setChosenPanelHeight(
+      Math.round(clamp(height, PANEL_DRAG_MIN_HEIGHT, panelDragMax)),
+    );
+  };
+
   useEffect(() => {
     // The keyboard is shown only in the workspace: the start screens hide it
     // (its container then measures 0x0) and the phone page takes it off.
@@ -471,15 +874,6 @@ export function EditorPage() {
     // scaled keyboard, so observing it would feed its own output back in as input.
     const target = el?.parentElement;
     if (!target) return;
-    // Settings row + shortcuts row + the two gaps between them. Fixed rather than
-    // measured: those rows derive their width from keyboardScale, so measuring them
-    // would make the scale depend on its own output. The rows keep a minimum width
-    // so they stay on one line and this height holds. Preview collapses both rows,
-    // so the keyboard gets that space back. The hidden-keys tray, when shown,
-    // adds its own row and one more gap.
-    const rowsHeight = isPreview
-      ? 0
-      : 24 + 20 + 24 + (hasHiddenKeys ? 24 + 12 : 0);
     const rescale = (width: number, height: number) => {
       const available = height - rowsHeight;
       const scale = Math.min(
@@ -534,94 +928,8 @@ export function EditorPage() {
     isPhone,
     keyboardNaturalWidth,
     keyboardNaturalHeight,
-    isPreview,
-    hasHiddenKeys,
+    rowsHeight,
   ]);
-
-  // Create unique key IDs — stable identity so consumers can memoise on it
-  const getKeyId = useCallback((key: LayoutKey, index: number) => {
-    return `${key.label || 'key'}-${index}-${key.x}-${key.y}`;
-  }, []);
-
-  // Selection ids to key codes.
-  const keyCodeById = useMemo(() => {
-    const codes = new Map<string, string>();
-    keys.forEach((key, index) => {
-      codes.set(getKeyId(key, index), key.code);
-    });
-    return codes;
-  }, [keys, getKeyId]);
-
-  // Play function ref
-  const playSelectedSegmentRef = React.useRef<(() => void) | null>(null);
-  const playSelectedSegment = React.useCallback(() => {
-    if (playSelectedSegmentRef.current) {
-      playSelectedSegmentRef.current();
-    }
-  }, []);
-
-  // Preview plays the real keyboard, and a dialog or a busy overlay holds a
-  // copy of the pack, so page-wide shortcuts stay off meanwhile. The start
-  // screens have no pack to edit, and the phone page shows none.
-  const isKeyboardOwnedElsewhere =
-    !isWorkspace ||
-    isPhone ||
-    isPreview ||
-    showEditPackModal ||
-    confirmDiscardAction !== null ||
-    pendingPackType !== null ||
-    showMyPacks ||
-    isExporting ||
-    isUpdating ||
-    isOpeningFile ||
-    openingPackId !== null;
-
-  // Keyboard selection hook
-  const {
-    selectedKeys,
-    setSelectedKeys,
-    marquee,
-    tabStopId,
-    setFocusKeyId,
-    selectKey,
-    keyboardRef,
-    pointerHandlers,
-  } = useKeyboardSelection({
-    keys,
-    getKeyId,
-    enabled: !isKeyboardOwnedElsewhere,
-    // Declared below, once the selected codes are known; called later from events.
-    onClearSelected: () => clearSelectedKeySounds(),
-    onSingleKeySelect: (keyCode) => {
-      // Show the key's file and the half of its sound being edited.
-      const sound = keySounds.get(keyCode);
-      if (!sound) return;
-      const segment =
-        soundSlot === 'release' && sound.release ? sound.release : sound.press;
-      setActiveSourceId(sound.source);
-      setWaveformSelection({ start: segment[0], end: segment[1] });
-    },
-  });
-
-  // Where focus goes when the control that had it goes away: the keyboard's
-  // key in the Tab order.
-  const focusKeyboard = useCallback(() => {
-    keyboardRef.current
-      ?.querySelector<HTMLElement | SVGElement>('[data-key-id][tabindex="0"]')
-      ?.focus();
-  }, [keyboardRef]);
-
-  const selectedCodes = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          Array.from(selectedKeys, (id) => keyCodeById.get(id)).filter(
-            (code): code is string => Boolean(code),
-          ),
-        ),
-      ),
-    [selectedKeys, keyCodeById],
-  );
 
   // Delete, Backspace and the Clear button take the whole sound off the
   // selected keys, as one undo step. Keys without a sound add no step.
@@ -728,6 +1036,8 @@ export function EditorPage() {
     setSoundSlot('press');
     setWaveformSelection({ start: 0, end: 0 });
     setNotice(null);
+    setEmphasizeTryIt(false);
+    setAutoTour(null);
   }, [setSelectedKeys]);
 
   // Start a new history from `snapshot` with nothing unsaved. `published` is what the library holds.
@@ -742,11 +1052,14 @@ export function EditorPage() {
 
   // The work stays as it is while the start screens show, but nothing of the
   // workspace may go on over them: what was open over the pack closes, a
-  // sound playing stops, and the tour would point at nothing.
+  // sound playing stops, and the tour would point at nothing. The emphasis on
+  // Try it is spent too, so coming back does not play it again.
   const leaveWorkspace = () => {
     setShowMyPacks(false);
     setShowEditPackModal(false);
+    setShowShortcuts(false);
     setPendingPackType(null);
+    setEmphasizeTryIt(false);
     exitPreview();
     // Playing again stops it.
     if (isPlaying) playSelectedSegment();
@@ -865,7 +1178,12 @@ export function EditorPage() {
     resetView();
     startFrom(createBlankSnapshot(packType), null);
     enterWorkspace();
-    if (files.length > 0) handleAddSources(files);
+    // Files on their way skip the empty pack the tour would show.
+    if (files.length > 0) {
+      handleAddSources(files);
+    } else {
+      setAutoTour('new-pack');
+    }
   };
 
   // Each way in replaces the work there is, so it asks first over changes
@@ -919,6 +1237,17 @@ export function EditorPage() {
     setLoadedPackId(imported.id);
     setPackExtras(imported.extras);
     setActiveSourceId(imported.sources[0]?.id ?? null);
+    // A pack that opens already makes sound: point at the way to hear it.
+    setEmphasizeTryIt(true);
+    setAutoTour(
+      autoTourFlow(
+        getWorkspaceStage({
+          sourceCount: imported.sources.length,
+          keySounds: imported.keySounds,
+          packType: imported.info.packType,
+        }),
+      ),
+    );
     if (imported.warnings.length > 0) {
       setNotice({
         tone: 'error',
@@ -1093,7 +1422,7 @@ export function EditorPage() {
       } else if (error instanceof WebsiteApiError && error.status === 409) {
         setNotice({
           tone: 'error',
-          message: `${libraryPack.name} changed on the website since you opened it${error.revision ? ` (it is now at revision ${error.revision})` : ''}. Reopening it loses the changes made here, so export a copy first, then reopen the pack from My packs.`,
+          message: `${libraryPack.name} changed on the website since you opened it${error.revision ? ` (it is now at revision ${error.revision})` : ''}. Reopening it loses the changes made here, so download a .zip first, then reopen the pack from My packs.`,
         });
       } else {
         setNotice(libraryErrorNotice(error, 'Could not update the pack.'));
@@ -1106,7 +1435,7 @@ export function EditorPage() {
     }
   };
 
-  // Export current settings as a sound pack zip
+  // Download the pack as a .zip
   const handleExport = async () => {
     // The state written to the zip; edits are locked while it builds.
     const exported = present;
@@ -1126,7 +1455,7 @@ export function EditorPage() {
         setNotice({
           tone: 'success',
           message:
-            'Exported. To share it in the library, create a pack from this zip on the website.',
+            'Downloaded. To share it in the library, create a pack from this .zip on the website.',
           link: { href: NEW_PACK_URL, label: 'Create a pack' },
         });
       }
@@ -1134,9 +1463,7 @@ export function EditorPage() {
       setNotice({
         tone: 'error',
         message:
-          error instanceof Error
-            ? error.message
-            : 'Could not export sound pack.',
+          error instanceof Error ? error.message : 'Could not make the .zip.',
       });
     } finally {
       setIsExporting(false);
@@ -1170,22 +1497,89 @@ export function EditorPage() {
     error: previewError,
   } = usePreviewPlayback(sources, keySounds, isPreview);
   const isMousePack = packInfo.packType === 'Mouse';
+  // A touch screen has no keys to press: Try it says to tap the drawn ones.
+  const isCoarsePointer = useCoarsePointer();
 
   const exitPreview = useCallback(() => {
     setIsPreview(false);
     setPressedKeyCodes(new Set());
   }, []);
 
-  // Guided tour of the workspace, opened from the navbar. The start screen
-  // already says where to begin, so it never opens by itself.
-  const tourRef = useRef<ReturnType<typeof startEditorTour> | null>(null);
-  const startTour = () => {
+  // A key or button goes down or comes up in preview, from the real keyboard
+  // or mouse, or from a click or tap on its drawing.
+  const pressPreviewKey = useCallback(
+    (code: string) => {
+      playKey(code, 'press');
+      setPressedKeyCodes((prev) => new Set(prev).add(code));
+    },
+    [playKey],
+  );
+  const releasePreviewKey = useCallback(
+    (code: string) => {
+      playKey(code, 'release');
+      setPressedKeyCodes((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    },
+    [playKey],
+  );
+
+  // The emphasis on Try it plays out once, then goes.
+  useEffect(() => {
+    if (!emphasizeTryIt) return;
+    const timer = window.setTimeout(() => setEmphasizeTryIt(false), 4500);
+    return () => window.clearTimeout(timer);
+  }, [emphasizeTryIt]);
+
+  // Guided tour of the workspace: every step from the Help menu, or the
+  // steps for the way in, opened by itself the first time a pack is entered.
+  const tourRef = useRef<ReturnType<typeof startEditorTour>>(null);
+  const startTour = (flow: TourFlow = 'all') => {
     tourRef.current?.destroy();
     tourRef.current = startEditorTour({
+      flow,
       signedIn: session.status === 'signed-in',
+      stage: visibility.stage,
+      isMouse: isMousePack,
     });
   };
   useEffect(() => () => tourRef.current?.destroy(), []);
+
+  // Read when the delay below runs out, for the pack and account as they are then.
+  const startTourRef = useRef(startTour);
+  startTourRef.current = startTour;
+
+  // Not on a phone, not over a dialog or Try it, and not once this browser
+  // has seen the tour. Anything that changes meanwhile (a dialog, a file
+  // dropped, leaving the workspace) passes it over instead of postponing it.
+  useEffect(() => {
+    if (!autoTour) return;
+    if (
+      !isWorkspace ||
+      isPhone ||
+      isKeyboardOwnedElsewhere ||
+      autoTourFlow(visibility.stage) !== autoTour ||
+      hasSeenTour()
+    ) {
+      setAutoTour(null);
+      return;
+    }
+    // Once the keyboard has scaled to its space, so each step points at
+    // where its element ends up.
+    const timer = window.setTimeout(() => {
+      setAutoTour(null);
+      startTourRef.current(autoTour);
+    }, AUTO_TOUR_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    autoTour,
+    isWorkspace,
+    isPhone,
+    isKeyboardOwnedElsewhere,
+    visibility.stage,
+  ]);
 
   // The phone page hides the workspace, so nothing of it may go on running:
   // preview would play the keyboard, and the tour would point at nothing.
@@ -1255,6 +1649,27 @@ export function EditorPage() {
     document.getElementById(SCREEN_HEADING_ID)?.focus({ preventScroll: true });
   }, [screen]);
 
+  // The first file takes away the tiles, and removing the last one takes
+  // away the file list and puts the panel away. Focus inside them drops to
+  // the page, so it goes to the heading of what shows instead, for the Tab
+  // order and a screen reader to pick up there. Focus anywhere else stays.
+  // After the screen heading's effect, which owns the focus on entering.
+  const focusedStageRef = useRef<WorkspaceStage | null>(null);
+  useEffect(() => {
+    const previous = focusedStageRef.current;
+    focusedStageRef.current = isWorkspace ? visibility.stage : null;
+    if (previous === null || !isWorkspace) return;
+    const emptied = visibility.stage === 'no-files';
+    if (emptied === (previous === 'no-files')) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && !active.closest('[inert]')) {
+      return;
+    }
+    document
+      .getElementById(emptied ? ADD_SOUNDS_HEADING_ID : SOURCES_HEADING_ID)
+      ?.focus({ preventScroll: true });
+  }, [isWorkspace, visibility.stage]);
+
   // The browser's Back and Forward move between the start screens and the
   // workspace. Leaving the workspace that way keeps the work, as Start over does.
   useEffect(() => {
@@ -1305,19 +1720,6 @@ export function EditorPage() {
   useEffect(() => {
     if (!isPreview) return;
 
-    const press = (code: string) => {
-      playKey(code, 'press');
-      setPressedKeyCodes((prev) => new Set(prev).add(code));
-    };
-    const release = (code: string) => {
-      playKey(code, 'release');
-      setPressedKeyCodes((prev) => {
-        const next = new Set(prev);
-        next.delete(code);
-        return next;
-      });
-    };
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         exitPreview();
@@ -1328,21 +1730,28 @@ export function EditorPage() {
       // navigate or scroll instead of sounding like a key press.
       event.preventDefault();
       if (event.repeat) return;
-      press(event.code);
+      pressPreviewKey(event.code);
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (!isMousePack) release(event.code);
+      if (!isMousePack) releasePreviewKey(event.code);
     };
 
     // A mouse pack sounds on the real mouse buttons and wheel, as in the app.
+    // A tap plays the button tapped on the drawing instead, so the mouse
+    // events a browser makes up after a tap are left alone.
+    let lastTouch = Number.NEGATIVE_INFINITY;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') lastTouch = performance.now();
+    };
+    const isAfterTouch = () => performance.now() - lastTouch < 1000;
     const handleMouseDown = (event: MouseEvent) => {
       const code = MOUSE_BUTTON_CODES[event.button];
-      if (code) press(code);
+      if (code && !isAfterTouch()) pressPreviewKey(code);
     };
     const handleMouseUp = (event: MouseEvent) => {
       const code = MOUSE_BUTTON_CODES[event.button];
-      if (code) release(code);
+      if (code && !isAfterTouch()) releasePreviewKey(code);
     };
     let lastWheelSound = 0;
     const handleWheel = (event: WheelEvent) => {
@@ -1361,6 +1770,7 @@ export function EditorPage() {
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
     if (isMousePack) {
+      window.addEventListener('pointerdown', handlePointerDown, true);
       window.addEventListener('mousedown', handleMouseDown);
       window.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('wheel', handleWheel);
@@ -1370,12 +1780,20 @@ export function EditorPage() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('pointerdown', handlePointerDown, true);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [isPreview, isMousePack, playKey, exitPreview]);
+  }, [
+    isPreview,
+    isMousePack,
+    playKey,
+    pressPreviewKey,
+    releasePreviewKey,
+    exitPreview,
+  ]);
 
   useEffect(() => {
     if (isKeyboardOwnedElsewhere) return;
@@ -1456,9 +1874,11 @@ export function EditorPage() {
                 ? 'Loading sounds…'
                 : previewError
                   ? previewError
-                  : isMousePack
-                    ? `Click or scroll anywhere — ${plural(playableCount, 'button')} mapped`
-                    : `Press any highlighted key — ${plural(playableCount, 'key')} mapped`}
+                  : isCoarsePointer
+                    ? `Tap a ${isMousePack ? 'button' : 'key'} to hear it`
+                    : isMousePack
+                      ? `Click or scroll anywhere — ${plural(playableCount, 'button')} mapped`
+                      : `Press any highlighted key — ${plural(playableCount, 'key')} mapped`}
             </span>
             <button
               type="button"
@@ -1466,7 +1886,7 @@ export function EditorPage() {
               onClick={exitPreview}
             >
               <X className="h-4 w-4" />
-              Exit preview
+              Back to editing
             </button>
           </div>
         ) : (
@@ -1490,17 +1910,24 @@ export function EditorPage() {
                     packName: packInfo.name,
                     packType: packInfo.packType,
                     onEditPack: () => setShowEditPackModal(true),
+                    onSwitchPackType: handlePackTypeChange,
                     onStartOver: startOver,
-                    onExport: handleExport,
-                    isExporting,
-                    onPreview: () => setIsPreview(true),
-                    canPreview: sources.length > 0 && playableCount > 0,
-                    onUpdate:
-                      libraryPack && session.status === 'signed-in'
-                        ? handleUpdate
-                        : undefined,
+                    onDownload: visibility.download ? handleExport : undefined,
+                    isDownloading: isExporting,
+                    onTryIt: visibility.tryIt
+                      ? () => {
+                          setEmphasizeTryIt(false);
+                          setIsPreview(true);
+                        }
+                      : undefined,
+                    canTryIt: playableCount > 0,
+                    emphasizeTryIt,
+                    onUpdate: visibility.updateOnline
+                      ? handleUpdate
+                      : undefined,
                     isUpdating,
-                    onStartTour: startTour,
+                    onStartTour: () => startTour(),
+                    onShowShortcuts: () => setShowShortcuts(true),
                     undoLabel,
                     redoLabel,
                     onUndo: undo,
@@ -1551,6 +1978,12 @@ export function EditorPage() {
           }}
         />
 
+        <KeyboardShortcutsDialog
+          isOpen={showShortcuts}
+          onClose={() => setShowShortcuts(false)}
+          isMousePack={isMousePack}
+        />
+
         {session.status === 'signed-in' && (
           <MyPacksModal
             isOpen={showMyPacks}
@@ -1573,7 +2006,7 @@ export function EditorPage() {
               <span className="loading loading-spinner loading-lg text-primary"></span>
               <p className="text-sm font-medium">
                 {isExporting
-                  ? 'Exporting sound pack…'
+                  ? 'Making the .zip…'
                   : isUpdating
                     ? 'Publishing to the library…'
                     : 'Opening the pack…'}
@@ -1658,12 +2091,14 @@ export function EditorPage() {
               </ScreenHeading>
             )}
             {/* Notices sit outside the keyboard column, whose fit-to-height
-            scale only accounts for its own rows. */}
+            scale only accounts for its own rows; the panel's default height
+            makes room for them. Short screens get a compact notice, and a
+            long list scrolls rather than squeeze the keyboard. */}
             {notice && (
               <div
-                className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm ${NOTICE_TONE_CLASSES[notice.tone]}`}
+                className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm short:py-1 short:text-xs ${NOTICE_TONE_CLASSES[notice.tone]}`}
               >
-                <div className="min-w-0">
+                <div className="min-w-0 short:max-h-20 short:overflow-y-auto">
                   <p>
                     {notice.message}
                     {notice.link && (
@@ -1699,31 +2134,22 @@ export function EditorPage() {
             )}
 
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-center gap-3 px-4 py-3">
-              {/* Keyboard Settings — width tracks the scaled keyboard so both align with it */}
+              {/* Keyboard Settings — at least as wide as the scaled keyboard, so both align */}
               <div
-                className="editor-chrome-vertical editor-chrome-top w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+                className="editor-chrome-vertical editor-chrome-top w-max max-w-full shrink-0"
                 data-hidden={isPreview}
-                style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+                style={settingsRowStyle}
               >
                 <h2 className="sr-only">Keyboard settings</h2>
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    {/* soundpack_type: which device the pack is for */}
-                    <div className="join" data-tour="pack-type">
-                      {(['Keyboard', 'Mouse'] as const).map((packType) => (
-                        <button
-                          key={packType}
-                          type="button"
-                          className={`btn btn-xs join-item ${packInfo.packType === packType ? 'btn-active' : ''}`}
-                          aria-pressed={packInfo.packType === packType}
-                          onClick={() => handlePackTypeChange(packType)}
-                          title={`Make a ${packType.toLowerCase()} sound pack`}
-                        >
-                          {packType}
-                        </button>
-                      ))}
-                    </div>
-                    {packInfo.packType === 'Keyboard' && (
+                <div className="flex h-6 items-center justify-between gap-4">
+                  <NextStep
+                    stage={visibility.stage}
+                    packType={packInfo.packType}
+                    isTouch={isCoarsePointer}
+                    isLarge={keyboardWidth >= NEXT_STEP_LARGE_WIDTH}
+                  />
+                  {visibility.keyboardSize && (
+                    <div className="flex shrink-0 items-center gap-4">
                       <div className="join">
                         <button
                           type="button"
@@ -1747,36 +2173,8 @@ export function EditorPage() {
                           Compact
                         </button>
                       </div>
-                    )}
-                  </div>
-                  {/* Key State Examples */}
-                  <div className="flex items-center gap-4 text-xs">
-                    <div className="flex items-center gap-2">
-                      <div className="btn btn-xs btn-neutral pointer-events-none">
-                        A
-                      </div>
-                      <span className="text-base-content/70">Selected</span>
                     </div>
-                    <div
-                      className="flex items-center gap-2"
-                      title="The dot takes the colour of the file the sound comes from"
-                    >
-                      <div className="btn btn-xs relative pointer-events-none">
-                        Q
-                        <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-base-content/50 rounded-full border-2 border-white shadow-lg ring-2 ring-base-content/20"></div>
-                      </div>
-                      <span className="text-base-content/70">Has a sound</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="btn btn-xs relative pointer-events-none">
-                        Z
-                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>
-                      </div>
-                      <span className="text-base-content/70">
-                        Release sound
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -1788,9 +2186,13 @@ export function EditorPage() {
               >
                 {/* No CSS transition here: ResizeObserver already re-scales the
                 keyboard every frame while the panels collapse, and animating
-                the same values on top of that lags behind the layout. */}
+                the same values on top of that lags behind the layout. Only
+                the fade of an empty pack's keyboard is animated. */}
                 <div
-                  className="shrink-0"
+                  className={`shrink-0 transition-opacity duration-300 ${visibility.fadedKeyboard ? 'opacity-30' : ''}`}
+                  // Faded, it shows where the sounds will go, and takes no clicks or focus.
+                  inert={visibility.fadedKeyboard}
+                  // Inert, the tour leaves it out.
                   data-tour="keyboard"
                   style={{
                     width: keyboardNaturalWidth * keyboardScale,
@@ -1798,12 +2200,17 @@ export function EditorPage() {
                   }}
                 >
                   <div
-                    style={{
-                      transform: `scale(${keyboardScale})`,
-                      transformOrigin: 'top left',
-                      width: keyboardNaturalWidth,
-                      height: keyboardNaturalHeight,
-                    }}
+                    style={
+                      {
+                        transform: `scale(${keyboardScale})`,
+                        transformOrigin: 'top left',
+                        width: keyboardNaturalWidth,
+                        height: keyboardNaturalHeight,
+                        // Labels grow as the keyboard shrinks, so they stay
+                        // readable, but only as far as they fit the keys.
+                        '--key-label-size': `${keyboardScale > 0 ? clamp(KEY_LABEL_MIN_PX / keyboardScale, KEY_LABEL_PX, KEY_LABEL_MAX_PX) : KEY_LABEL_PX}px`,
+                      } as React.CSSProperties
+                    }
                   >
                     {isMousePack ? (
                       // Mouse packs answer the real mouse anywhere on the page.
@@ -1817,6 +2224,8 @@ export function EditorPage() {
                         keyboardRef={keyboardRef}
                         isPreview={isPreview}
                         pressedKeyCodes={pressedKeyCodes}
+                        onPreviewTouchDown={pressPreviewKey}
+                        onPreviewTouchUp={releasePreviewKey}
                       />
                     ) : (
                       <KeyboardDisplay
@@ -1832,8 +2241,8 @@ export function EditorPage() {
                         keyboardRef={keyboardRef}
                         isPreview={isPreview}
                         pressedKeyCodes={pressedKeyCodes}
-                        onPreviewKeyDown={(code) => playKey(code, 'press')}
-                        onPreviewKeyUp={(code) => playKey(code, 'release')}
+                        onPreviewKeyDown={pressPreviewKey}
+                        onPreviewKeyUp={releasePreviewKey}
                       />
                     )}
                   </div>
@@ -1843,9 +2252,9 @@ export function EditorPage() {
               {/* Keys with a sound that the drawn layout leaves out */}
               {hasHiddenKeys && (
                 <div
-                  className="editor-chrome-vertical w-full min-w-[min(100%,46rem)] mx-auto shrink-0"
+                  className="editor-chrome-vertical w-full mx-auto shrink-0"
                   data-hidden={isPreview}
-                  style={{ maxWidth: keyboardNaturalWidth * keyboardScale }}
+                  style={rowsStyle}
                 >
                   <h2 className="sr-only">Hidden keys</h2>
                   <HiddenKeysTray
@@ -1862,23 +2271,31 @@ export function EditorPage() {
                 </div>
               )}
 
-              {/* Shortcuts Bar */}
-              <div
-                className="editor-chrome-vertical w-full flex justify-center shrink-0"
-                data-hidden={isPreview}
-              >
-                <KeyboardShortcuts
-                  selectedKeys={selectedKeys}
-                  setSelectedKeys={setSelectedKeys}
-                  maxWidth={keyboardNaturalWidth * keyboardScale}
-                  isMousePack={isMousePack}
-                  onFocusLost={focusKeyboard}
-                />
-              </div>
+              {visibility.legend && (
+                <div
+                  className="editor-chrome-vertical w-full mx-auto shrink-0"
+                  data-hidden={isPreview}
+                  style={rowsStyle}
+                >
+                  <h2 className="sr-only">Key marks</h2>
+                  <KeyLegend
+                    showRelease={visibility.releaseLegend}
+                    count={visibility.keyCount ? keyCount : null}
+                    isMousePack={isMousePack}
+                  />
+                </div>
+              )}
             </div>
 
+            {visibility.addTiles && (
+              <AddSoundsPanel
+                packType={packInfo.packType}
+                onAdd={handleAddSources}
+              />
+            )}
+
             {/* Drag handle on the panel's top edge (wide screens only) */}
-            {panelHeight !== null && !isPreview && (
+            {panelHeight !== null && !isPreview && visibility.soundPanel && (
               // biome-ignore lint/a11y/useSemanticElements: a focusable window splitter with a grip; <hr> cannot hold children or take focus
               <div
                 role="separator"
@@ -1926,26 +2343,36 @@ export function EditorPage() {
             )}
 
             {/* Timeline panel — bottom */}
+            {/* Collapsed rather than taken off the page before the first file,
+            so the keyboard glides into the space it leaves. */}
             <div
               className="editor-chrome-vertical shrink-0 editor-panel-surface border-t-2 border-base-content/20"
-              data-hidden={isPreview}
+              data-hidden={isPreview || !visibility.soundPanel}
+              inert={!visibility.soundPanel}
             >
               {/* Stacked, the panel sizes to its content; capped so the keyboard keeps room */}
               <div
-                className="max-lg:max-h-[50dvh] max-lg:overflow-y-auto"
+                className="max-lg:overflow-y-auto"
                 style={
-                  panelHeight === null ? undefined : { height: panelHeight }
+                  panelHeight === null
+                    ? { maxHeight: stackedPanelMax }
+                    : { height: panelHeight }
                 }
               >
                 <h2 className="sr-only">Sound editing</h2>
                 {/* Dividers run edge to edge: padding lives inside each column, not on the row */}
-                <div className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20">
-                  {/* Left: audio/video import. Stacked, it is a short dropzone, sizes
-                  to the file card once audio is loaded, and keeps room for the
-                  clip when a video is loaded. */}
+                <div
+                  ref={panelRowRef}
+                  className="flex flex-col lg:flex-row items-stretch lg:h-full min-h-0 border-b-2 border-base-content/20"
+                >
+                  {/* Left: audio/video import. Stacked, it is a short dropzone,
+                  sizes to the file list once audio is loaded (the waveform
+                  gives way to a longer list), and keeps room for the clip when
+                  a video is loaded. */}
                   <div
-                    data-tour="sources"
-                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto max-h-[200px]'} lg:h-full lg:max-h-none lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
+                    // The tour points only at what is on show.
+                    data-tour={visibility.soundPanel ? 'sources' : undefined}
+                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3`}
                   >
                     <AudioFileSelector
                       sources={sources}
@@ -1962,12 +2389,16 @@ export function EditorPage() {
                   No horizontal padding here: the waveform runs edge to edge, and the
                   blocks around it carry their own px-4. */}
                   <div
-                    data-tour="sound"
+                    data-tour={visibility.soundPanel ? 'sound' : undefined}
                     className="flex-1 min-w-0 min-h-0 h-full pb-3 lg:pt-3 lg:overflow-y-auto"
                   >
-                    {audioFile && activeSourceId ? (
-                      <div className="min-h-full min-w-0 flex flex-col gap-3">
-                        {/* Waveform Editor — grows to fill, video preview absorbs the slack */}
+                    {audioFile && activeSourceId && (
+                      // Sized to its content, which the panel measures.
+                      <div
+                        ref={panelControlsRef}
+                        className="min-w-0 flex flex-col gap-3"
+                      >
+                        {/* The waveform takes the height the panel has left */}
                         <WaveformEditor
                           audioFile={audioFile}
                           defaultDuration={defaultDuration}
@@ -1985,6 +2416,7 @@ export function EditorPage() {
                           sourceId={activeSourceId}
                           videoRef={videoPreviewRef}
                           waveformHeight={waveformHeight}
+                          showThreshold={showExactTimes}
                         />
 
                         {/* Time Segment Controls */}
@@ -2002,20 +2434,27 @@ export function EditorPage() {
                           hiddenCount={hiddenKeys.length}
                           activeSourceId={activeSourceId}
                           audioDuration={audioDuration}
-                          slot={soundSlot}
+                          // Without the switch, the controls assign press sounds.
+                          slot={
+                            visibility.pressReleaseToggle ? soundSlot : 'press'
+                          }
                           setSlot={setSoundSlot}
-                          keys={keys}
+                          showSlotSwitch={visibility.pressReleaseToggle}
+                          showExactTimes={showExactTimes}
+                          setShowExactTimes={setShowExactTimes}
+                          // A mouse pack has no groups of keys to pick.
+                          keys={visibility.keyGroups ? keys : undefined}
                           getKeyId={getKeyId}
                         />
-                        {/* Absorbs leftover height so the blocks above stay pinned to the top */}
-                        <div className="flex-1 min-h-0" />
-                      </div>
-                    ) : (
-                      <div className="h-full min-w-0 flex items-center justify-center px-4 py-4 text-center text-xs text-base-content/50">
-                        Import an audio or video file to start editing the
-                        waveform
                       </div>
                     )}
+                    {/* The column's bottom padding, kept over what the panel is
+                    too short for, so cut content fades out at the edge
+                    rather than ending in a sliver. */}
+                    <div
+                      aria-hidden
+                      className="editor-panel-surface mask-t-from-0% pointer-events-none sticky bottom-0 lg:-bottom-3 z-10 -mb-3 h-3"
+                    />
                   </div>
                 </div>
               </div>

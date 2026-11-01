@@ -185,6 +185,9 @@ interface MouseDisplayProps {
   /** Preview mode: the real mouse plays the sounds; the drawing only lights up. */
   isPreview?: boolean;
   pressedKeyCodes?: Set<string>;
+  /** Preview only: a finger holds a button down, and lets it go. */
+  onPreviewTouchDown?: (code: string) => void;
+  onPreviewTouchUp?: (code: string) => void;
 }
 
 /**
@@ -202,6 +205,8 @@ export function MouseDisplay({
   keyboardRef,
   isPreview = false,
   pressedKeyCodes,
+  onPreviewTouchDown,
+  onPreviewTouchUp,
 }: MouseDisplayProps) {
   // Same keys, ids and order as the keyboard display, so selection, Shift
   // ranges and quick select work unchanged.
@@ -219,7 +224,11 @@ export function MouseDisplay({
     <div
       ref={keyboardRef}
       className="flex mx-auto justify-center select-none"
-      style={MOUSE_DISPLAY_SIZE}
+      // In preview, quick taps on one button play it rather than zoom.
+      style={{
+        ...MOUSE_DISPLAY_SIZE,
+        touchAction: isPreview ? 'manipulation' : undefined,
+      }}
       onClick={(e) => {
         // A Shift, Ctrl or Cmd click that misses a button keeps the selection.
         if (!isPreview) {
@@ -289,6 +298,21 @@ export function MouseDisplay({
                 'focus-visible:[&>:first-child]:stroke-primary',
               )}
               onFocus={() => onFocusKey(keyId)}
+              // The real mouse plays wherever it clicks; a finger plays the
+              // button it taps.
+              onPointerDown={(e) => {
+                if (!isPreview || e.pointerType === 'mouse') return;
+                e.currentTarget.setPointerCapture(e.pointerId);
+                onPreviewTouchDown?.(code);
+              }}
+              onPointerUp={(e) => {
+                if (!isPreview || e.pointerType === 'mouse') return;
+                onPreviewTouchUp?.(code);
+              }}
+              onPointerCancel={(e) => {
+                if (!isPreview || e.pointerType === 'mouse') return;
+                onPreviewTouchUp?.(code);
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 if (isPreview) return;

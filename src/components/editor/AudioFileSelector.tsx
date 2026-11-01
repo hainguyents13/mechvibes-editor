@@ -1,4 +1,4 @@
-import { Music, Plus, Upload, Video, X } from 'lucide-react';
+import { Music, Plus, Video, X } from 'lucide-react';
 import React from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,9 @@ function formatLabel(file: File): string {
   const subtype = file.type.split('/')[1] ?? '';
   return (subtype.replace(/^x-/, '') || 'unknown').toUpperCase();
 }
+
+/** Takes the focus when the first file comes in and the ways to add one go. */
+export const SOURCES_HEADING_ID = 'audio-sources-heading';
 
 // Files dropped here reach the page-wide drop handler, which adds them the
 // same way as the file picker.
@@ -67,43 +70,8 @@ export function AudioFileSelector({
     />
   );
 
-  if (sources.length === 0) {
-    return (
-      // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: mouse-driven editor surface ported unchanged from the website; keyboard access is a follow-up
-      <div
-        className="group h-full min-h-32 min-w-0 flex flex-col items-center justify-center editor-dropzone-surface border border-dashed border-base-content/20 rounded-box p-8 text-center hover:border-base-content/40 transition-colors cursor-pointer motion-safe:animate-[dropzone-glow_2.4s_ease-out_infinite] hover:animate-none"
-        onClick={() => inputRef.current?.click()}
-      >
-        <Upload className="h-12 w-12 text-base-content/40 mb-3" />
-        <h2 className="text-sm font-medium text-base-content mb-3">
-          Select your audio or video source
-        </h2>
-        <div className="flex items-center gap-3 mb-3 text-primary">
-          <Music className="h-8 w-8" />
-          <span className="text-2xl font-light text-base-content/30">/</span>
-          <Video className="h-8 w-8" />
-        </div>
-        <div className="text-sm text-base-content/60 mb-1.5">
-          Drop{' '}
-          <span className="text-primary underline underline-offset-2">
-            audio
-          </span>{' '}
-          or{' '}
-          <span className="text-primary underline underline-offset-2">
-            video
-          </span>{' '}
-          files here, or click to select
-        </div>
-        <div className="text-xs text-base-content/40">
-          Audio: MP3, WAV, OGG, FLAC, M4A · Video: MP4, WebM
-        </div>
-        <div className="mt-1.5 text-xs text-base-content/40">
-          Use one recording for every key, or a file per key
-        </div>
-        {fileInput}
-      </div>
-    );
-  }
+  // Before the first file the workspace offers its own ways to add one.
+  if (sources.length === 0) return null;
 
   const activeSource = sources.find((source) => source.id === activeSourceId);
   const isVideo = activeSource?.file.type.startsWith('video/') ?? false;
@@ -111,7 +79,11 @@ export function AudioFileSelector({
   return (
     <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2 shrink-0">
-        <h2 className="text-xs font-medium text-base-content">
+        <h2
+          id={SOURCES_HEADING_ID}
+          tabIndex={-1}
+          className="text-xs font-medium text-base-content focus:outline-none"
+        >
           Audio sources ({sources.length})
         </h2>
         <button
@@ -170,7 +142,7 @@ export function AudioFileSelector({
                   >
                     {source.file.name}
                   </div>
-                  <div className="text-[10px] text-base-content/60">
+                  <div className="text-[10px] text-base-content/70">
                     {formatLabel(source.file)} • {sizeMb} •{' '}
                     {formatDuration(source.duration)} •{' '}
                     {keyCount === 1 ? '1 key' : `${keyCount} keys`}

@@ -7,6 +7,10 @@
     dark --prefersdark;
 }
 
+/* A window too short for the editor's rows at their full size: a 768px or
+   720px laptop. */
+@custom-variant short (@media (max-height: 50rem));
+
 /* Error text on a plain background. The theme's error colour is a light pink
    that reads at about 2.9:1 on white, so it is pulled toward the text colour:
    darker on light, lighter on dark. */
@@ -76,6 +80,17 @@ body[data-editor-preview="true"] footer {
   }
 }
 
+/* Try it, just after a pack opens: a ring that spreads out and fades. */
+@keyframes try-it-cue {
+  from {
+    box-shadow: 0 0 0 0
+      color-mix(in oklab, var(--color-primary) 55%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
 /* Editor timeline container: sits a step away from the page surface in both
    themes — darker on light, lighter on dark — so the panel reads as its own
    layer. base-300 only works for light (it goes darker on dark too), so the
@@ -86,6 +101,23 @@ body[data-editor-preview="true"] footer {
     var(--color-base-200) 94%,
     var(--color-base-content) 6%
   );
+}
+
+/* The waveform panel's Sound row, pinned to the bottom of a panel too short
+   for everything. Where the browser can tell, it shows an edge while the
+   controls above it scroll beneath. */
+.panel-pinned-row {
+  container-type: scroll-state;
+}
+
+/* biome-ignore format: a space after scroll-state would make it a container name */
+@container scroll-state(stuck: bottom) {
+  .panel-pinned-row > * {
+    box-shadow:
+      0 -1px 0 color-mix(in oklab, var(--color-base-content) 15%, transparent),
+      0 -8px 12px -8px
+      color-mix(in oklab, var(--color-base-content) 25%, transparent);
+  }
 }
 
 /* Guided tour (driver.js): its popover follows the site theme. driver.css is
@@ -164,42 +196,4 @@ body[data-editor-preview="true"] footer {
 
 .editor-tour .driver-popover-arrow-side-bottom {
   border-bottom-color: var(--color-base-100);
-}
-
-/* Dropzone sits inside that container and needs to read as a distinct target. */
-.editor-dropzone-surface {
-  background-color: color-mix(
-    in oklab,
-    var(--color-base-100) 97%,
-    var(--color-base-content) 3%
-  );
-}
-
-/* Idle hint on the editor's empty audio dropzone: a halo that radiates outward
-   from the card and fades, then repeats. Stops on hover so it never competes
-   with the hover state. */
-@keyframes dropzone-glow {
-  0% {
-    box-shadow: 0 0 0 0
-      color-mix(in oklab, var(--color-primary) 35%, transparent);
-    border-color: color-mix(in oklab, var(--color-primary) 45%, transparent);
-  }
-  70% {
-    box-shadow: 0 0 0 14px
-      color-mix(in oklab, var(--color-primary) 0%, transparent);
-    border-color: color-mix(
-      in oklab,
-      var(--color-base-content) 20%,
-      transparent
-    );
-  }
-  100% {
-    box-shadow: 0 0 0 0
-      color-mix(in oklab, var(--color-primary) 0%, transparent);
-    border-color: color-mix(
-      in oklab,
-      var(--color-base-content) 20%,
-      transparent
-    );
-  }
 }

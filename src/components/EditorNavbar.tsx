@@ -1,14 +1,17 @@
 import {
   BookOpen,
+  ChevronDown,
   CircleHelp,
   CloudUpload,
   Download,
   FolderOpen,
   House,
+  Keyboard,
   Library,
   LogIn,
   Menu,
   MonitorDown,
+  Mouse,
   Pencil,
   Play,
   Redo2,
@@ -22,6 +25,7 @@ import { IS_MAC } from '@/lib/utils';
 import type { LibraryUser } from '@/lib/websiteApi';
 import type { PackType } from '@/utils/soundPack';
 import { Logo } from './Logo';
+import { NavbarMenu } from './NavbarMenu';
 
 // Website pages, opened in a new tab so the pack being edited stays open.
 const WEBSITE_LINKS = [
@@ -39,18 +43,24 @@ interface WorkspaceControls {
   packName: string;
   packType: PackType;
   onEditPack: () => void;
+  /** Switch to the other pack type; asks first about sounds it would not show. */
+  onSwitchPackType: (packType: PackType) => void;
   /** To the start screen, keeping the work behind it; asks nothing. */
   onStartOver: () => void;
-  onExport: () => void;
-  isExporting?: boolean;
-  onPreview: () => void;
-  /** Preview needs a loaded file and at least one mapped key to be useful. */
-  canPreview?: boolean;
+  /** Set once a key has a sound, as are Try it's. */
+  onDownload?: () => void;
+  isDownloading?: boolean;
+  onTryIt?: () => void;
+  /** Off when no key's sound can be played here. */
+  canTryIt?: boolean;
+  /** Draw the eye to Try it for a moment, after a pack is opened. */
+  emphasizeTryIt?: boolean;
   /** Set while a library pack is open and the visitor is signed in. */
   onUpdate?: () => void;
   isUpdating?: boolean;
   /** Show the guided tour of the editor. */
   onStartTour: () => void;
+  onShowShortcuts: () => void;
   /** Name of the action Undo reverts, or null when there is nothing to undo. */
   undoLabel: string | null;
   /** Name of the action Redo applies again, or null when there is nothing to redo. */
@@ -95,14 +105,18 @@ function PackControls({
   onUndo,
   onRedo,
   onStartTour,
+  onShowShortcuts,
   onStartOver,
-  onPreview,
-  canPreview = false,
+  onTryIt,
+  canTryIt = false,
+  emphasizeTryIt = false,
   onUpdate,
   isUpdating = false,
-  onExport,
-  isExporting = false,
+  onDownload,
+  isDownloading = false,
+  packType,
 }: WorkspaceControls) {
+  const isMouse = packType === 'Mouse';
   return (
     <>
       {/* Icon-only; left out on phones, which cannot edit, so the account button keeps its room. The wrapper keeps the tooltip on a disabled button */}
@@ -144,17 +158,19 @@ function PackControls({
           </button>
         </div>
       </div>
-      <div className="tooltip tooltip-bottom" data-tip="Show where to start">
-        <button
-          type="button"
-          onClick={onStartTour}
-          aria-label="Tour"
-          className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
-        >
-          <CircleHelp className="h-4 w-4 xl:mr-2" />
-          <span className="hidden xl:inline">Tour</span>
-        </button>
-      </div>
+      <NavbarMenu
+        align="end"
+        buttonLabel="Help"
+        tour="help"
+        buttonClassName="btn btn-sm btn-ghost rounded-box flex items-center gap-1 px-2 lg:px-3"
+        items={[
+          { label: 'Take the tour', onSelect: onStartTour },
+          { label: 'Keyboard shortcuts', onSelect: onShowShortcuts },
+        ]}
+      >
+        <CircleHelp className="h-4 w-4" />
+        <span className="hidden xl:inline">Help</span>
+      </NavbarMenu>
       <div
         className="tooltip tooltip-bottom"
         data-tip="Open another pack or make a new one"
@@ -171,36 +187,40 @@ function PackControls({
           <span className="hidden xl:inline">Start over</span>
         </button>
       </div>
-      <div
-        className="tooltip tooltip-bottom"
-        data-tour="preview"
-        data-tip={
-          canPreview
-            ? 'Try the pack on your keyboard'
-            : 'Assign a sound to at least one key first'
-        }
-      >
-        <button
-          type="button"
-          onClick={onPreview}
-          aria-label="Preview"
-          disabled={!canPreview}
-          className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
+      {onTryIt && (
+        <div
+          className="tooltip tooltip-bottom"
+          data-tour="try-it"
+          data-tip={
+            canTryIt
+              ? `Hear the pack as you ${isMouse ? 'click' : 'type'}`
+              : `This browser cannot play the sounds of these ${isMouse ? 'buttons' : 'keys'}`
+          }
         >
-          <Play className="h-4 w-4 lg:mr-2" />
-          <span className="hidden lg:inline">Preview</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={onTryIt}
+            aria-label="Try it"
+            disabled={!canTryIt}
+            // A pulse that plays out once, or with reduced motion just the outline.
+            className={`btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3 ${emphasizeTryIt && canTryIt ? 'outline-2 outline-offset-2 outline-primary/60 motion-safe:animate-[try-it-cue_1.4s_ease-out_3]' : ''}`}
+          >
+            <Play className="h-4 w-4 lg:mr-2" />
+            <span className="hidden lg:inline">Try it</span>
+          </button>
+        </div>
+      )}
       {onUpdate && (
         <div
           className="tooltip tooltip-bottom"
+          data-tour="update"
           data-tip="Publish these changes as the pack's next revision"
         >
           <button
             type="button"
             onClick={onUpdate}
             aria-label="Update"
-            disabled={isUpdating || isExporting}
+            disabled={isUpdating || isDownloading}
             className="btn btn-sm btn-primary rounded-box flex items-center space-x-1 px-2 lg:px-3"
           >
             {isUpdating ? (
@@ -214,24 +234,54 @@ function PackControls({
           </button>
         </div>
       )}
-      <button
-        type="button"
-        onClick={onExport}
-        aria-label="Export"
-        data-tour="export"
-        disabled={isExporting || isUpdating}
-        className="btn btn-sm btn-neutral rounded-box flex items-center space-x-1 px-2 lg:px-3"
-      >
-        {isExporting ? (
-          <span className="loading loading-spinner loading-xs"></span>
-        ) : (
-          <Download className="h-4 w-4 lg:mr-2" />
-        )}
-        <span className="hidden lg:inline">
-          {isExporting ? 'Exporting…' : 'Export'}
-        </span>
-      </button>
+      {onDownload && (
+        <button
+          type="button"
+          onClick={onDownload}
+          aria-label="Download .zip"
+          data-tour="download"
+          disabled={isDownloading || isUpdating}
+          className="btn btn-sm btn-neutral rounded-box flex items-center space-x-1 px-2 lg:px-3"
+        >
+          {isDownloading ? (
+            <span className="loading loading-spinner loading-xs"></span>
+          ) : (
+            <Download className="h-4 w-4 lg:mr-2" />
+          )}
+          <span className="hidden lg:inline">
+            {isDownloading ? 'Making .zip…' : 'Download .zip'}
+          </span>
+        </button>
+      )}
     </>
+  );
+}
+
+/** What the pack is for, with a menu to switch to the other type. */
+function PackTypeChip({
+  packType,
+  onSwitchPackType,
+}: Pick<WorkspaceControls, 'packType' | 'onSwitchPackType'>) {
+  const other: PackType = packType === 'Keyboard' ? 'Mouse' : 'Keyboard';
+  const Icon = packType === 'Keyboard' ? Keyboard : Mouse;
+  return (
+    <NavbarMenu
+      tour="pack-type"
+      buttonLabel={`${packType} pack`}
+      buttonClassName="btn btn-xs btn-outline rounded-full shrink-0 gap-1 border-base-content/20 font-medium"
+      items={[
+        {
+          label: `Switch to ${other.toLowerCase()} pack`,
+          onSelect: () => onSwitchPackType(other),
+        },
+      ]}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {/* Named at every width: an icon alone does not say this sets the
+      pack's type. The pack name beside it gives up room first. */}
+      <span>{packType} pack</span>
+      <ChevronDown className="h-3 w-3" />
+    </NavbarMenu>
   );
 }
 
@@ -267,7 +317,10 @@ export function EditorNavbar({
               ))}
             </ul>
           </div>
-          <Logo text={`${siteIdentity.productName} Editor`} />
+          <Logo
+            text={`${siteIdentity.productName} Editor`}
+            compact={workspace !== undefined}
+          />
           <nav
             aria-label="Mechvibes website"
             className="hidden min-[1800px]:flex items-center gap-1 ml-2"
@@ -288,21 +341,26 @@ export function EditorNavbar({
         </div>
 
         {/* Middle Section - Pack Name & Edit */}
-        <div className="flex flex-1 items-center justify-center min-w-0">
+        <div className="flex flex-1 items-center justify-center gap-1 min-w-0">
           {workspace && (
-            <button
-              type="button"
-              onClick={workspace.onEditPack}
-              data-tour="pack-details"
-              className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 max-w-full px-2 sm:px-3"
-            >
-              <span className="font-medium truncate">{workspace.packName}</span>
-              {/* Shown from xl only: below that the buttons on the right leave the name little room */}
-              <span className="badge badge-xs badge-neutral hidden xl:inline-flex shrink-0">
-                {workspace.packType}
-              </span>
-              <Pencil className="h-3 w-3 shrink-0" />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={workspace.onEditPack}
+                data-tour="pack-details"
+                // Shrinks before the chip beside it, so a long name is cut short.
+                className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 shrink px-2 sm:px-3"
+              >
+                <span className="font-medium truncate">
+                  {workspace.packName}
+                </span>
+                <Pencil className="h-3 w-3 shrink-0" />
+              </button>
+              <PackTypeChip
+                packType={workspace.packType}
+                onSwitchPackType={workspace.onSwitchPackType}
+              />
+            </>
           )}
         </div>
 

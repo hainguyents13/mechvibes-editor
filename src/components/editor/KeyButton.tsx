@@ -24,9 +24,9 @@ interface KeyButtonProps {
   /** Preview mode: unmapped keys are inert, mapped ones light up while held. */
   isPreview?: boolean;
   isPressed?: boolean;
-  /** Preview only: play the key while the mouse holds it. */
-  onPreviewMouseDown?: () => void;
-  onPreviewMouseUp?: () => void;
+  /** Preview only: play the key while a mouse button or a finger holds it. */
+  onPreviewPointerDown?: () => void;
+  onPreviewPointerUp?: () => void;
 }
 
 export function KeyButton({
@@ -46,8 +46,8 @@ export function KeyButton({
   onFocus,
   isPreview = false,
   isPressed = false,
-  onPreviewMouseDown,
-  onPreviewMouseUp,
+  onPreviewPointerDown,
+  onPreviewPointerUp,
 }: KeyButtonProps) {
   const box = keyRect({ x, y, width, height });
   const style = {
@@ -72,7 +72,7 @@ export function KeyButton({
       // The file's name as well as its colour, for those who cannot tell colours apart.
       title={!isPreview && sourceName ? `Sound from ${sourceName}` : undefined}
       className={cn(
-        'btn text-xs flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
+        'btn text-[length:var(--key-label-size,0.75rem)] flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
         !isPreview && isSelected ? 'btn-neutral' : '',
         isInert ? 'opacity-30 pointer-events-none' : '',
         isPreview && isModified ? 'btn-primary' : '',
@@ -83,8 +83,19 @@ export function KeyButton({
       disabled={isInert}
       onKeyDown={isPreview ? undefined : (e) => onKeyDown(keyId, e)}
       onFocus={() => onFocus(keyId)}
-      onMouseDown={isPreview ? onPreviewMouseDown : undefined}
-      onMouseUp={isPreview ? onPreviewMouseUp : undefined}
+      // Pointer events answer a tap at once, where the mouse events a browser
+      // makes up for one come only after the finger lifts. Captured, the key
+      // hears the pointer come up also off the key, so it never stays down.
+      onPointerDown={
+        isPreview
+          ? (e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              onPreviewPointerDown?.();
+            }
+          : undefined
+      }
+      onPointerUp={isPreview ? onPreviewPointerUp : undefined}
+      onPointerCancel={isPreview ? onPreviewPointerUp : undefined}
     >
       {!isPreview && isModified && (
         <div
