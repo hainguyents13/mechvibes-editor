@@ -1,5 +1,6 @@
 import {
   type AudioSource,
+  addSources,
   compareFileNames,
   getExtension,
   isWholeFile,
@@ -207,7 +208,8 @@ export const formatLength = (seconds: number): string => {
   return secs === 0 ? `${mins} min` : `${mins} min ${secs} s`;
 };
 
-const isSameSegment = (a: Segment | undefined, b: Segment | undefined) =>
+/** Whether two segments, either possibly missing, are the same span. */
+export const isSameSegment = (a: Segment | undefined, b: Segment | undefined) =>
   a === b ||
   (a !== undefined && b !== undefined && a[0] === b[0] && a[1] === b[1]);
 
@@ -301,6 +303,27 @@ export const giveOneSoundToKeys = (
     keySounds,
     false,
   );
+
+/**
+ * Add a file to the pack and give it to keys as one sound, as one change: the
+ * file in the next free colour, and keys playing all of it. A release the
+ * keys had goes, as with any file of one sound.
+ */
+export const addFileToKeys = (
+  current: { sources: readonly AudioSource[]; keySounds: KeySounds },
+  source: AudioSource,
+  keyCodes: readonly string[],
+): { sources: AudioSource[]; keySounds: KeySounds } => {
+  const sources = addSources(current.sources, [source]);
+  return {
+    sources,
+    keySounds: giveOneSoundToKeys(
+      keyCodes,
+      sources[sources.length - 1],
+      current.keySounds,
+    ),
+  };
+};
 
 /**
  * Give each file the keys its name matched, each as one sound. Returns
@@ -418,6 +441,29 @@ export const removeReleaseFromKeys = (
     }
   }
   return next;
+};
+
+/**
+ * Swap the press and release sounds of the given keys, both from their file.
+ * Keys without a release stay as they are; returns `keySounds` itself when
+ * none of them has one.
+ */
+export const swapPressAndRelease = (
+  keyCodes: readonly string[],
+  keySounds: KeySounds,
+): KeySounds => {
+  let next: KeySounds | null = null;
+  for (const code of keyCodes) {
+    const current = keySounds.get(code);
+    if (!current?.release) continue;
+    next ??= new Map(keySounds);
+    next.set(code, {
+      source: current.source,
+      press: current.release,
+      release: current.press,
+    });
+  }
+  return next ?? keySounds;
 };
 
 /**

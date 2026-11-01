@@ -3,6 +3,7 @@ import {
   inferKindsFromPack,
   inferNewFileKind,
   kindFromLength,
+  playsWholeFile,
 } from '@/lib/fileKinds';
 import {
   type AudioSource,
@@ -130,5 +131,24 @@ describe('inferKindsFromPack', () => {
       long: 'many',
       unread: 'many',
     });
+  });
+});
+
+describe('playsWholeFile', () => {
+  it('takes a part from the start to the end of the file as the whole file', () => {
+    expect(playsWholeFile([0, 3000], 3)).toBe(true);
+    // Within the padding an encoded copy adds at the end.
+    expect(playsWholeFile([0, 2900], 3)).toBe(true);
+    expect(playsWholeFile([0, 2899], 3)).toBe(false);
+    expect(playsWholeFile([10, 3000], 3)).toBe(false);
+  });
+
+  it('takes the whole file without timing as the whole file', () => {
+    expect(playsWholeFile(WHOLE_FILE, 3)).toBe(true);
+    expect(playsWholeFile(WHOLE_FILE, 0)).toBe(true);
+  });
+
+  it('knows no part of a file whose length is unknown as the whole of it', () => {
+    expect(playsWholeFile([0, 300], 0)).toBe(false);
   });
 });

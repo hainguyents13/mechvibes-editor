@@ -23,6 +23,12 @@ export type AddTile = 'recording' | 'per-key' | 'video';
  */
 export const ONE_SOUND_MAX_SECONDS = 1;
 
+/**
+ * The longest file given whole to a key without asking: past it a file is a
+ * recording, and a key would play all of it.
+ */
+export const LONG_FILE_SECONDS = 2;
+
 /** A file's kind from its length; one the browser cannot measure keeps the waveform. */
 export function kindFromLength(seconds: number): FileKind {
   return seconds > 0 && seconds <= ONE_SOUND_MAX_SECONDS ? 'one' : 'many';
@@ -51,11 +57,16 @@ export function inferNewFileKind(
 // 3 s file comes back about 3.003 s long, and MP3 at low rates pads more.
 const ENCODER_PADDING_MS = 100;
 
-// Whether a segment runs from the start to the end of a file that is
-// `seconds` long, as a key that plays the whole file is stored.
-function coversFile([start, end]: Segment, seconds: number) {
+/**
+ * Whether a key that plays `segment` plays all of a file `seconds` long: the
+ * whole file without timing, or from its start to its end, as a file of one
+ * sound is given. Such a key has no part of the file left for a release.
+ */
+export function playsWholeFile(segment: Segment, seconds: number) {
+  const [start, end] = segment;
   return (
-    start === 0 && seconds > 0 && end >= seconds * 1000 - ENCODER_PADDING_MS
+    isWholeFile(segment) ||
+    (start === 0 && seconds > 0 && end >= seconds * 1000 - ENCODER_PADDING_MS)
   );
 }
 
@@ -69,8 +80,7 @@ function kindInPack(source: AudioSource, keySounds: KeySounds): FileKind {
   if (!shared) return 'many';
   // One part of a long recording that every key shares is still a recording:
   // its waveform stays when the pack is opened again.
-  return isWholeFile(shared) ||
-    coversFile(shared, source.duration) ||
+  return playsWholeFile(shared, source.duration) ||
     kindFromLength(source.duration) === 'one'
     ? 'one'
     : 'many';
