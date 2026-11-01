@@ -31,10 +31,8 @@ interface KeyCardProps {
 }
 
 /**
- * The sound of the one selected key or button, under the file list: what it
+ * The sound of the one selected key or button, by the file list: what it
  * plays on press and release, what to do next with it, and its own actions.
- * Side by side it stays pinned to the bottom of the column while the list
- * scrolls behind it.
  */
 export function KeyCard({
   code,
@@ -90,12 +88,13 @@ export function KeyCard({
   };
 
   return (
-    // Pinned over the column's bottom padding, which it carries itself: a
-    // sticky box stops at the padding, so it is let past it by as much.
+    // Side by side, pinned over the column's bottom padding, which it
+    // carries itself: a sticky box stops at the padding, so it is let past
+    // it by as much. Stacked, it shares the row with the list.
     <section
       aria-labelledby={titleId}
       data-tour="key-card"
-      className="shrink-0 min-w-0 z-10 editor-panel-surface pt-3 lg:sticky lg:-bottom-3 lg:-mb-3 lg:pb-3"
+      className="min-w-0 z-10 editor-panel-surface max-lg:flex-1 lg:shrink-0 lg:pt-3 lg:sticky lg:-bottom-3 lg:-mb-3 lg:pb-3"
     >
       <div
         className={cn(

@@ -2985,11 +2985,14 @@ export function EditorPage() {
                   {/* Left: audio/video import. Stacked, it is a short dropzone,
                   sizes to the file list once audio is loaded (the waveform
                   gives way to a longer list), and keeps room for the clip when
-                  a video plays along with the waveform. */}
+                  a video plays along with the waveform. The key card goes
+                  under the list side by side, where the list scrolls behind
+                  it, and beside the list stacked, where the list is as wide
+                  as the panel and the card would push the controls down. */}
                   <div
                     // The tour points only at what is on show.
                     data-tour={visibility.soundPanel ? 'sources' : undefined}
-                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : visibility.waveform && audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3 ${showKeyCard ? 'lg:overflow-y-auto' : ''}`}
+                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : visibility.waveform && audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3 ${showKeyCard ? 'max-lg:flex-row max-lg:gap-4 lg:overflow-y-auto' : ''}`}
                   >
                     <AudioFileSelector
                       sources={sources}
