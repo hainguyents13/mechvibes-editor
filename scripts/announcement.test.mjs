@@ -193,7 +193,9 @@ describe('pickImageAsset', () => {
       pickImageAsset('v1.1.0', [
         { name: 'announcement.png', size: IMAGE_LIMIT + 1 },
       ]),
-    ).toThrow(/8\.0 MB or less/);
+    ).toThrow(
+      'announcement.png is 8.1 MB; an announcement image must be 8.0 MB or less.',
+    );
   });
 });
 

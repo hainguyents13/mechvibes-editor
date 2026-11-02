@@ -38,10 +38,11 @@ function ascii(bytes, start, end) {
   return String.fromCharCode(...bytes.subarray(start, end));
 }
 
+// Rounded up, so an image just over the limit never shows as the limit.
 function megabytes(bytes) {
   return bytes < 1024 * 1024
     ? `${Math.ceil(bytes / 1024)} KB`
-    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    : `${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MB`;
 }
 
 /**
