@@ -1,4 +1,4 @@
-import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
+import { editorRepoUrl, siteIdentity, websiteUrl } from '@/config/siteIdentity';
 
 interface LogoProps {
   text: string;
@@ -13,6 +13,8 @@ export const Logo = ({
   showOnPhones = false,
   compact = false,
 }: LogoProps) => {
+  const textClass = compact ? 'hidden xl:inline' : '';
+
   return (
     <div
       className={`${showOnPhones ? 'flex' : 'hidden sm:flex'} shrink-0 items-center`}
@@ -30,9 +32,19 @@ export const Logo = ({
           height={32}
           className="h-8 w-8"
         />
-        <span className={`font-bold ${compact ? 'hidden xl:inline' : ''}`}>
-          {text}
-        </span>
+        <span className={`font-bold ${textClass}`}>{text}</span>
+      </a>
+      {/* The releases page rather than this version's own, which is missing
+          while its release is still a draft. */}
+      <a
+        href={`${editorRepoUrl}/releases`}
+        target="_blank"
+        rel="noopener"
+        aria-label={`Version ${__APP_VERSION__}, what's new`}
+        title={`Version ${__APP_VERSION__}: see what's new`}
+        className={`ml-2 whitespace-nowrap text-xs text-base-content/70 hover:text-base-content hover:underline ${textClass}`}
+      >
+        v{__APP_VERSION__}
       </a>
     </div>
   );
