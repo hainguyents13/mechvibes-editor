@@ -1,7 +1,7 @@
 {
   "name": "mechvibes-editor",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "license": "MIT",
   "packageManager": "pnpm@10.26.2",
@@ -12,7 +12,10 @@
     "test": "vitest run",
     "lint": "biome check",
     "format": "biome format --write",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "release:bump": "node scripts/bump-version.mjs",
+    "release:notes": "node scripts/extract-changelog.mjs",
+    "release:announce": "node scripts/announce-release.mjs preview"
   },
   "dependencies": {
     "clsx": "^2.1.1",

@@ -1,0 +1,110 @@
+# Announces a published release on Discord, in the channel and with the
+# opt-in release role the desktop app's releases use. Every message names the
+# editor and says it is not the desktop app, and carries the screenshot
+# attached to the release as announcement.png. See docs/release-guide.md.
+#
+# Nothing is posted unseen. The preview job builds the exact message, checks
+# the image and shows both in the run summary. The post job runs in the
+# discord-announce environment, which waits for the maintainer to approve it,
+# and only then gets the webhook to post what the preview built.
+
+name: Announce release
+
+on:
+  release:
+    types: [published]
+  # For a release whose announcement failed, a test, or a hand-written
+  # message. Publishing already announces, so a manual run for the same
+  # release makes a second message.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to announce, such as v1.1.0
+        required: true
+        type: string
+      test:
+        description: Test run, marked as a test and pinging nobody
+        required: false
+        type: boolean
+        default: false
+      message:
+        description: Text posted as it is in place of the generated one (2000 characters at most). The release image is still attached.
+        required: false
+        type: string
+
+permissions: {}
+
+jobs:
+  preview:
+    name: Preview the announcement
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The scripts use Node alone, so no dependency is installed. Release
+      # notes, names and inputs come in through env, never ${{ }} in the
+      # script itself.
+      - name: Build the message and check the image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_RELEASE_ROLE_ID: ${{ vars.DISCORD_RELEASE_ROLE_ID }}
+          TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+          TEST: ${{ inputs.test == true }}
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          set -euo pipefail
+          args=(preview --tag "$TAG" --published --out "$RUNNER_TEMP/announcement")
+          if [ "$TEST" = "true" ]; then args+=(--test); fi
+          if [ -n "$MESSAGE" ]; then
+            printf '%s' "$MESSAGE" > "$RUNNER_TEMP/message.txt"
+            args+=(--message-file "$RUNNER_TEMP/message.txt")
+          fi
+          node scripts/announce-release.mjs "${args[@]}"
+          cat "$RUNNER_TEMP/announcement/preview.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discord-announcement
+          path: ${{ runner.temp }}/announcement/
+          if-no-files-found: error
+          # As long as GitHub keeps the post job waiting for approval.
+          retention-days: 30
+
+  post:
+    name: Post to Discord
+    needs: preview
+    runs-on: ubuntu-latest
+    # The environment's required reviewer approves the preview above before
+    # this job starts, and its secret is out of reach until then.
+    environment: discord-announce
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: discord-announcement
+          path: ${{ runner.temp }}/announcement
+
+      # A missing webhook fails the job, so a release is never taken as
+      # announced when it was not. So does an image replaced on the release
+      # after the preview, since the summary shows the new one.
+      - name: Post the approved message
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Discord channel -> Integrations -> Webhooks -> copy URL, then
+          # `gh secret set DISCORD_RELEASE_WEBHOOK --env discord-announce`.
+          WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+        run: node scripts/announce-release.mjs post --dir "$RUNNER_TEMP/announcement"

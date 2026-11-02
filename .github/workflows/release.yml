@@ -1,0 +1,78 @@
+# Drafts a GitHub release when a version tag (v1.2.0) is pushed. The notes are
+# that version's CHANGELOG.md section, followed by the list of merged pull
+# requests GitHub generates. Publishing the draft stays a human click. See
+# docs/release-guide.md.
+#
+# The site itself deploys from main on every push, outside GitHub Actions, so
+# this workflow only checks the tagged commit and writes the release.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Keep the write token out of .git/config while dependency code runs.
+          # The gh steps get it through GH_TOKEN instead.
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version (expected v$version)."
+            exit 1
+          fi
+
+      - name: Check the tagged commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$TAG points at a commit that is not on main. Tag the release commit after it is merged."
+            exit 1
+          fi
+
+      - name: Check the tag has no release yet
+        # Listing releases shows drafts too, which looking one up by tag does not.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name == env.TAG) | .html_url')
+          if [ -n "$existing" ]; then
+            echo "::error::A release for $TAG already exists: $existing"
+            exit 1
+          fi
+
+      - name: Read the release notes from CHANGELOG.md
+        run: node scripts/extract-changelog.mjs "${TAG#v}" > "$RUNNER_TEMP/notes.md"
+
+      # A release never comes from a commit that fails the CI checks.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
