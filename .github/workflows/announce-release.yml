@@ -98,9 +98,11 @@ jobs:
           path: ${{ runner.temp }}/announcement
 
       # A missing webhook fails the job, so a release is never taken as
-      # announced when it was not.
+      # announced when it was not. So does an image replaced on the release
+      # after the preview, since the summary shows the new one.
       - name: Post the approved message
         env:
+          GH_TOKEN: ${{ github.token }}
           # Discord channel -> Integrations -> Webhooks -> copy URL, then
           # `gh secret set DISCORD_RELEASE_WEBHOOK --env discord-announce`.
           WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}

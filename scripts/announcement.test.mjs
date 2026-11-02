@@ -4,8 +4,10 @@ import {
   buildForm,
   buildPayload,
   checkImage,
+  checkImageUnchanged,
   digestNotes,
   IMAGE_LIMIT,
+  imageRecord,
   MESSAGE_LIMIT,
   pickImageAsset,
   previewMarkdown,
@@ -41,8 +43,13 @@ function release(overrides = {}) {
     draft: false,
     body: NOTES,
     assets: [
-      { name: 'announcement.png', size: 1000 },
-      { name: 'other.zip', size: 10 },
+      {
+        id: 7,
+        name: 'announcement.png',
+        size: 1000,
+        updated_at: '2026-11-02T03:00:00Z',
+      },
+      { id: 8, name: 'other.zip', size: 10 },
     ],
     ...overrides,
   };
@@ -299,6 +306,54 @@ describe('buildPayload', () => {
       );
     },
   );
+});
+
+describe('checkImageUnchanged', () => {
+  const saved = imageRecord('v1.1.0', release().assets[0]);
+
+  it('passes when the release still has the image the preview saved', () => {
+    expect(saved).toEqual({
+      tag: 'v1.1.0',
+      id: 7,
+      name: 'announcement.png',
+      size: 1000,
+      updated_at: '2026-11-02T03:00:00Z',
+    });
+    expect(() => checkImageUnchanged(saved, release())).not.toThrow();
+  });
+
+  it.each([
+    ['replaced', { id: 9, updated_at: '2026-11-02T04:00:00Z' }],
+    ['renamed', { name: 'announcement.jpg' }],
+    ['resized', { size: 2000 }],
+  ])('refuses an image %s after the preview', (_, change) => {
+    const [image, other] = release().assets;
+    const changed = release({ assets: [{ ...image, ...change }, other] });
+    expect(() => checkImageUnchanged(saved, changed)).toThrow(
+      /changed after the preview.*Re-run all jobs/,
+    );
+  });
+
+  it('refuses a release with no image or a second one', () => {
+    const [image] = release().assets;
+    expect(() => checkImageUnchanged(saved, release({ assets: [] }))).toThrow(
+      /changed after the preview/,
+    );
+    expect(() =>
+      checkImageUnchanged(
+        saved,
+        release({
+          assets: [image, { ...image, id: 9, name: 'announcement.gif' }],
+        }),
+      ),
+    ).toThrow(/changed after the preview/);
+  });
+
+  it('refuses a release that is a draft again', () => {
+    expect(() => checkImageUnchanged(saved, release({ draft: true }))).toThrow(
+      /draft/,
+    );
+  });
 });
 
 describe('buildForm', () => {

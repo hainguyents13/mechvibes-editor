@@ -162,6 +162,35 @@ export function checkImage(filename, bytes) {
 }
 
 /**
+ * What a preview records about the image it saved, so the post can check the
+ * release still has that same image.
+ */
+export function imageRecord(tag, asset) {
+  const { id, name, size, updated_at } = asset;
+  return { tag, id, name, size, updated_at };
+}
+
+/**
+ * Throws when the release no longer has the image a preview saved. The run
+ * summary shows the release's image, but the post sends the saved copy, so a
+ * replaced or renamed image would post something the reviewer did not see.
+ */
+export function checkImageUnchanged(saved, release) {
+  if (release.draft) {
+    throw new Error(`Release ${saved.tag} is a draft again. Publish it first.`);
+  }
+  const images = (release.assets ?? []).filter((asset) =>
+    IMAGE_NAME.test(asset.name),
+  );
+  const current = images.length === 1 ? imageRecord(saved.tag, images[0]) : {};
+  if (Object.keys(saved).some((key) => current[key] !== saved[key])) {
+    throw new Error(
+      `The announcement image of ${saved.tag} changed after the preview, so nothing was posted. Re-run all jobs to preview the new image, then approve.`,
+    );
+  }
+}
+
+/**
  * The webhook payload for a release. Only the release role can be pinged,
  * never @everyone or a user, and a test run pings nobody: the role still
  * shows in the text, but no one is notified. A draft is refused unless

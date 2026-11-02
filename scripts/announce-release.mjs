@@ -1,8 +1,9 @@
 // Announces a release on Discord in two steps, so nothing is posted that was
 // not seen first. `preview` builds the message from the GitHub release,
 // downloads its announcement image and saves both, posting nothing. `post`
-// sends what a preview saved. The announce-release workflow runs both, with
-// an approval in between. See docs/release-guide.md.
+// sends what a preview saved, once it has checked that the release still has
+// that same image. The announce-release workflow runs both, with an approval
+// in between. See docs/release-guide.md.
 //
 // Usage:
 //   pnpm release:announce v1.2.0 [--test] [--message-file message.txt]
@@ -10,8 +11,8 @@
 //     [--message-file message.txt] [--published] [--out dir]
 //   WEBHOOK=<Discord webhook URL> node scripts/announce-release.mjs post --dir dir
 //
-// preview reads the release with GH_TOKEN, or the gh login when it is not
-// set, so it works on a draft. The role it pings is DISCORD_RELEASE_ROLE_ID,
+// Both read the release with GH_TOKEN, or the gh login when it is not set, so
+// preview works on a draft. The role it pings is DISCORD_RELEASE_ROLE_ID,
 // read from the repository variable when the environment does not set it.
 
 import { execFileSync } from 'node:child_process';
@@ -23,6 +24,8 @@ import {
   buildForm,
   buildPayload,
   checkImage,
+  checkImageUnchanged,
+  imageRecord,
   previewMarkdown,
   releaseUrl,
 } from './announcement.mjs';
@@ -134,6 +137,10 @@ async function preview(values, positionals) {
     `${JSON.stringify(payload, null, 2)}\n`,
   );
   writeFileSync(
+    join(out, 'image.json'),
+    `${JSON.stringify(imageRecord(tag, asset), null, 2)}\n`,
+  );
+  writeFileSync(
     join(out, 'preview.md'),
     previewMarkdown({
       tag,
@@ -170,6 +177,10 @@ async function post(values) {
   );
   const image = readFileSync(join(values.dir, payload.attachments[0].filename));
   const form = buildForm(payload, image);
+  const saved = JSON.parse(
+    readFileSync(join(values.dir, 'image.json'), 'utf8'),
+  );
+  checkImageUnchanged(saved, await findRelease(saved.tag));
 
   // wait=true makes Discord answer with the message, or with why it refused.
   const url = new URL(webhook);
