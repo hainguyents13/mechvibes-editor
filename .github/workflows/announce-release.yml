@@ -74,7 +74,8 @@ jobs:
           name: discord-announcement
           path: ${{ runner.temp }}/announcement/
           if-no-files-found: error
-          retention-days: 7
+          # As long as GitHub keeps the post job waiting for approval.
+          retention-days: 30
 
   post:
     name: Post to Discord
