@@ -14,7 +14,8 @@
     "format": "biome format --write",
     "preview": "vite preview",
     "release:bump": "node scripts/bump-version.mjs",
-    "release:notes": "node scripts/extract-changelog.mjs"
+    "release:notes": "node scripts/extract-changelog.mjs",
+    "release:announce": "node scripts/announce-release.mjs preview"
   },
   "dependencies": {
     "clsx": "^2.1.1",
