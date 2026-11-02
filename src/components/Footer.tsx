@@ -20,7 +20,7 @@ export function Footer() {
 
   return (
     <footer className="bg-base-200">
-      <div className="max-w-4xl p-4 text-xs mx-auto flex flex-col md:flex-row justify-between items-center text-base-content/60">
+      <div className="max-w-4xl p-4 short:py-1 text-xs mx-auto flex flex-col md:flex-row justify-between items-center text-base-content/60">
         <div className=" mb-4 md:mb-0">
           &copy; {new Date().getFullYear()} {siteIdentity.productName}. All
           rights reserved.

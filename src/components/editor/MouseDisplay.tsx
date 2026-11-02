@@ -185,6 +185,11 @@ interface MouseDisplayProps {
   /** Preview mode: the real mouse plays the sounds; the drawing only lights up. */
   isPreview?: boolean;
   pressedKeyCodes?: Set<string>;
+  /** Codes a file dragged over the mouse would go to. */
+  dropCodes?: ReadonlySet<string> | null;
+  /** Preview only: a finger holds a button down, and lets it go. */
+  onPreviewTouchDown?: (code: string) => void;
+  onPreviewTouchUp?: (code: string) => void;
 }
 
 /**
@@ -202,6 +207,9 @@ export function MouseDisplay({
   keyboardRef,
   isPreview = false,
   pressedKeyCodes,
+  dropCodes,
+  onPreviewTouchDown,
+  onPreviewTouchUp,
 }: MouseDisplayProps) {
   // Same keys, ids and order as the keyboard display, so selection, Shift
   // ranges and quick select work unchanged.
@@ -219,7 +227,11 @@ export function MouseDisplay({
     <div
       ref={keyboardRef}
       className="flex mx-auto justify-center select-none"
-      style={MOUSE_DISPLAY_SIZE}
+      // In preview, quick taps on one button play it rather than zoom.
+      style={{
+        ...MOUSE_DISPLAY_SIZE,
+        touchAction: isPreview ? 'manipulation' : undefined,
+      }}
       onClick={(e) => {
         // A Shift, Ctrl or Cmd click that misses a button keeps the selection.
         if (!isPreview) {
@@ -255,9 +267,13 @@ export function MouseDisplay({
           const isSelected = !isPreview && selectedKeys.has(keyId);
           const isPressed = pressedKeyCodes?.has(code) ?? false;
           const isInert = isPreview && !sound;
+          const isDropTarget = dropCodes?.has(code) ?? false;
           // Opaque fills only: the wheel sits on top of the main buttons.
           let fill = '[&>:first-child]:fill-base-100';
-          if (isSelected) fill = '[&>:first-child]:fill-neutral';
+          if (isDropTarget)
+            fill =
+              '[&>:first-child]:fill-[color-mix(in_oklab,var(--color-primary)_30%,var(--color-base-100))] [&>:first-child]:stroke-primary [&>:first-child]:stroke-[3]';
+          else if (isSelected) fill = '[&>:first-child]:fill-neutral';
           else if (isPressed && !isInert)
             fill =
               '[&>:first-child]:fill-[color-mix(in_oklab,var(--color-primary)_70%,var(--color-base-100))]';
@@ -271,13 +287,14 @@ export function MouseDisplay({
               key={keyId}
               role="button"
               data-key-id={keyId}
+              data-drop-code={isPreview ? undefined : code}
               tabIndex={isPreview ? -1 : keyId === tabStopId ? 0 : -1}
               aria-pressed={isSelected}
               aria-label={region.title}
               className={cn(
                 'cursor-pointer outline-none [&>:first-child]:transition-colors',
                 fill,
-                isSelected
+                isSelected && !isDropTarget
                   ? 'text-neutral-content'
                   : isPreview && sound
                     ? 'text-primary-content'
@@ -289,6 +306,21 @@ export function MouseDisplay({
                 'focus-visible:[&>:first-child]:stroke-primary',
               )}
               onFocus={() => onFocusKey(keyId)}
+              // The real mouse plays wherever it clicks; a finger plays the
+              // button it taps.
+              onPointerDown={(e) => {
+                if (!isPreview || e.pointerType === 'mouse') return;
+                e.currentTarget.setPointerCapture(e.pointerId);
+                onPreviewTouchDown?.(code);
+              }}
+              onPointerUp={(e) => {
+                if (!isPreview || e.pointerType === 'mouse') return;
+                onPreviewTouchUp?.(code);
+              }}
+              onPointerCancel={(e) => {
+                if (!isPreview || e.pointerType === 'mouse') return;
+                onPreviewTouchUp?.(code);
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 if (isPreview) return;

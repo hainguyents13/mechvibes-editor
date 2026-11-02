@@ -29,3 +29,11 @@ function getSnapshot() {
 export function usePhoneScreen() {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
+
+/** Whether the main pointer is a finger, as on a tablet. */
+export function useCoarsePointer() {
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(COARSE_POINTER).matches,
+  );
+}

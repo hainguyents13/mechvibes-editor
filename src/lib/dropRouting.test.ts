@@ -4,7 +4,9 @@ import {
   DROP_MESSAGES,
   type DropContext,
   type DroppedFile,
+  offersKeyDrop,
   routeDrop,
+  sortChosenFolder,
 } from '@/lib/dropRouting';
 
 const START: DropContext = { onStart: true, isDirty: false };
@@ -12,6 +14,12 @@ const WORKSPACE: DropContext = { onStart: false, isDirty: false };
 const UNSAVED: DropContext = { onStart: false, isDirty: true };
 
 const file = (name: string, type = ''): DroppedFile => ({ name, type });
+/** A file from a dropped or chosen folder, at its path inside it. */
+const inFolder = (path: string, type = ''): DroppedFile => ({
+  name: path.split('/').at(-1) ?? path,
+  type,
+  webkitRelativePath: path,
+});
 /** A file as a drag reports it, before the drop names it. */
 const dragged = (type: string): DroppedFile => ({ name: '', type });
 
@@ -84,6 +92,7 @@ describe('routeDrop: audio and video', () => {
     expect(drop(files)).toEqual({
       kind: 'add-media',
       files,
+      skipped: [],
       message: 'Drop to add these sounds',
     });
   });
@@ -99,6 +108,7 @@ describe('routeDrop: audio and video', () => {
     expect(drop(files, START)).toEqual({
       kind: 'to-type-question',
       files,
+      skipped: [],
       message: 'Drop to start a new pack with these sounds',
     });
   });
@@ -146,7 +156,11 @@ describe('routeDrop: audio and video', () => {
       b,
       file('old.rar'),
     ]);
-    expect(result).toMatchObject({ kind: 'add-media', files: [a, b] });
+    expect(result).toMatchObject({
+      kind: 'add-media',
+      files: [a, b],
+      skipped: ['cover.png', 'notes.txt', 'old.rar'],
+    });
   });
 
   it('prefers files to a link that comes with them', () => {
@@ -305,5 +319,193 @@ describe('routeDrop: while dragging, before the files are named', () => {
         expect(drop([after], context)).toMatchObject({ kind, message });
       }
     }
+  });
+});
+
+describe('routeDrop: folders', () => {
+  const pack = [
+    inFolder('Cherry/config.json', 'application/json'),
+    inFolder('Cherry/sounds/a.ogg', 'audio/ogg'),
+    inFolder('Cherry/icon.png', 'image/png'),
+  ];
+
+  it('opens a folder with a config.json as a pack', () => {
+    expect(drop(pack)).toEqual({
+      kind: 'open-folder',
+      files: pack,
+      confirm: false,
+      message: 'Drop to open this pack',
+    });
+    expect(drop(pack, START)).toMatchObject({ kind: 'open-folder' });
+  });
+
+  it('asks first over unsaved work', () => {
+    expect(drop(pack, UNSAVED)).toMatchObject({
+      kind: 'open-folder',
+      confirm: true,
+    });
+  });
+
+  it('finds the config.json at any depth, and not in __MACOSX', () => {
+    const nested = [
+      inFolder('Download/Cherry/config.json'),
+      inFolder('Download/Cherry/a.ogg'),
+    ];
+    expect(drop(nested)).toMatchObject({ kind: 'open-folder', files: nested });
+    const macOnly = [
+      inFolder('Sounds/__MACOSX/config.json'),
+      inFolder('Sounds/a.wav'),
+    ];
+    expect(drop(macOnly)).toMatchObject({
+      kind: 'add-media',
+      files: [macOnly[1]],
+      skipped: [],
+    });
+  });
+
+  it('opens one pack at a time, and never with sounds beside it', () => {
+    const other = [inFolder('Other/config.json'), inFolder('Other/b.ogg')];
+    expect(drop([...pack, ...other])).toEqual({
+      kind: 'reject',
+      message: DROP_MESSAGES.oneZip,
+    });
+    expect(drop([...pack, file('pack.zip')])).toEqual({
+      kind: 'reject',
+      message: DROP_MESSAGES.oneZip,
+    });
+    expect(drop([...pack, file('a.wav')])).toEqual({
+      kind: 'reject',
+      message: DROP_MESSAGES.oneZip,
+    });
+    expect(drop([...pack, file('notes.txt')])).toMatchObject({
+      kind: 'open-folder',
+      files: pack,
+    });
+  });
+
+  it('opens no pack from a folder that holds several, and says so', () => {
+    const packs = [
+      inFolder('keyboard/cherry/config.json'),
+      inFolder('keyboard/cherry/a.ogg'),
+      inFolder('keyboard/topre/config.json'),
+      inFolder('keyboard/topre/a.ogg'),
+      inFolder('keyboard/nk/sounds/config.json'),
+    ];
+    expect(drop(packs, UNSAVED)).toEqual({
+      kind: 'reject',
+      message: 'This folder holds 2 packs. Drop one pack folder.',
+    });
+    // A config.json at the top is the pack; deeper ones are its files.
+    const withTop = [inFolder('keyboard/config.json'), ...packs];
+    expect(drop(withTop)).toMatchObject({ kind: 'open-folder' });
+  });
+
+  it('adds the sounds of a folder without a config.json and names the rest', () => {
+    const sounds = [
+      inFolder('Keys/a.wav'),
+      inFolder('Keys/notes.txt', 'text/plain'),
+      inFolder('Keys/more/space.mp3'),
+      inFolder('Keys/cover.png', 'image/png'),
+    ];
+    expect(drop(sounds)).toEqual({
+      kind: 'add-media',
+      files: [sounds[0], sounds[2]],
+      skipped: ['notes.txt', 'cover.png'],
+      message: 'Drop to add these sounds',
+    });
+    expect(drop(sounds, START)).toMatchObject({
+      kind: 'to-type-question',
+      files: [sounds[0], sounds[2]],
+      skipped: ['notes.txt', 'cover.png'],
+    });
+  });
+
+  it('leaves out files the system adds, without naming them', () => {
+    const sounds = [
+      inFolder('Keys/a.wav'),
+      inFolder('Keys/.DS_Store'),
+      inFolder('Keys/._a.wav'),
+      inFolder('Keys/Thumbs.db'),
+      inFolder('Keys/desktop.ini'),
+    ];
+    expect(drop(sounds)).toEqual({
+      kind: 'add-media',
+      files: [sounds[0]],
+      skipped: [],
+      message: 'Drop to add this sound',
+    });
+    expect(drop([file('.DS_Store')])).toEqual({
+      kind: 'reject',
+      message: DROP_MESSAGES.unusable,
+    });
+  });
+
+  it('names a pack folder in what it asks for', () => {
+    expect(DROP_MESSAGES.unknown).toBe(
+      'Drop audio, video, a .zip pack or a pack folder.',
+    );
+    expect(DROP_MESSAGES.unusable).toBe(
+      "Can't use these files. Drop audio, video, a .zip pack or a pack folder.",
+    );
+  });
+});
+
+describe('sortChosenFolder', () => {
+  it('keeps the sounds and names the rest, a config.json too', () => {
+    const chosen = [
+      inFolder('Model O/config.json', 'application/json'),
+      inFolder('Model O/1.wav', 'audio/wav'),
+      inFolder('Model O/R2.wav'),
+      inFolder('Model O/clip.mp4'),
+      inFolder('Model O/readme.txt'),
+      inFolder('Model O/pack.zip'),
+      inFolder('Model O/.DS_Store'),
+      inFolder('Model O/__MACOSX/._1.wav'),
+    ];
+    expect(sortChosenFolder(chosen)).toEqual({
+      media: [chosen[1], chosen[2], chosen[3]],
+      skipped: ['config.json', 'readme.txt', 'pack.zip'],
+    });
+  });
+
+  it('finds nothing in a folder of no sounds', () => {
+    expect(sortChosenFolder([inFolder('Docs/a.txt')])).toEqual({
+      media: [],
+      skipped: ['a.txt'],
+    });
+  });
+});
+
+describe('offersKeyDrop', () => {
+  it('lets one audio or video file go onto a key while the keyboard takes clicks', () => {
+    expect(offersKeyDrop(drop([dragged('audio/wav')]), true)).toBe(true);
+    expect(offersKeyDrop(drop([file('click.mp4', 'video/mp4')]), true)).toBe(
+      true,
+    );
+  });
+
+  it('covers the page while the keyboard takes no clicks', () => {
+    expect(offersKeyDrop(drop([dragged('audio/wav')]), false)).toBe(false);
+  });
+
+  it.each([
+    ['two files', [dragged('audio/wav'), dragged('audio/wav')]],
+    ['a file and one left out', [file('a.wav'), file('notes.txt')]],
+    ['a .zip', [file('pack.zip', 'application/zip')]],
+    ['a folder', [inFolder('pack/config.json'), inFolder('pack/a.wav')]],
+    ['a file of unknown type', [dragged('')]],
+    ['a file that is no sound', [file('cover.png', 'image/png')]],
+  ])('covers the page for %s', (_, files) => {
+    expect(offersKeyDrop(drop(files), true)).toBe(false);
+  });
+
+  it('covers the start screen, where sounds start a new pack', () => {
+    expect(offersKeyDrop(drop([dragged('audio/wav')], START), true)).toBe(
+      false,
+    );
+  });
+
+  it('covers a link', () => {
+    expect(offersKeyDrop(drop([], WORKSPACE, true), true)).toBe(false);
   });
 });

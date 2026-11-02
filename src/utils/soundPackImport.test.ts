@@ -333,7 +333,7 @@ describe('opening a pack with files no key uses', () => {
     ]);
     expect(pack.warnings).toEqual([]);
     expect(pack.notes).toEqual([
-      'Kept an audio file that no key uses: b.ogg. You can cut sounds from it here, but Export leaves out files that no key uses.',
+      'Kept an audio file that no key uses: b.ogg. You can cut sounds from it here, but Download .zip leaves out files that no key uses.',
     ]);
   });
 
@@ -356,11 +356,11 @@ describe('opening a pack with files no key uses', () => {
       'b.ogg',
     ]);
     expect(pack.notes).toEqual([
-      'Kept 2 audio files that no key uses: b.ogg, demo.mp3. You can cut sounds from them here, but Export leaves out files that no key uses.',
+      'Kept 2 audio files that no key uses: b.ogg, demo.mp3. You can cut sounds from them here, but Download .zip leaves out files that no key uses.',
     ]);
   });
 
-  it('keeps a stray file of a single pack, and Export leaves it out', async () => {
+  it('keeps a stray file of a single pack, and Download .zip leaves it out', async () => {
     const pack = await parseSoundPackZip(
       await singlePackWith({ KeyA: [[0, 50]] }, { 'demo.mp3': fakeAudio('x') }),
     );

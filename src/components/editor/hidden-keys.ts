@@ -88,3 +88,17 @@ export function inferKeyboardSize(
     ) ?? current
   );
 }
+
+/**
+ * `current`, or the bigger size that draws keys just given a sound, so they
+ * show on the keyboard rather than in the hidden-keys tray. Never smaller.
+ */
+export function widenKeyboardSize(
+  codes: Iterable<string>,
+  current: KeyboardSize,
+): KeyboardSize {
+  const needed = inferKeyboardSize(codes, current);
+  return KEYBOARD_SIZES.indexOf(needed) > KEYBOARD_SIZES.indexOf(current)
+    ? needed
+    : current;
+}

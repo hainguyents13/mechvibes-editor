@@ -90,6 +90,20 @@ export function getExtension(fileName: string) {
   return dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : '';
 }
 
+const compareText = new Intl.Collator('en', {
+  numeric: true,
+  sensitivity: 'base',
+}).compare;
+
+const withoutExtension = (name: string) => name.replace(/\.[^.]+$/, '');
+
+/**
+ * Orders file names as people read them: key_2 before key_10, a.wav before
+ * a_down.wav, case aside.
+ */
+export const compareFileNames = (a: string, b: string) =>
+  compareText(withoutExtension(a), withoutExtension(b)) || compareText(a, b);
+
 /** Codes or names for a message: the first 8, then an ellipsis. */
 export function listKeys(codes: string[]) {
   return `${codes.slice(0, 8).join(', ')}${codes.length > 8 ? ', …' : ''}`;

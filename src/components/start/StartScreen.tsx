@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  AudioWaveform,
   FolderOpen,
   Globe,
   type LucideIcon,
@@ -264,13 +265,12 @@ export function StartScreen({
   return (
     <StartPage centered>
       <div className="text-center">
-        <img
-          src="/logo.png"
-          alt=""
-          width={56}
-          height={56}
-          className="mx-auto mb-4 h-14 w-14"
-        />
+        <div
+          data-start-icon
+          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"
+        >
+          <AudioWaveform className="h-8 w-8" aria-hidden="true" />
+        </div>
         <ScreenHeading className="text-2xl md:text-3xl font-bold">
           Make a sound pack for {siteIdentity.productName}
         </ScreenHeading>

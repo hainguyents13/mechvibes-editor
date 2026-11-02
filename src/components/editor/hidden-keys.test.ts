@@ -4,6 +4,7 @@ import {
   findHiddenKeys,
   getLayoutCodes,
   inferKeyboardSize,
+  widenKeyboardSize,
 } from './hidden-keys';
 
 describe('getLayoutCodes', () => {
@@ -109,5 +110,17 @@ describe('inferKeyboardSize', () => {
     [['MouseLeft', 'MouseRight'], 'fullsize'],
   ] as const)('keeps the size when no layout draws %j', (codes, current) => {
     expect(inferKeyboardSize(codes, current)).toBe(current);
+  });
+});
+
+describe('widenKeyboardSize', () => {
+  it('grows to the size that draws keys just given a sound', () => {
+    expect(widenKeyboardSize(['KeyA', 'Numpad1'], 'tkl')).toBe('fullsize');
+    expect(widenKeyboardSize(['F1'], 'compact')).toBe('tkl');
+  });
+
+  it('never shrinks the keyboard for keys a smaller size also draws', () => {
+    expect(widenKeyboardSize(['KeyA', 'KeyB'], 'fullsize')).toBe('fullsize');
+    expect(widenKeyboardSize(['MouseLeft'], 'tkl')).toBe('tkl');
   });
 });

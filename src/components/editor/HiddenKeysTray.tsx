@@ -1,6 +1,7 @@
 import { EyeOff, Play, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { HiddenKey } from '@/components/editor/hidden-keys';
+import { cn } from '@/lib/utils';
 import { playFileSegment } from '@/utils/audioUtils';
 import {
   type AudioSource,
@@ -39,6 +40,8 @@ interface HiddenKeysTrayProps {
   onClear: (code: string) => void;
   /** Take focus when the focused clear button was the last, as the tray goes away. */
   onFocusLost: () => void;
+  /** Codes a file dragged over the keyboard would go to. */
+  dropCodes?: ReadonlySet<string> | null;
 }
 
 /** Pixels a wheel step of one line scrolls, for a mouse that reports lines. */
@@ -55,6 +58,7 @@ export function HiddenKeysTray({
   sources,
   onClear,
   onFocusLost,
+  dropCodes,
 }: HiddenKeysTrayProps) {
   const stopSoundRef = useRef<(() => void) | null>(null);
   useEffect(() => () => stopSoundRef.current?.(), []);
@@ -169,7 +173,13 @@ export function HiddenKeysTray({
                   <span
                     key={hidden.code}
                     title={reasonText(hidden)}
-                    className="inline-flex h-5 items-center gap-0.5 rounded-box border border-base-content/20 bg-base-100 px-0.5 font-mono"
+                    // A file dropped on the chip goes to its key, which is not drawn.
+                    data-drop-code={hidden.code}
+                    className={cn(
+                      'inline-flex h-5 items-center gap-0.5 rounded-box border border-base-content/20 bg-base-100 px-0.5 font-mono',
+                      dropCodes?.has(hidden.code) &&
+                        'border-primary bg-primary/25 ring-2 ring-primary',
+                    )}
                   >
                     <button
                       type="button"

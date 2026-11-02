@@ -4,6 +4,8 @@ import { keyRect } from './key-selection';
 
 interface KeyButtonProps {
   label: string;
+  /** The key's code, which a file dropped on it goes to. */
+  code: string;
   x: number;
   y: number;
   width: number;
@@ -24,13 +26,16 @@ interface KeyButtonProps {
   /** Preview mode: unmapped keys are inert, mapped ones light up while held. */
   isPreview?: boolean;
   isPressed?: boolean;
-  /** Preview only: play the key while the mouse holds it. */
-  onPreviewMouseDown?: () => void;
-  onPreviewMouseUp?: () => void;
+  /** A file dragged over the keyboard would go to this key. */
+  isDropTarget?: boolean;
+  /** Preview only: play the key while a mouse button or a finger holds it. */
+  onPreviewPointerDown?: () => void;
+  onPreviewPointerUp?: () => void;
 }
 
 export function KeyButton({
   label,
+  code,
   x,
   y,
   width,
@@ -46,8 +51,9 @@ export function KeyButton({
   onFocus,
   isPreview = false,
   isPressed = false,
-  onPreviewMouseDown,
-  onPreviewMouseUp,
+  isDropTarget = false,
+  onPreviewPointerDown,
+  onPreviewPointerUp,
 }: KeyButtonProps) {
   const box = keyRect({ x, y, width, height });
   const style = {
@@ -66,25 +72,40 @@ export function KeyButton({
     <button
       type="button"
       data-key-id={keyId}
+      data-drop-code={isPreview ? undefined : code}
       tabIndex={isPreview ? -1 : tabIndex}
       aria-pressed={isPreview ? undefined : isSelected}
       aria-label={label.trim() ? label.replace(/\n/g, ' ') : 'Space'}
       // The file's name as well as its colour, for those who cannot tell colours apart.
       title={!isPreview && sourceName ? `Sound from ${sourceName}` : undefined}
       className={cn(
-        'btn text-xs flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
+        'btn text-[length:var(--key-label-size,0.75rem)] flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
         !isPreview && isSelected ? 'btn-neutral' : '',
         isInert ? 'opacity-30 pointer-events-none' : '',
         isPreview && isModified ? 'btn-primary' : '',
         // An unmapped key plays nothing in preview, so it does not look pressed either.
         isPressed && !isInert ? 'btn-active scale-95' : '',
+        isDropTarget
+          ? 'bg-primary/25 text-base-content ring-2 ring-primary z-10'
+          : '',
       )}
       style={style}
       disabled={isInert}
       onKeyDown={isPreview ? undefined : (e) => onKeyDown(keyId, e)}
       onFocus={() => onFocus(keyId)}
-      onMouseDown={isPreview ? onPreviewMouseDown : undefined}
-      onMouseUp={isPreview ? onPreviewMouseUp : undefined}
+      // Pointer events answer a tap at once, where the mouse events a browser
+      // makes up for one come only after the finger lifts. Captured, the key
+      // hears the pointer come up also off the key, so it never stays down.
+      onPointerDown={
+        isPreview
+          ? (e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              onPreviewPointerDown?.();
+            }
+          : undefined
+      }
+      onPointerUp={isPreview ? onPreviewPointerUp : undefined}
+      onPointerCancel={isPreview ? onPreviewPointerUp : undefined}
     >
       {!isPreview && isModified && (
         <div
