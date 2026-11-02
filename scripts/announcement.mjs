@@ -56,7 +56,8 @@ export function digestNotes(body) {
     if (!line.startsWith('- ')) continue;
     const lead = BOLD_LEAD.exec(line);
     if (lead) {
-      digest.push(`- ${lead[1].trim()}`);
+      // A lead such as "Three ways in:" introduces text the digest leaves out.
+      digest.push(`- ${lead[1].trim().replace(/[:;,]$/, '.')}`);
       continue;
     }
     const text = line.slice(2).trim();

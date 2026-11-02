@@ -62,6 +62,14 @@ describe('digestNotes', () => {
     expect(digestNotes(notes)).toEqual(['- One.']);
   });
 
+  it('ends a bold lead that introduces more text as a sentence', () => {
+    expect(
+      digestNotes(
+        '- **A start screen with three ways in:** **Edit**, **Open**.',
+      ),
+    ).toEqual(['- A start screen with three ways in.']);
+  });
+
   it('takes only a bold lead, not bold text later in the line', () => {
     expect(digestNotes('- Fixed **Try it** on Safari. It works.')).toEqual([
       '- Fixed **Try it** on Safari.',
