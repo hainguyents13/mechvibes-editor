@@ -691,18 +691,23 @@ export function EditorPage() {
   activeSourceIdRef.current = activeSourceId;
   useEffect(() => {
     if (!workId || isBlankPack(present)) return;
-    const timer = window.setTimeout(() => {
-      keepWork({
-        savedAt: Date.now(),
-        snapshot: present,
-        unsaved: isDirty,
-        fileKinds,
-        loadedPackId,
-        packExtras,
-        libraryPack,
-        activeSourceId: activeSourceIdRef.current,
-      });
-    }, AUTOSAVE_DELAY_MS);
+    const timer = window.setTimeout(
+      () => {
+        keepWork({
+          savedAt: Date.now(),
+          snapshot: present,
+          unsaved: isDirty,
+          fileKinds,
+          loadedPackId,
+          packExtras,
+          libraryPack,
+          activeSourceId: activeSourceIdRef.current,
+        });
+        // Just downloaded or published: kept at once, so a reload right after
+        // does not find it unsaved.
+      },
+      isDirty ? AUTOSAVE_DELAY_MS : 0,
+    );
     return () => window.clearTimeout(timer);
   }, [
     workId,
