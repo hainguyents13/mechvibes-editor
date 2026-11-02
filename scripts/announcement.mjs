@@ -113,6 +113,11 @@ export function buildContent({ tag, url, notes, roleId, test, message }) {
   );
 }
 
+/** The release's page once it is published, such as .../releases/tag/v1.1.0. */
+export function releaseUrl(repoUrl, tag) {
+  return `${repoUrl.replace(/\/$/, '')}/releases/tag/${encodeURIComponent(tag)}`;
+}
+
 /**
  * The one announcement image among the release assets. Throws when there is
  * none, more than one, or it is too big.
@@ -160,10 +165,13 @@ export function checkImage(filename, bytes) {
  * The webhook payload for a release. Only the release role can be pinged,
  * never @everyone or a user, and a test run pings nobody: the role still
  * shows in the text, but no one is notified. A draft is refused unless
- * `allowDraft`, which only the preview made before publishing uses.
+ * `allowDraft`, which only the preview made before publishing uses. The
+ * release link is built from `repoUrl` and the tag, because a draft's own
+ * link is a temporary one that publishing replaces.
  */
 export function buildPayload({
   release,
+  repoUrl,
   roleId,
   test = false,
   message,
@@ -183,7 +191,7 @@ export function buildPayload({
   return {
     content: buildContent({
       tag: release.tag_name,
-      url: release.html_url,
+      url: releaseUrl(repoUrl, release.tag_name),
       notes: release.body,
       roleId,
       test,

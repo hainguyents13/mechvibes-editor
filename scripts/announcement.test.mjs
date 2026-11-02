@@ -32,6 +32,8 @@ const NOTES = `### Added
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const ROLE = '123456789012345678';
 
+const REPO_URL = 'https://github.com/x/y';
+
 function release(overrides = {}) {
   return {
     tag_name: 'v1.1.0',
@@ -44,6 +46,10 @@ function release(overrides = {}) {
     ],
     ...overrides,
   };
+}
+
+function payloadFor(options) {
+  return buildPayload({ repoUrl: REPO_URL, ...options });
 }
 
 describe('digestNotes', () => {
@@ -220,7 +226,7 @@ describe('checkImage', () => {
 
 describe('buildPayload', () => {
   it('pings only the release role and attaches the image', () => {
-    expect(buildPayload({ release: release(), roleId: ROLE })).toEqual({
+    expect(payloadFor({ release: release(), roleId: ROLE })).toEqual({
       content: expect.stringMatching(/^Hi <@&123456789012345678>/),
       allowed_mentions: { parse: [], roles: [ROLE] },
       attachments: [{ id: 0, filename: 'announcement.png' }],
@@ -228,7 +234,7 @@ describe('buildPayload', () => {
   });
 
   it('pings nobody on a test run', () => {
-    const payload = buildPayload({
+    const payload = payloadFor({
       release: release(),
       roleId: ROLE,
       test: true,
@@ -237,7 +243,7 @@ describe('buildPayload', () => {
   });
 
   it('pings only the role from a custom message, never @everyone', () => {
-    const payload = buildPayload({
+    const payload = payloadFor({
       release: release(),
       roleId: ROLE,
       message: '@everyone <@&1> <@&123456789012345678> v1.1.0 is out',
@@ -253,7 +259,7 @@ describe('buildPayload', () => {
 
   it('still needs the image for a custom message', () => {
     expect(() =>
-      buildPayload({
+      payloadFor({
         release: release({ assets: [] }),
         roleId: ROLE,
         message: 'Hi',
@@ -261,20 +267,34 @@ describe('buildPayload', () => {
     ).toThrow(/no announcement image/);
   });
 
+  it('links a draft by its tag, as the published release will be', () => {
+    const draft = release({
+      draft: true,
+      html_url: 'https://github.com/x/y/releases/tag/untagged-0123456789abcdef',
+    });
+    const preview = payloadFor({
+      release: draft,
+      roleId: ROLE,
+      allowDraft: true,
+    });
+    expect(preview.content).toMatch(
+      /- GitHub release: https:\/\/github\.com\/x\/y\/releases\/tag\/v1\.1\.0$/,
+    );
+    expect(preview).toEqual(payloadFor({ release: release(), roleId: ROLE }));
+  });
+
   it('refuses a draft unless previewing before publishing', () => {
     const draft = release({ draft: true });
-    expect(() => buildPayload({ release: draft, roleId: ROLE })).toThrow(
-      /draft/,
-    );
+    expect(() => payloadFor({ release: draft, roleId: ROLE })).toThrow(/draft/);
     expect(
-      buildPayload({ release: draft, roleId: ROLE, allowDraft: true }).content,
+      payloadFor({ release: draft, roleId: ROLE, allowDraft: true }).content,
     ).toMatch(/v1\.1\.0 is out/);
   });
 
   it.each([undefined, '', 'everyone', '123> @everyone'])(
     'refuses the role id %j',
     (roleId) => {
-      expect(() => buildPayload({ release: release(), roleId })).toThrow(
+      expect(() => payloadFor({ release: release(), roleId })).toThrow(
         /role id/,
       );
     },
@@ -283,7 +303,7 @@ describe('buildPayload', () => {
 
 describe('buildForm', () => {
   it('sends the payload as JSON and the image as files[0]', async () => {
-    const payload = buildPayload({ release: release(), roleId: ROLE });
+    const payload = payloadFor({ release: release(), roleId: ROLE });
     const form = buildForm(payload, PNG);
     expect(JSON.parse(form.get('payload_json'))).toEqual(payload);
     const file = form.get('files[0]');
@@ -293,7 +313,7 @@ describe('buildForm', () => {
   });
 
   it('refuses a payload without exactly one attachment', () => {
-    const payload = buildPayload({ release: release(), roleId: ROLE });
+    const payload = payloadFor({ release: release(), roleId: ROLE });
     expect(() => buildForm({ ...payload, attachments: [] }, PNG)).toThrow(
       /exactly one/,
     );
@@ -302,7 +322,7 @@ describe('buildForm', () => {
 
 describe('previewMarkdown', () => {
   it('shows the exact message, who is pinged and the image', () => {
-    const payload = buildPayload({
+    const payload = payloadFor({
       release: release(),
       roleId: ROLE,
       message: 'Look: ```code```',

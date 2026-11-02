@@ -24,9 +24,11 @@ import {
   buildPayload,
   checkImage,
   previewMarkdown,
+  releaseUrl,
 } from './announcement.mjs';
 
 const REPO = process.env.GITHUB_REPOSITORY || 'hainguyents13/mechvibes-editor';
+const REPO_URL = `${(process.env.GITHUB_SERVER_URL || 'https://github.com').replace(/\/$/, '')}/${REPO}`;
 const API = `${(process.env.GITHUB_API_URL || 'https://api.github.com').replace(/\/$/, '')}/`;
 const ROLE_VARIABLE = 'DISCORD_RELEASE_ROLE_ID';
 
@@ -109,6 +111,7 @@ async function preview(values, positionals) {
   const release = await findRelease(tag);
   const payload = buildPayload({
     release,
+    repoUrl: REPO_URL,
     roleId: await releaseRoleId(),
     test: values.test,
     message,
@@ -146,7 +149,7 @@ async function preview(values, positionals) {
   console.log(`${payload.content}
 
 ---
-Release: ${release.html_url}${release.draft ? ' (draft)' : ''}
+Release: ${releaseUrl(REPO_URL, tag)}${release.draft ? ' (draft)' : ''}
 Pings:   ${roles.length ? `the release role (${roles[0]})` : 'nobody (test)'}
 Image:   ${join(out, filename)}
 Saved:   ${join(out, 'payload.json')}
