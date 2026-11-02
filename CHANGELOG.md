@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Your work is saved as you go.** The editor keeps the pack you are working on in this browser a moment after each change. If the tab crashes, reloads or closes, the start screen offers **Continue where you left off** with its files, keys and details. One pack is kept at a time, and nothing leaves your computer.
+- **Keep your keys when a file's audio is lost.** A pack whose zip lacks one of its audio files still opens with every key and its times; that file shows as **Audio missing**. **Remove audio, keep keys** in a file's **...** menu does the same on purpose, for a file in a format that gives trouble. **Replace file** then gives the keys new audio in any format, and **Download .zip** says which files still need it.
+- **Know before you share.** After **Download .zip**, a keyboard pack the library would refuse says what to fix: the library needs at least 60 keys with a sound, and at most 5 silent letter keys.
+
+### Changed
+
+- **Smaller packs from long recordings.** When the keys play less than half of a recording, only the parts they play go into the pack, as OGG. A long take used for a few clicks no longer makes a big download.
+- **Your account name as the author.** Leave **Author** empty while you are signed in on mechvibes.com, and the downloaded pack credits your account's name.
+- **Update says when nothing changed.** If the pack is the same as the one in the library, **Update** says so instead of publishing a new revision.
+
 ## [1.0.0] - 2026-11-02
 
 The first release of the Mechvibes Editor at [editor.mechvibes.com](https://editor.mechvibes.com).

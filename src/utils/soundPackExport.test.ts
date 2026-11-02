@@ -16,6 +16,9 @@ vi.mock('@/utils/audioUtils', async (importOriginal) => ({
   getAudioDuration: vi.fn(async () => 1),
 }));
 
+/** Set by a test to make the encoder throw, as when its chunk fails to load. */
+const encoderFails = vi.hoisted(() => ({ now: false }));
+
 // Writes what it was given in place of OGG data, so a test can read it back.
 vi.mock('vorbis-encoder-js', () => ({
   encoder: class {
@@ -27,6 +30,7 @@ vi.mock('vorbis-encoder-js', () => ({
       this.channelCount = channelCount;
     }
     encode(chunk: Float32Array[]) {
+      if (encoderFails.now) throw new Error('encoder failed');
       this.samples += chunk[0]?.length ?? 0;
     }
     finish() {
@@ -91,6 +95,7 @@ function exportFile(
 
 describe('buildSoundPackZip', () => {
   afterEach(() => {
+    encoderFails.now = false;
     vi.restoreAllMocks();
     vi.mocked(getAudioDuration).mockReset();
   });
@@ -142,7 +147,7 @@ describe('buildSoundPackZip', () => {
     vi.stubGlobal('window', { AudioContext: FakeAudioContext });
     const out = await readPackZip(
       await exportFile(new File(['wave'], 'tap.wav', { type: 'audio/wav' }), {
-        KeyA: { press: [0, 100] },
+        KeyA: { press: [0, 600] },
       }),
     );
 
@@ -150,7 +155,91 @@ describe('buildSoundPackZip', () => {
     expect(await out.text('audio.ogg')).toBe(
       'encoded 1000 samples, 1 channel at 1000 Hz',
     );
-    expect(out.config.definitions).toEqual({ KeyA: { timing: [[0, 100]] } });
+    expect(out.config.definitions).toEqual({ KeyA: { timing: [[0, 600]] } });
+  });
+
+  it('cuts a recording its keys play less than half of down to those parts', async () => {
+    vi.stubGlobal('window', { AudioContext: FakeAudioContext });
+    const out = await readPackZip(
+      await exportFile(new File(['mp3'], 'take.mp3', { type: 'audio/mpeg' }), {
+        KeyA: { press: [200, 300], release: [700, 750] },
+        KeyB: { press: [200, 300] },
+      }),
+    );
+
+    expect(out.names).toEqual(['audio.ogg', 'config.json']);
+    expect(await out.text('audio.ogg')).toBe(
+      'encoded 150 samples, 1 channel at 1000 Hz',
+    );
+    expect(out.config.definitions).toEqual({
+      KeyA: {
+        timing: [
+          [0, 100],
+          [100, 150],
+        ],
+      },
+      KeyB: { timing: [[0, 100]] },
+    });
+  });
+
+  it('keeps an MP3 its keys play at least half of', async () => {
+    vi.stubGlobal('window', { AudioContext: FakeAudioContext });
+    const out = await readPackZip(
+      await exportFile(new File(['mp3'], 'take.mp3', { type: 'audio/mpeg' }), {
+        KeyA: { press: [0, 500] },
+      }),
+    );
+
+    expect(out.names).toEqual(['audio.mp3', 'config.json']);
+    expect(await out.text('audio.mp3')).toBe('mp3');
+    expect(out.config.definitions).toEqual({ KeyA: { timing: [[0, 500]] } });
+  });
+
+  it('keeps a mostly unused MP3 whole when it cannot be encoded', async () => {
+    vi.stubGlobal('window', { AudioContext: FakeAudioContext });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    encoderFails.now = true;
+    const out = await readPackZip(
+      await exportFile(new File(['mp3'], 'take.mp3', { type: 'audio/mpeg' }), {
+        KeyA: { press: [200, 300] },
+      }),
+    );
+
+    expect(out.names).toEqual(['audio.mp3', 'config.json']);
+    expect(out.config.definitions).toEqual({ KeyA: { timing: [[200, 300]] } });
+  });
+
+  it('keeps an MP3 whole when a part starts past its end', async () => {
+    vi.stubGlobal('window', { AudioContext: FakeAudioContext });
+    const out = await readPackZip(
+      await exportFile(new File(['mp3'], 'take.mp3', { type: 'audio/mpeg' }), {
+        KeyA: { press: [1200, 1300], release: [100, 150] },
+      }),
+    );
+
+    expect(out.names).toEqual(['audio.mp3', 'config.json']);
+    expect(out.config.definitions).toEqual({
+      KeyA: {
+        timing: [
+          [1200, 1300],
+          [100, 150],
+        ],
+      },
+    });
+  });
+
+  it('keeps a mostly unused MP3 whole when it cannot be decoded', async () => {
+    vi.stubGlobal('window', { AudioContext: FailingAudioContext });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const out = await readPackZip(
+      await exportFile(new File(['mp3'], 'take.mp3', { type: 'audio/mpeg' }), {
+        KeyA: { press: [200, 300] },
+      }),
+    );
+
+    expect(out.names).toEqual(['audio.mp3', 'config.json']);
+    expect(await out.text('audio.mp3')).toBe('mp3');
+    expect(out.config.definitions).toEqual({ KeyA: { timing: [[200, 300]] } });
   });
 
   it('keeps a WAV source when it cannot be encoded', async () => {

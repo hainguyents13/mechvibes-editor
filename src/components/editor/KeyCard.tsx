@@ -1,4 +1,4 @@
-import { Ellipsis, Play, Plus, Square } from 'lucide-react';
+import { Ellipsis, Play, Plus, Square, TriangleAlert } from 'lucide-react';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
 import type { SoundSlot } from '@/components/editor/TimeSegmentControls';
@@ -79,7 +79,9 @@ export function KeyCard({
   const label = keyLabel(code);
   const name = keyCardName(code, packType);
   const fileName = source.file.name;
-  const offer = keyCardOffer(sound, source, kind);
+  // A file without audio has nothing to play, split or cut.
+  const isMissing = source.missing === true;
+  const offer = isMissing ? null : keyCardOffer(sound, source, kind);
   const color = getAudioTrackColor(source.colorIndex);
 
   const part = (slot: SoundSlot) => {
@@ -94,6 +96,7 @@ export function KeyCard({
         </span>
         <button
           type="button"
+          disabled={isMissing}
           className={cn(
             'btn btn-xs btn-ghost btn-square rounded-box',
             isPlaying && 'btn-active',
@@ -153,6 +156,12 @@ export function KeyCard({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {part('press')}
           {part('release')}
+          {isMissing && (
+            <span className="flex items-center gap-1 text-xs font-medium text-base-content">
+              <TriangleAlert className="h-3 w-3 shrink-0 text-error" />
+              {fileName} has no audio
+            </span>
+          )}
           {offer === 'add-release' && (
             <button
               type="button"

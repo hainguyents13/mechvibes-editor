@@ -1,4 +1,12 @@
-import { Ellipsis, Music, Play, Plus, Square, Video } from 'lucide-react';
+import {
+  Ellipsis,
+  Music,
+  Play,
+  Plus,
+  Square,
+  TriangleAlert,
+  Video,
+} from 'lucide-react';
 import React from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
 import { NavbarMenu } from '@/components/NavbarMenu';
@@ -30,6 +38,8 @@ interface AudioFileSelectorProps {
   onSelect: (id: string) => void;
   onAdd: (files: File[]) => void;
   onRemove: (id: string) => void;
+  /** Take a file's audio out and keep its keys with their times. */
+  onRemoveAudio: (id: string) => void;
   onSetKind: (id: string, kind: FileKind) => void;
   /** Swap the audio of a file for another, for every key that plays it. */
   onReplace: (id: string, file: File) => void;
@@ -77,6 +87,7 @@ export function AudioFileSelector({
   onSelect,
   onAdd,
   onRemove,
+  onRemoveAudio,
   onSetKind,
   onReplace,
   isReading = false,
@@ -162,6 +173,7 @@ export function AudioFileSelector({
   // The clip plays along with the waveform, which only a file of many sounds has.
   const isVideo =
     (activeSource?.file.type.startsWith('video/') ?? false) &&
+    !activeSource?.missing &&
     kinds.get(activeSource?.id ?? '') !== 'one';
 
   return (
@@ -218,16 +230,24 @@ export function AudioFileSelector({
           const isActive = source.id === activeSourceId;
           const codes = codesBySource.get(source.id) ?? [];
           const name = source.file.name;
-          const isOne = kinds.get(source.id) === 'one';
+          // A file without audio has no sound to play, give or drag.
+          const isMissing = source.missing === true;
+          const isOne = kinds.get(source.id) === 'one' && !isMissing;
           // A file of one sound goes to the selected keys when clicked.
           const gives = isOne && selectedCount > 0;
-          const action = gives
-            ? `Give ${name} to ${plural(selectedCount, noun)}`
-            : isOne
-              ? `Show ${name}`
-              : `Show ${name} in the waveform`;
+          const action = isMissing
+            ? `Show ${name}, which has no audio`
+            : gives
+              ? `Give ${name} to ${plural(selectedCount, noun)}`
+              : isOne
+                ? `Show ${name}`
+                : `Show ${name} in the waveform`;
           const isPlaying = playingSourceId === source.id;
-          const Icon = source.file.type.startsWith('video/') ? Video : Music;
+          const Icon = isMissing
+            ? TriangleAlert
+            : source.file.type.startsWith('video/')
+              ? Video
+              : Music;
           const sizeMb = `${(source.file.size / (1024 * 1024)).toFixed(1)} MB`;
           // The row is named for what a click does; its length and keys
           // describe it.
@@ -253,7 +273,7 @@ export function AudioFileSelector({
               onDragEnd={isOne ? () => onDragFile(null) : undefined}
               className={cn(
                 'flex items-center gap-1 rounded-box border border-l-4',
-                color.bg,
+                isMissing ? 'bg-error/10' : color.bg,
                 isActive
                   ? 'border-base-content/40 ring-1 ring-base-content/20'
                   : 'border-base-content/10',
@@ -291,7 +311,9 @@ export function AudioFileSelector({
                 }
               >
                 {!isOne && (
-                  <Icon className={`h-4 w-4 shrink-0 mr-1 ${color.text}`} />
+                  <Icon
+                    className={`h-4 w-4 shrink-0 mr-1 ${isMissing ? 'text-error' : color.text}`}
+                  />
                 )}
                 <div className="min-w-0 flex-1">
                   <div
@@ -306,7 +328,14 @@ export function AudioFileSelector({
                     id={detailsId}
                     className="text-[10px] text-base-content/70"
                   >
-                    {isOne ? (
+                    {isMissing ? (
+                      <>
+                        <span className="font-semibold text-base-content">
+                          Audio missing
+                        </span>{' '}
+                        • {plural(codes.length, noun)}
+                      </>
+                    ) : isOne ? (
                       <>
                         {formatLength(source.duration)} •{' '}
                         {keysText(codes, noun)}
@@ -326,15 +355,19 @@ export function AudioFileSelector({
                 buttonLabel={`More for ${name}`}
                 buttonClassName="shrink-0 mr-1 btn btn-xs btn-ghost btn-square rounded-box"
                 items={[
-                  isOne
-                    ? {
-                        label: 'This file has several sounds',
-                        onSelect: () => onSetKind(source.id, 'many'),
-                      }
-                    : {
-                        label: 'This file is one sound',
-                        onSelect: () => onSetKind(source.id, 'one'),
-                      },
+                  ...(isMissing
+                    ? []
+                    : [
+                        isOne
+                          ? {
+                              label: 'This file has several sounds',
+                              onSelect: () => onSetKind(source.id, 'many'),
+                            }
+                          : {
+                              label: 'This file is one sound',
+                              onSelect: () => onSetKind(source.id, 'one'),
+                            },
+                      ]),
                   {
                     label: 'Replace file…',
                     disabled: isReading,
@@ -343,6 +376,15 @@ export function AudioFileSelector({
                       replaceInputRef.current?.click();
                     },
                   },
+                  // Keys keep their times, for new audio to take its place.
+                  ...(isMissing || codes.length === 0
+                    ? []
+                    : [
+                        {
+                          label: 'Remove audio, keep keys',
+                          onSelect: () => onRemoveAudio(source.id),
+                        },
+                      ]),
                   { label: 'Remove', onSelect: () => requestRemoval(source) },
                 ]}
               >

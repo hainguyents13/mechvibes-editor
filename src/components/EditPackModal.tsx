@@ -118,8 +118,11 @@ export function EditPackModal({
               onChange={handleChange('author')}
               placeholder="Your name..."
             />
-            <p className="label text-xs mt-1">
-              Shown as the pack author when someone installs it
+            {/* label keeps to one line; this note needs more than one. */}
+            <p className="label text-xs mt-1 whitespace-normal">
+              Shown as the pack author when someone installs it. Left empty, the
+              name of the account you are signed in with is used. Packs in the
+              library always show the account's name.
             </p>
           </fieldset>
 

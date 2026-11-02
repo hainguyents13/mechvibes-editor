@@ -51,6 +51,7 @@ import {
   type LayoutKey,
   parseKeyboardLayout,
 } from '@/components/editor/keyboardLayouts';
+import { MissingAudioPane } from '@/components/editor/MissingAudioPane';
 import {
   MOUSE_DISPLAY_SIZE,
   MouseDisplay,
@@ -82,6 +83,7 @@ import { useCoarsePointer, usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { useSessionFlag } from '@/hooks/useSessionFlag';
 import { type AddBatch, summarizeAdd } from '@/lib/addSummary';
+import { loadWork, type SavedWork, savedAgo, saveWork } from '@/lib/autosave';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
 import { autoTourFlow, hasSeenTour, type TourFlow } from '@/lib/editorTourFlow';
@@ -149,7 +151,9 @@ import {
   createBlankSnapshot,
   createDefaultPackInfo,
   hasUnsavedChanges,
+  isBlankPack,
 } from '@/utils/blankPack';
+import { libraryKeyProblems } from '@/utils/libraryRules';
 import { getHistoryShortcut, type PackSnapshot } from '@/utils/packHistory';
 import {
   type AudioSource,
@@ -160,8 +164,10 @@ import {
   type KeySounds,
   listKeys,
   type PackExtras,
+  type PackInfo,
   type PackType,
   type Segment,
+  withoutAudio,
 } from '@/utils/soundPack';
 import { buildSoundPackZip, exportSoundPack } from '@/utils/soundPackExport';
 import {
@@ -345,7 +351,7 @@ const isSamePlaying = (a: Playing | null, b: Playing) =>
 
 /** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
 type Notice = {
-  tone: 'error' | 'success' | 'info';
+  tone: 'error' | 'warning' | 'success' | 'info';
   message: string;
   details?: string[];
   link?: { href: string; label: string };
@@ -353,6 +359,7 @@ type Notice = {
 
 const NOTICE_TONE_CLASSES: Record<Notice['tone'], string> = {
   error: 'border-error/30 bg-error/10',
+  warning: 'border-warning/30 bg-warning/10',
   success: 'border-success/30 bg-success/10',
   info: 'border-info/30 bg-info/10',
 };
@@ -362,6 +369,9 @@ type OpenLibraryPack = Pick<
   LibraryPackSummary,
   'id' | 'name' | 'slug' | 'revision'
 >;
+
+// How long after a change the work is kept in this browser.
+const AUTOSAVE_DELAY_MS = 800;
 
 const NEW_PACK_URL = `${websiteUrl}/profile/sound-packs/new`;
 
@@ -594,7 +604,9 @@ export function EditorPage() {
 
   const activeSource =
     sources.find((source) => source.id === activeSourceId) ?? null;
-  const audioFile = activeSource?.file ?? null;
+  // A file without audio has nothing to draw or play.
+  const audioFile =
+    activeSource && !activeSource.missing ? activeSource.file : null;
   const audioDuration = activeSource?.duration ?? 0;
   // The keys that play each file.
   const codesBySource = useMemo(() => {
@@ -616,6 +628,97 @@ export function EditorPage() {
   );
   // Changes Start over, opening a library pack or closing the tab would lose.
   const isDirty = hasUnsavedChanges(present, savedSnapshot);
+
+  // The work kept in this browser by an earlier visit, offered on the start
+  // screen until work starts in this tab.
+  const [savedWork, setSavedWork] = useState<SavedWork | null>(null);
+  // Until it is known, a link into the editor waits, so it cannot replace
+  // kept work without asking.
+  const [savedWorkChecked, setSavedWorkChecked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    loadWork().then((work) => {
+      if (cancelled) return;
+      if (work) setSavedWork(work);
+      setSavedWorkChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A moment after each change, the work is kept in this browser, so a
+  // crash, a reload or a closed tab does not lose it. Only one pack is kept:
+  // new work takes the place of the last once it has something in it.
+  const saveFailedRef = useRef(false);
+  // One save at a time: work that changes while one runs is saved after it,
+  // once, as it is by then.
+  const savingRef = useRef<{ running: boolean; next: SavedWork | null }>({
+    running: false,
+    next: null,
+  });
+  const keepWork = useCallback((work: SavedWork) => {
+    const saving = savingRef.current;
+    if (saving.running) {
+      saving.next = work;
+      return;
+    }
+    saving.running = true;
+    saveWork(work)
+      .then(() => {
+        saveFailedRef.current = false;
+      })
+      .catch(() => {
+        // Said once, until a save works again.
+        if (saveFailedRef.current) return;
+        saveFailedRef.current = true;
+        setNotice({
+          tone: 'warning',
+          message:
+            'This browser could not keep a copy of your work, as when its storage is full or blocked. Download a .zip to keep it.',
+        });
+      })
+      .finally(() => {
+        saving.running = false;
+        const next = saving.next;
+        saving.next = null;
+        if (next) keepWork(next);
+      });
+  }, []);
+  // The open file comes back with the work, but opening another is no change
+  // worth a save of its own.
+  const activeSourceIdRef = useRef(activeSourceId);
+  activeSourceIdRef.current = activeSourceId;
+  useEffect(() => {
+    if (!workId || isBlankPack(present)) return;
+    const timer = window.setTimeout(
+      () => {
+        keepWork({
+          savedAt: Date.now(),
+          snapshot: present,
+          unsaved: isDirty,
+          fileKinds,
+          loadedPackId,
+          packExtras,
+          libraryPack,
+          activeSourceId: activeSourceIdRef.current,
+        });
+        // Just downloaded or published: kept at once, so a reload right after
+        // does not find it unsaved.
+      },
+      isDirty ? AUTOSAVE_DELAY_MS : 0,
+    );
+    return () => window.clearTimeout(timer);
+  }, [
+    workId,
+    present,
+    isDirty,
+    fileKinds,
+    loadedPackId,
+    packExtras,
+    libraryPack,
+    keepWork,
+  ]);
 
   const commitKeySounds = useCallback(
     (label: string, update: (current: KeySounds) => KeySounds) =>
@@ -643,10 +746,14 @@ export function EditorPage() {
     const otherKind = new Set(
       codesOfOtherKind(keySounds.keys(), packInfo.packType),
     );
+    // A key of a file without audio plays nothing.
     return [...keySounds].filter(
-      ([code, { press }]) => !otherKind.has(code) && !isWholeFile(press),
+      ([code, { press, source }]) =>
+        !otherKind.has(code) &&
+        !isWholeFile(press) &&
+        !sourcesById.get(source)?.missing,
     ).length;
-  }, [keySounds, packInfo.packType]);
+  }, [keySounds, packInfo.packType, sourcesById]);
   const hasHiddenKeys = hiddenKeys.length > 0;
 
   const [viewport, setViewport] = useState(readViewport);
@@ -1339,13 +1446,15 @@ export function EditorPage() {
 
   // Play a file of one sound as its keys do: the part they share, else the
   // whole file.
-  const playSource = (source: AudioSource, restart = false) =>
+  const playSource = (source: AudioSource, restart = false) => {
+    if (source.missing) return;
     playPart(
       { kind: 'file', id: source.id },
       source.file,
       oneSoundSegment(source, keySounds),
       restart,
     );
+  };
 
   // Give a file of one sound to keys, as one step. Giving it again to keys
   // that already play it adds none.
@@ -1364,7 +1473,7 @@ export function EditorPage() {
   // those keys selected would: it plays and opens, and the selection stays.
   const dropSourceOn = (id: string, code: string) => {
     const source = sourcesById.get(id);
-    if (!source || fileKinds.get(id) !== 'one') return;
+    if (!source || source.missing || fileKinds.get(id) !== 'one') return;
     giveFileTo(source, dropTargetCodes(code, selectedCodes));
     playSource(source, true);
     if (id === activeSourceId) return;
@@ -1383,7 +1492,7 @@ export function EditorPage() {
   const handleSelectSource = (id: string) => {
     const source = sourcesById.get(id);
     if (!source) return;
-    if (fileKinds.get(id) === 'one') {
+    if (fileKinds.get(id) === 'one' && !source.missing) {
       giveToSelected(source);
       playSource(source, true);
     }
@@ -1468,7 +1577,7 @@ export function EditorPage() {
     const sound = keySounds.get(code);
     const source = sound && sourcesById.get(sound.source);
     const segment = slot === 'press' ? sound?.press : sound?.release;
-    if (!source || !segment) return;
+    if (!source || source.missing || !segment) return;
     playPart({ kind: 'key', code, slot }, source.file, segment);
   };
 
@@ -1561,6 +1670,16 @@ export function EditorPage() {
         (current) => giveFilesToKeysInOrder(files, targetsIn(current), current),
       );
     }
+  };
+
+  // Take a file's audio out and keep its keys with their times, as one step,
+  // so new audio can take its place with Replace file….
+  const handleRemoveAudio = (id: string) => {
+    const source = sources.find((s) => s.id === id);
+    if (!source || source.missing) return;
+    commit(`Remove the audio of ${source.file.name}`, (current) => ({
+      sources: current.sources.map((s) => (s.id === id ? withoutAudio(s) : s)),
+    }));
   };
 
   // Removing a file also removes the sounds cut from it, as one step. Undo
@@ -1801,9 +1920,43 @@ export function EditorPage() {
     }
   };
 
+  // Pick up the work kept in this browser where it was left: its files, keys,
+  // details and library pack, without its undo history. Work that was not
+  // downloaded or published then is still unsaved now.
+  const continueSavedWork = () => {
+    const saved = savedWork;
+    if (!saved) return;
+    setSavedWork(null);
+    resetView();
+    const { snapshot } = saved;
+    // Saved work was published to its library pack, or else downloaded.
+    const savedAs = saved.unsaved ? null : snapshot;
+    startFrom(
+      snapshot,
+      saved.libraryPack ? savedAs : null,
+      saved.libraryPack ? null : savedAs,
+    );
+    if (saved.unsaved) {
+      setSavedSnapshot(createBlankSnapshot(snapshot.packInfo.packType));
+    }
+    setFileKinds(saved.fileKinds);
+    setLoadedPackId(saved.loadedPackId);
+    setPackExtras(saved.packExtras);
+    setLibraryPack(saved.libraryPack);
+    if (snapshot.packInfo.packType === 'Keyboard') {
+      setKeyboardSize((current) =>
+        inferKeyboardSize(snapshot.keySounds.keys(), current),
+      );
+    }
+    setActiveSourceId(saved.activeSourceId);
+    enterWorkspace();
+  };
+
   // Each way in replaces the work there is, so it asks first over changes
-  // that are not saved.
-  const asksFirst = asksBeforeReplacing({ workId, isDirty });
+  // that are not saved, also those of work kept from an earlier visit: new
+  // work takes its place in the browser once it has something in it.
+  const keptUnsaved = !workId && savedWork?.unsaved === true;
+  const asksFirst = asksBeforeReplacing({ workId, isDirty }) || keptUnsaved;
 
   const chooseNewPack = (
     packType: PackType,
@@ -1820,6 +1973,8 @@ export function EditorPage() {
     const action = confirmDiscardAction;
     setConfirmDiscardAction(null);
     if (!action) return;
+    // The kept work was the one asked about; it is no longer offered.
+    if (!workId) setSavedWork(null);
     if ('packType' in action) {
       startNewPack(action.packType, action);
     } else if ('file' in action) {
@@ -2032,6 +2187,15 @@ export function EditorPage() {
     }
   };
 
+  // A pack without an author is credited to the signed-in account, as the
+  // library does.
+  const creditedInfo = (info: PackInfo): PackInfo => ({
+    ...info,
+    author:
+      info.author.trim() ||
+      (session.status === 'signed-in' ? session.user.name : ''),
+  });
+
   // Publish the current work as the next revision of the open library pack.
   const handleUpdate = async () => {
     if (!libraryPack || isUpdating) return;
@@ -2042,12 +2206,12 @@ export function EditorPage() {
     try {
       const zip = await buildSoundPackZip({
         id: libraryPack.id,
-        info: published.packInfo,
+        info: creditedInfo(published.packInfo),
         sources: published.sources,
         keySounds: published.keySounds,
         extras: packExtras,
       });
-      const pack = await updatePackZip(
+      const { pack, unchanged } = await updatePackZip(
         libraryPack.id,
         zip,
         libraryPack.revision,
@@ -2059,7 +2223,9 @@ export function EditorPage() {
       setPublishedSnapshot(published);
       setNotice({
         tone: 'success',
-        message: `Published revision ${pack.revision} of ${libraryPack.name}.`,
+        message: unchanged
+          ? `Nothing changed since revision ${pack.revision} of ${libraryPack.name}, so nothing new was published.`
+          : `Published revision ${pack.revision} of ${libraryPack.name}.`,
         link: {
           href: `${websiteUrl}/sound-packs/${libraryPack.slug}`,
           label: 'View it in the library',
@@ -2098,7 +2264,7 @@ export function EditorPage() {
     try {
       await exportSoundPack({
         id: loadedPackId ?? undefined,
-        info: exported.packInfo,
+        info: creditedInfo(exported.packInfo),
         sources: exported.sources,
         keySounds: exported.keySounds,
         extras: packExtras,
@@ -2107,12 +2273,25 @@ export function EditorPage() {
       setSavedSnapshot(exported);
       setDownloadedSnapshot(exported);
       if (!libraryPack) {
-        setNotice({
-          tone: 'success',
-          message:
-            'Downloaded. To share it in the library, create a pack from this .zip on the website.',
-          link: { href: NEW_PACK_URL, label: 'Create a pack' },
-        });
+        const problems = libraryKeyProblems(
+          exported.packInfo.packType,
+          exported.keySounds,
+        );
+        setNotice(
+          problems.length > 0
+            ? {
+                tone: 'warning',
+                message:
+                  'Downloaded. The Mechvibes app plays it, but the library will refuse it until you fix this:',
+                details: problems,
+              }
+            : {
+                tone: 'success',
+                message:
+                  'Downloaded. To share it in the library, create a pack from this .zip on the website.',
+                link: { href: NEW_PACK_URL, label: 'Create a pack' },
+              },
+        );
       }
     } catch (error) {
       setNotice({
@@ -2283,7 +2462,8 @@ export function EditorPage() {
       !startLink ||
       isPhone ||
       screen !== 'start' ||
-      session.status === 'loading'
+      session.status === 'loading' ||
+      !savedWorkChecked
     ) {
       return;
     }
@@ -2305,6 +2485,8 @@ export function EditorPage() {
     const linked = findLinkedPack(session.packs, startLink.packId);
     if ('problem' in linked) {
       setLibraryOpenError(linked.problem);
+    } else if (keptUnsaved) {
+      setConfirmDiscardAction({ pack: linked.pack });
     } else {
       openLibraryPack(linked.pack);
     }
@@ -2494,13 +2676,15 @@ export function EditorPage() {
     if (playingRef.current?.kind === 'key') stopSound();
   }, [cardCode, cardSound, stopSound]);
 
-  // A file that stops being one sound, or leaves the pack, takes away the
-  // buttons that stop its sound, so the sound stops with them.
+  // A file that stops being one sound, leaves the pack or loses its audio
+  // takes away the buttons that stop its sound, so the sound stops with them.
   useEffect(() => {
     if (
       playingSourceId !== null &&
       (fileKinds.get(playingSourceId) !== 'one' ||
-        !sources.some((source) => source.id === playingSourceId))
+        !sources.some(
+          (source) => source.id === playingSourceId && !source.missing,
+        ))
     ) {
       stopSound();
     }
@@ -2667,12 +2851,19 @@ export function EditorPage() {
           onConfirm={confirmDiscard}
           // Away from the workspace, the work asked about is the one kept
           // behind the start screens.
-          {...(!isWorkspace && {
-            title: 'Start over?',
-            message:
-              'Your changes in this tab will be lost. Download a .zip first to keep them.',
-            confirmLabel: 'Discard and continue',
-          })}
+          {...(!isWorkspace &&
+            (keptUnsaved && savedWork
+              ? {
+                  title: 'Replace your kept work?',
+                  message: `"${savedWork.snapshot.packInfo.name}" from your last visit has changes you have not downloaded. Continue it from the start screen to keep it, or replace it.`,
+                  confirmLabel: 'Replace it',
+                }
+              : {
+                  title: 'Start over?',
+                  message:
+                    'Your changes in this tab will be lost. Download a .zip first to keep them.',
+                  confirmLabel: 'Discard and continue',
+                }))}
         />
 
         <ConfirmPackTypeModal
@@ -2693,7 +2884,8 @@ export function EditorPage() {
 
         <ChangeFileDialog
           keyName={changeFileFor === null ? null : keyLabel(changeFileFor)}
-          sources={sources}
+          // A file without audio has no sound to give.
+          sources={sources.filter((source) => !source.missing)}
           kinds={fileKinds}
           currentId={
             changeFileFor === null
@@ -2812,6 +3004,20 @@ export function EditorPage() {
             keptWork={
               workId
                 ? { packName: packInfo.name, onReturn: returnToKeptWork }
+                : null
+            }
+            savedWork={
+              !workId && savedWork
+                ? {
+                    packName: savedWork.snapshot.packInfo.name,
+                    savedAgo: savedAgo(savedWork.savedAt, Date.now()),
+                    keyCount: savedWork.snapshot.keySounds.size,
+                    noun:
+                      savedWork.snapshot.packInfo.packType === 'Mouse'
+                        ? 'button'
+                        : 'key',
+                    onContinue: continueSavedWork,
+                  }
                 : null
             }
           />
@@ -3222,6 +3428,7 @@ export function EditorPage() {
                       onSelect={handleSelectSource}
                       onAdd={(files) => handleAddSources(files)}
                       onRemove={handleRemoveSource}
+                      onRemoveAudio={handleRemoveAudio}
                       onSetKind={(id, kind) => requestKinds([id], kind)}
                       onReplace={replaceSource}
                       isReading={reading !== null}
@@ -3330,42 +3537,59 @@ export function EditorPage() {
                         />
                       </div>
                     )}
-                    {visibility.oneSoundPane && activeSource && (
-                      // Measured as controls with no waveform.
-                      <div
-                        ref={panelControlsRef}
-                        className="min-w-0 flex flex-col gap-3"
-                      >
-                        <OneSoundPane
-                          source={activeSource}
-                          codes={codesBySource.get(activeSource.id) ?? []}
-                          noun={noun}
-                          isPlaying={playingSourceId === activeSource.id}
-                          onPlay={() => playSource(activeSource)}
-                          onGive={() => {
-                            giveToSelected(activeSource);
-                            playSource(activeSource, true);
-                          }}
-                          given={
-                            selectedCodes.length > 0 &&
-                            giveOneSoundToKeys(
-                              selectedCodes,
-                              activeSource,
-                              keySounds,
-                            ) === keySounds
+                    {activeSource?.missing && (
+                      <div ref={panelControlsRef} className="min-w-0 px-4">
+                        <MissingAudioPane
+                          name={activeSource.file.name}
+                          count={
+                            codesBySource.get(activeSource.id)?.length ?? 0
                           }
-                          selectedKeys={selectedKeys}
-                          setSelectedKeys={setSelectedKeys}
-                          selectedCodes={selectedCodes}
-                          keySounds={keySounds}
-                          commitKeySounds={commitKeySounds}
-                          onClearSelected={clearSelectedKeySounds}
-                          hiddenCount={hiddenKeys.length}
-                          keys={visibility.keyGroups ? keys : undefined}
-                          getKeyId={getKeyId}
+                          noun={noun}
+                          isReading={reading !== null}
+                          onReplace={(file) =>
+                            replaceSource(activeSource.id, file)
+                          }
                         />
                       </div>
-                    )}{' '}
+                    )}
+                    {visibility.oneSoundPane &&
+                      activeSource &&
+                      !activeSource.missing && (
+                        // Measured as controls with no waveform.
+                        <div
+                          ref={panelControlsRef}
+                          className="min-w-0 flex flex-col gap-3"
+                        >
+                          <OneSoundPane
+                            source={activeSource}
+                            codes={codesBySource.get(activeSource.id) ?? []}
+                            noun={noun}
+                            isPlaying={playingSourceId === activeSource.id}
+                            onPlay={() => playSource(activeSource)}
+                            onGive={() => {
+                              giveToSelected(activeSource);
+                              playSource(activeSource, true);
+                            }}
+                            given={
+                              selectedCodes.length > 0 &&
+                              giveOneSoundToKeys(
+                                selectedCodes,
+                                activeSource,
+                                keySounds,
+                              ) === keySounds
+                            }
+                            selectedKeys={selectedKeys}
+                            setSelectedKeys={setSelectedKeys}
+                            selectedCodes={selectedCodes}
+                            keySounds={keySounds}
+                            commitKeySounds={commitKeySounds}
+                            onClearSelected={clearSelectedKeySounds}
+                            hiddenCount={hiddenKeys.length}
+                            keys={visibility.keyGroups ? keys : undefined}
+                            getKeyId={getKeyId}
+                          />
+                        </div>
+                      )}{' '}
                     {/* The column's bottom padding, kept over what the panel is
                     too short for, so cut content fades out at the edge
                     rather than ending in a sliver. */}

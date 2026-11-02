@@ -4,6 +4,7 @@ import {
   type AudioSource,
   addSources,
   createAudioSource,
+  createMissingSource,
   getExtension,
   ICON_TYPES,
   isRecord,
@@ -22,7 +23,10 @@ export type ImportedSoundPack = {
   /** config.id, when the pack has one. */
   id: string | null;
   info: PackInfo;
-  /** Audio files in the zip, the most used first; files no key uses come last. */
+  /**
+   * Audio files in the zip, the most used first; files no key uses come last.
+   * A file config.json names that the zip lacks is there without audio.
+   */
   sources: AudioSource[];
   keySounds: KeySounds;
   extras: PackExtras;
@@ -279,6 +283,25 @@ export async function parseSoundPackZip(
     return sourcesByEntry.get(entry.name) ?? null;
   };
 
+  // A file config.json names that the zip lacks keeps its keys, without
+  // audio, until Replace file… gives it some. Null when the zip has the file,
+  // so a file that is there but is not audio stays left out.
+  const missingByName = new Map<string, AudioSource>();
+  // As config.json names them, for the notice.
+  const missingPaths: string[] = [];
+  const missingSource = (path: string | undefined) => {
+    if (!path || findEntry(path)) return null;
+    // Paths the app reads as one file share an entry; files of the same name
+    // in different folders do not.
+    const key = normalizePath(path).toLowerCase();
+    const name = normalizePath(path).split('/').pop() || path;
+    if (!missingByName.has(key)) {
+      missingByName.set(key, createMissingSource(name, getAudioMimeType(name)));
+      missingPaths.push(normalizePath(path));
+    }
+    return missingByName.get(key) ?? null;
+  };
+
   // A single pack plays every key from its main file. Older exports may only
   // name the file per key, so fall back to that and then to any audio file.
   let singleSource: AudioSource | null = null;
@@ -293,7 +316,8 @@ export async function parseSoundPackZip(
     singleSource =
       (await loadSource(mainAudioPath)) ??
       (await loadSource(firstKeyPath)) ??
-      (await loadSource(anyAudio?.name));
+      (await loadSource(anyAudio?.name)) ??
+      missingSource(mainAudioPath);
     if (!singleSource) {
       throw new Error('Sound pack must include at least one audio file.');
     }
@@ -327,7 +351,9 @@ export async function parseSoundPackZip(
         definition.audio_file.trim()
           ? definition.audio_file
           : undefined;
-      source = await loadSource(ownPath ?? mainAudioPath);
+      source =
+        (await loadSource(ownPath ?? mainAudioPath)) ??
+        missingSource(ownPath ?? mainAudioPath);
     }
     if (!source) {
       missingAudio.push(code);
@@ -344,7 +370,9 @@ export async function parseSoundPackZip(
       // length is unknown, the key keeps no timing and is exported that way.
       segments =
         source.duration > 0 ? [[0, source.duration * 1000]] : [WHOLE_FILE];
-      if (source.duration === 0) unreadableWholeFile.push(code);
+      if (source.duration === 0 && !source.missing) {
+        unreadableWholeFile.push(code);
+      }
     } else if (Array.isArray(timing) && timing.every(isTimingPair)) {
       segments = timing.map(([start, end]) => [start, end]);
     } else {
@@ -377,7 +405,7 @@ export async function parseSoundPackZip(
   keySounds.forEach(({ source }) => {
     usage.set(source, (usage.get(source) ?? 0) + 1);
   });
-  const ordered = [...sourcesByEntry.values()]
+  const ordered = [...sourcesByEntry.values(), ...missingByName.values()]
     .filter((source): source is AudioSource => source !== null)
     .sort((a, b) => (usage.get(b.id) ?? 0) - (usage.get(a.id) ?? 0));
   // Colours follow the list order, so the main file takes the first colour.
@@ -391,6 +419,11 @@ export async function parseSoundPackZip(
   if (missingAudio.length > 0) {
     warnings.push(
       `Left out because their audio is not in the zip: ${listKeys(missingAudio)}.`,
+    );
+  }
+  if (missingPaths.length > 0) {
+    warnings.push(
+      `The zip does not have ${listKeys(missingPaths)}, so ${missingPaths.length === 1 ? 'its keys play' : 'their keys play'} nothing for now. They keep their times: use Replace file… in the file's menu to give them audio.`,
     );
   }
   if (invalidTiming.length > 0) {

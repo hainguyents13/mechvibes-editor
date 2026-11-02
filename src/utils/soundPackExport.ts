@@ -6,6 +6,7 @@ import {
   isRecord,
   isWholeFile,
   type KeySounds,
+  listKeys,
   type PackExtras,
   type PackInfo,
   type Segment,
@@ -30,6 +31,10 @@ export type ExportSoundPackParams = {
 const KEPT_EXTENSIONS = new Set(['.ogg', '.mp3']);
 // Formats the app plays, kept as they are when encoding to OGG fails.
 const APP_PLAYABLE_EXTENSIONS = new Set(['.ogg', '.mp3', '.wav', '.flac']);
+
+// A recording whose keys play less than this share of it is cut down to the
+// parts they play, so a long take does not ship mostly unused audio.
+const TRIM_WHEN_USED_BELOW = 0.5;
 
 // Vorbis quality in the -0.1..1 range; 0.4 is a good size/quality balance.
 const VORBIS_QUALITY = 0.4;
@@ -204,10 +209,21 @@ type PackedAudio = {
   moved?: Map<string, Segment>;
 };
 
+/** Milliseconds of the source the segments play, each distinct segment once. */
+function usedMs(segments: Segment[]) {
+  const unique = new Map(
+    segments.map((segment) => [segmentKey(segment), segment]),
+  );
+  return [...unique.values()].reduce(
+    (total, [start, end]) => total + Math.max(0, end - start),
+    0,
+  );
+}
+
 /**
- * - Video: the audio is extracted, everything but the used segments is cut
- *   out, and the result is encoded to OGG.
- * - OGG and MP3 are kept. Anything else is encoded to OGG.
+ * - Video, and audio whose keys play less than half of it: everything but the
+ *   used segments is cut out, and the result is encoded to OGG.
+ * - Otherwise OGG and MP3 are kept, and anything else is encoded to OGG.
  */
 async function packAudio(
   source: AudioSource,
@@ -215,8 +231,18 @@ async function packAudio(
 ): Promise<PackedAudio> {
   const { file } = source;
   const ext = getExtension(file.name);
+  const isVideo = file.type.startsWith('video/');
+  const fileMs = source.duration * 1000;
+  // A key that plays the whole file has no times to cut to. A part that
+  // starts past the end is one the app skips, which cutting would turn into
+  // silence, so such a file is kept whole too.
+  const mostlyUnused =
+    source.duration > 0 &&
+    !segments.some(isWholeFile) &&
+    !segments.some(([start]) => start >= fileMs) &&
+    usedMs(segments) < fileMs * TRIM_WHEN_USED_BELOW;
 
-  if (file.type.startsWith('video/')) {
+  if (isVideo) {
     let decoded: DecodedPcm;
     try {
       decoded = await decodeFileToPcm(file);
@@ -230,6 +256,21 @@ async function packAudio(
       ext: '.ogg',
       moved: trimmed.moved,
     };
+  }
+
+  if (mostlyUnused) {
+    try {
+      const trimmed = trimAndConcat(await decodeFileToPcm(file), segments);
+      return {
+        blob: await encodePcmToOgg(trimmed.channels, trimmed.sampleRate),
+        ext: '.ogg',
+        moved: trimmed.moved,
+      };
+    } catch (err) {
+      // Cutting is only to make the pack smaller: the file goes in whole,
+      // kept or encoded below as it would be otherwise.
+      console.warn('[editor] trimming failed, keeping the whole file:', err);
+    }
   }
 
   if (KEPT_EXTENSIONS.has(ext)) return { blob: file, ext };
@@ -305,6 +346,14 @@ export async function buildSoundPackZip({
     );
   if (usedSources.length !== segmentsBySource.size) {
     throw new Error('Some keys use an audio file that is no longer loaded.');
+  }
+  // Checked before any file is encoded, so nothing fails halfway.
+  const missing = usedSources.filter((source) => source.missing);
+  if (missing.length > 0) {
+    const names = listKeys(missing.map((source) => source.file.name));
+    throw new Error(
+      `${names} ${missing.length === 1 ? 'has' : 'have'} no audio. In the file's menu, Replace file… gives ${missing.length === 1 ? 'it' : 'them'} audio, and Remove takes the sounds of ${missing.length === 1 ? 'its' : 'their'} keys with ${missing.length === 1 ? 'it' : 'them'}.`,
+    );
   }
   // A key that plays its whole file has no timing, which only a multi pack allows.
   const isMulti =
