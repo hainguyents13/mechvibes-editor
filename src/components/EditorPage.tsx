@@ -150,6 +150,7 @@ import {
   createDefaultPackInfo,
   hasUnsavedChanges,
 } from '@/utils/blankPack';
+import { libraryKeyProblems } from '@/utils/libraryRules';
 import { getHistoryShortcut, type PackSnapshot } from '@/utils/packHistory';
 import {
   type AudioSource,
@@ -160,6 +161,7 @@ import {
   type KeySounds,
   listKeys,
   type PackExtras,
+  type PackInfo,
   type PackType,
   type Segment,
 } from '@/utils/soundPack';
@@ -345,7 +347,7 @@ const isSamePlaying = (a: Playing | null, b: Playing) =>
 
 /** A message under the navbar; `details` lists reasons, such as why the library refused a zip. */
 type Notice = {
-  tone: 'error' | 'success' | 'info';
+  tone: 'error' | 'warning' | 'success' | 'info';
   message: string;
   details?: string[];
   link?: { href: string; label: string };
@@ -353,6 +355,7 @@ type Notice = {
 
 const NOTICE_TONE_CLASSES: Record<Notice['tone'], string> = {
   error: 'border-error/30 bg-error/10',
+  warning: 'border-warning/30 bg-warning/10',
   success: 'border-success/30 bg-success/10',
   info: 'border-info/30 bg-info/10',
 };
@@ -2032,6 +2035,15 @@ export function EditorPage() {
     }
   };
 
+  // A pack without an author is credited to the signed-in account, as the
+  // library does.
+  const creditedInfo = (info: PackInfo): PackInfo => ({
+    ...info,
+    author:
+      info.author.trim() ||
+      (session.status === 'signed-in' ? session.user.name : ''),
+  });
+
   // Publish the current work as the next revision of the open library pack.
   const handleUpdate = async () => {
     if (!libraryPack || isUpdating) return;
@@ -2042,12 +2054,12 @@ export function EditorPage() {
     try {
       const zip = await buildSoundPackZip({
         id: libraryPack.id,
-        info: published.packInfo,
+        info: creditedInfo(published.packInfo),
         sources: published.sources,
         keySounds: published.keySounds,
         extras: packExtras,
       });
-      const pack = await updatePackZip(
+      const { pack, unchanged } = await updatePackZip(
         libraryPack.id,
         zip,
         libraryPack.revision,
@@ -2059,7 +2071,9 @@ export function EditorPage() {
       setPublishedSnapshot(published);
       setNotice({
         tone: 'success',
-        message: `Published revision ${pack.revision} of ${libraryPack.name}.`,
+        message: unchanged
+          ? `Nothing changed since revision ${pack.revision} of ${libraryPack.name}, so nothing new was published.`
+          : `Published revision ${pack.revision} of ${libraryPack.name}.`,
         link: {
           href: `${websiteUrl}/sound-packs/${libraryPack.slug}`,
           label: 'View it in the library',
@@ -2098,7 +2112,7 @@ export function EditorPage() {
     try {
       await exportSoundPack({
         id: loadedPackId ?? undefined,
-        info: exported.packInfo,
+        info: creditedInfo(exported.packInfo),
         sources: exported.sources,
         keySounds: exported.keySounds,
         extras: packExtras,
@@ -2107,12 +2121,25 @@ export function EditorPage() {
       setSavedSnapshot(exported);
       setDownloadedSnapshot(exported);
       if (!libraryPack) {
-        setNotice({
-          tone: 'success',
-          message:
-            'Downloaded. To share it in the library, create a pack from this .zip on the website.',
-          link: { href: NEW_PACK_URL, label: 'Create a pack' },
-        });
+        const problems = libraryKeyProblems(
+          exported.packInfo.packType,
+          exported.keySounds,
+        );
+        setNotice(
+          problems.length > 0
+            ? {
+                tone: 'warning',
+                message:
+                  'Downloaded. The Mechvibes app plays it, but the library will refuse it until you fix this:',
+                details: problems,
+              }
+            : {
+                tone: 'success',
+                message:
+                  'Downloaded. To share it in the library, create a pack from this .zip on the website.',
+                link: { href: NEW_PACK_URL, label: 'Create a pack' },
+              },
+        );
       }
     } catch (error) {
       setNotice({

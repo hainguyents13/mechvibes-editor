@@ -119,7 +119,9 @@ export function EditPackModal({
               placeholder="Your name..."
             />
             <p className="label text-xs mt-1">
-              Shown as the pack author when someone installs it
+              Shown as the pack author when someone installs it. Left empty, the
+              name of the account you are signed in with is used. Packs in the
+              library always show the account's name.
             </p>
           </fieldset>
 

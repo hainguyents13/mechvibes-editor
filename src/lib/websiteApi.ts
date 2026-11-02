@@ -122,7 +122,7 @@ export async function updatePackZip(
   id: string,
   zip: Blob,
   revision: number,
-): Promise<LibraryPackSummary> {
+): Promise<{ pack: LibraryPackSummary; unchanged: boolean }> {
   const body = new FormData();
   body.append('file', new File([zip], 'pack.zip', { type: 'application/zip' }));
   body.append('revision', String(revision));
@@ -130,6 +130,9 @@ export async function updatePackZip(
     `/api/my/sound-packs/${encodeURIComponent(id)}/zip`,
     { method: 'PUT', body },
   );
-  const result: { pack: LibraryPackSummary } = await response.json();
-  return result.pack;
+  // The website answers unchanged, without a new revision, when the zip
+  // matches the published one.
+  const result: { pack: LibraryPackSummary; unchanged?: boolean } =
+    await response.json();
+  return { pack: result.pack, unchanged: Boolean(result.unchanged) };
 }
