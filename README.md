@@ -21,7 +21,7 @@ pnpm build      # typecheck and build to dist/
 
 ## Releases
 
-The navbar shows the editor's version, taken from `package.json`. What changed in each version is in [CHANGELOG.md](./CHANGELOG.md) and on the [GitHub releases page](https://github.com/hainguyents13/mechvibes-editor/releases). [docs/release-guide.md](./docs/release-guide.md) covers the versioning policy, keeping the changelog and making a release (`pnpm release:bump`).
+The navbar shows the editor's version, taken from `package.json`. What changed in each version is in [CHANGELOG.md](./CHANGELOG.md) and on the [GitHub releases page](https://github.com/hainguyents13/mechvibes-editor/releases). [docs/release-guide.md](./docs/release-guide.md) covers the versioning policy, keeping the changelog, making a release (`pnpm release:bump`) and announcing it on Discord (`pnpm release:announce`).
 
 ## Deployment
 
