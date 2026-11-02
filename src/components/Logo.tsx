@@ -42,7 +42,7 @@ export const Logo = ({
         rel="noopener"
         aria-label={`Version ${__APP_VERSION__}, what's new`}
         title={`Version ${__APP_VERSION__}: see what's new`}
-        className={`ml-2 whitespace-nowrap text-xs text-base-content/70 hover:text-base-content hover:underline ${textClass}`}
+        className={`ml-2 items-center whitespace-nowrap rounded-full bg-base-content/10 px-2 py-0.5 text-xs font-medium text-base-content/70 hover:bg-base-content/15 hover:text-base-content ${compact ? 'hidden xl:inline-flex' : 'inline-flex'}`}
       >
         v{__APP_VERSION__}
       </a>
