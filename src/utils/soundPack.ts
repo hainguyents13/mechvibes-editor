@@ -37,7 +37,7 @@ export type AudioSource = {
   colorIndex: number;
   /**
    * The file's audio is gone, as a file a pack names but its zip lacks, or
-   * one taken out with Remove audio, keep keys. ile is then an empty
+   * one taken out with Remove audio, keep keys. `file` is then an empty
    * stand-in with the same name. Its keys keep their times and play nothing
    * until Replace file… gives it audio again.
    */
@@ -135,8 +135,18 @@ export function createAudioSource(
   return { id: `source-${lastSourceId}`, file, duration, colorIndex };
 }
 
-/** A file with no audio, named 
-ame, for keys to keep until it has some. */
+/**
+ * Sources made before this page loaded, as restored work, keep their ids:
+ * the next new source counts on from the highest of them, so none is shared.
+ */
+export function reserveSourceIds(sources: readonly Pick<AudioSource, 'id'>[]) {
+  for (const { id } of sources) {
+    const n = Number(/^source-(\d+)$/.exec(id)?.[1]);
+    if (n > lastSourceId) lastSourceId = n;
+  }
+}
+
+/** A file with no audio, named `name`, for keys to keep until it has some. */
 export function createMissingSource(name: string, type = ''): AudioSource {
   return {
     ...createAudioSource(new File([], name, { type }), 0),
@@ -144,7 +154,7 @@ export function createMissingSource(name: string, type = ''): AudioSource {
   };
 }
 
-/** source with its audio taken out; its id, name and colour stay. */
+/** `source` with its audio taken out; its id, name and colour stay. */
 export function withoutAudio(source: AudioSource): AudioSource {
   const { file } = source;
   return {
@@ -154,16 +164,6 @@ export function withoutAudio(source: AudioSource): AudioSource {
     colorIndex: source.colorIndex,
     missing: true,
   };
-}
-
-/** The names of the files without audio that keys play. */
-export function missingFilesInUse(
-  sources: AudioSource[],
-  keySounds: KeySounds,
-): string[] {
-  return sourcesInUse(sources, keySounds)
-    .filter((source) => source.missing)
-    .map((source) => source.file.name);
 }
 
 /**

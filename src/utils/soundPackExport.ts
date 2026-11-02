@@ -340,7 +340,7 @@ export async function buildSoundPackZip({
   if (missing.length > 0) {
     const names = listKeys(missing.map((source) => source.file.name));
     throw new Error(
-      `${names} ${missing.length === 1 ? 'has' : 'have'} no audio. Give ${missing.length === 1 ? 'it' : 'them'} audio with Replace file… in the file's menu, or remove the sounds of the keys that use ${missing.length === 1 ? 'it' : 'them'}.`,
+      `${names} ${missing.length === 1 ? 'has' : 'have'} no audio. In the file's menu, Replace file… gives ${missing.length === 1 ? 'it' : 'them'} audio, and Remove takes the sounds of ${missing.length === 1 ? 'its' : 'their'} keys with ${missing.length === 1 ? 'it' : 'them'}.`,
     );
   }
   // A key that plays its whole file has no timing, which only a multi pack allows.

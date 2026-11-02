@@ -3,6 +3,7 @@ import {
   AudioWaveform,
   FolderOpen,
   Globe,
+  History,
   type LucideIcon,
   Plus,
 } from 'lucide-react';
@@ -55,6 +56,17 @@ interface StartScreenProps {
   onMakeNewPack: () => void;
   /** The work Start over kept, and the way back to it; null when there is none. */
   keptWork: { packName: string; onReturn: () => void } | null;
+  /** The work this browser kept from an earlier visit; null when there is none. */
+  savedWork: {
+    packName: string;
+    /** When it was kept: "5 minutes ago". */
+    savedAgo: string;
+    /** How many keys or buttons have a sound. */
+    keyCount: number;
+    /** What the pack's keys are called: 'key' or 'button'. */
+    noun: string;
+    onContinue: () => void;
+  } | null;
 }
 
 /**
@@ -164,6 +176,7 @@ export function StartScreen({
   openFileError,
   onMakeNewPack,
   keptWork,
+  savedWork,
 }: StartScreenProps) {
   const [isRetrying, setIsRetrying] = useState(false);
   const retry = async () => {
@@ -289,9 +302,38 @@ export function StartScreen({
           />
         </div>
       )}
+      {savedWork && (
+        <section
+          aria-labelledby="saved-work-title"
+          className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-box border border-primary/40 bg-primary/5 p-4"
+        >
+          <History
+            className="h-6 w-6 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1">
+            <h2 id="saved-work-title" className="font-semibold">
+              Continue where you left off
+            </h2>
+            <p className="truncate text-sm text-base-content/70">
+              "{savedWork.packName}", kept {savedWork.savedAgo}
+              {savedWork.keyCount > 0 &&
+                `, ${savedWork.keyCount} ${savedWork.noun}${savedWork.keyCount === 1 ? ' has' : 's have'} a sound`}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm rounded-box"
+            onClick={savedWork.onContinue}
+          >
+            Continue
+          </button>
+        </section>
+      )}
       <div
-        className={`${keptWork ? 'mt-3' : 'mt-10'} grid gap-4 md:grid-cols-3 md:items-start`}
+        className={`${keptWork || savedWork ? 'mt-3' : 'mt-10'} grid gap-4 md:grid-cols-3 md:items-start`}
       >
+        {' '}
         <div>
           <StartCard
             Icon={Globe}
@@ -307,7 +349,6 @@ export function StartScreen({
             </div>
           )}
         </div>
-
         <div>
           <StartCard
             Icon={FolderOpen}
@@ -333,7 +374,6 @@ export function StartScreen({
             </div>
           )}
         </div>
-
         <StartCard
           Icon={Plus}
           title="Make a new pack"
@@ -344,7 +384,8 @@ export function StartScreen({
       </div>
 
       <p className="mt-10 text-center text-sm text-base-content/60">
-        Your work stays in this browser tab only. Download a .zip to keep it.
+        Your work is kept in this browser as you go. Download a .zip to share it
+        or keep it elsewhere.
       </p>
     </StartPage>
   );

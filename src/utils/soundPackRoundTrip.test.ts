@@ -640,7 +640,7 @@ describe('a file without audio', () => {
         extras: pack.extras,
       }),
     ).rejects.toThrow(
-      "gone.ogg has no audio. Give it audio with Replace file… in the file's menu, or remove the sounds of the keys that use it.",
+      "gone.ogg has no audio. In the file's menu, Replace file… gives it audio, and Remove takes the sounds of its keys with it.",
     );
   });
 

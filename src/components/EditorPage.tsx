@@ -83,6 +83,7 @@ import { useCoarsePointer, usePhoneScreen } from '@/hooks/usePhoneScreen';
 import { usePreviewPlayback } from '@/hooks/usePreviewPlayback';
 import { useSessionFlag } from '@/hooks/useSessionFlag';
 import { type AddBatch, summarizeAdd } from '@/lib/addSummary';
+import { loadWork, type SavedWork, savedAgo, saveWork } from '@/lib/autosave';
 import type { DropRoute } from '@/lib/dropRouting';
 import { startEditorTour } from '@/lib/editorTour';
 import { autoTourFlow, hasSeenTour, type TourFlow } from '@/lib/editorTourFlow';
@@ -150,6 +151,7 @@ import {
   createBlankSnapshot,
   createDefaultPackInfo,
   hasUnsavedChanges,
+  isBlankPack,
 } from '@/utils/blankPack';
 import { libraryKeyProblems } from '@/utils/libraryRules';
 import { getHistoryShortcut, type PackSnapshot } from '@/utils/packHistory';
@@ -367,6 +369,9 @@ type OpenLibraryPack = Pick<
   LibraryPackSummary,
   'id' | 'name' | 'slug' | 'revision'
 >;
+
+// How long after a change the work is kept in this browser.
+const AUTOSAVE_DELAY_MS = 800;
 
 const NEW_PACK_URL = `${websiteUrl}/profile/sound-packs/new`;
 
@@ -623,6 +628,62 @@ export function EditorPage() {
   );
   // Changes Start over, opening a library pack or closing the tab would lose.
   const isDirty = hasUnsavedChanges(present, savedSnapshot);
+
+  // The work kept in this browser by an earlier visit, offered on the start
+  // screen until work starts in this tab.
+  const [savedWork, setSavedWork] = useState<SavedWork | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadWork().then((work) => {
+      if (!cancelled && work) setSavedWork(work);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A moment after each change, the work is kept in this browser, so a
+  // crash, a reload or a closed tab does not lose it. Only one pack is kept:
+  // new work takes the place of the last once it has something in it.
+  const saveFailedRef = useRef(false);
+  useEffect(() => {
+    if (!workId || isBlankPack(present)) return;
+    const timer = window.setTimeout(() => {
+      saveWork({
+        savedAt: Date.now(),
+        snapshot: present,
+        unsaved: isDirty,
+        fileKinds,
+        loadedPackId,
+        packExtras,
+        libraryPack,
+        activeSourceId,
+      })
+        .then(() => {
+          saveFailedRef.current = false;
+        })
+        .catch(() => {
+          // Said once, until a save works again.
+          if (saveFailedRef.current) return;
+          saveFailedRef.current = true;
+          setNotice({
+            tone: 'warning',
+            message:
+              'This browser could not keep a copy of your work, as when its storage is full or blocked. Download a .zip to keep it.',
+          });
+        });
+    }, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    workId,
+    present,
+    isDirty,
+    fileKinds,
+    loadedPackId,
+    packExtras,
+    libraryPack,
+    activeSourceId,
+  ]);
 
   const commitKeySounds = useCallback(
     (label: string, update: (current: KeySounds) => KeySounds) =>
@@ -1820,6 +1881,32 @@ export function EditorPage() {
     }
   };
 
+  // Pick up the work kept in this browser where it was left: its files, keys,
+  // details and library pack, without its undo history. Work that was not
+  // downloaded or published then is still unsaved now.
+  const continueSavedWork = () => {
+    const saved = savedWork;
+    if (!saved) return;
+    setSavedWork(null);
+    resetView();
+    const { snapshot } = saved;
+    startFrom(snapshot, null, null);
+    if (saved.unsaved) {
+      setSavedSnapshot(createBlankSnapshot(snapshot.packInfo.packType));
+    }
+    setFileKinds(saved.fileKinds);
+    setLoadedPackId(saved.loadedPackId);
+    setPackExtras(saved.packExtras);
+    setLibraryPack(saved.libraryPack);
+    if (snapshot.packInfo.packType === 'Keyboard') {
+      setKeyboardSize((current) =>
+        inferKeyboardSize(snapshot.keySounds.keys(), current),
+      );
+    }
+    setActiveSourceId(saved.activeSourceId);
+    enterWorkspace();
+  };
+
   // Each way in replaces the work there is, so it asks first over changes
   // that are not saved.
   const asksFirst = asksBeforeReplacing({ workId, isDirty });
@@ -2856,6 +2943,20 @@ export function EditorPage() {
             keptWork={
               workId
                 ? { packName: packInfo.name, onReturn: returnToKeptWork }
+                : null
+            }
+            savedWork={
+              !workId && savedWork
+                ? {
+                    packName: savedWork.snapshot.packInfo.name,
+                    savedAgo: savedAgo(savedWork.savedAt, Date.now()),
+                    keyCount: savedWork.snapshot.keySounds.size,
+                    noun:
+                      savedWork.snapshot.packInfo.packType === 'Mouse'
+                        ? 'button'
+                        : 'key',
+                    onContinue: continueSavedWork,
+                  }
                 : null
             }
           />
