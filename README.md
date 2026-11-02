@@ -19,6 +19,10 @@ pnpm test       # unit tests (vitest)
 pnpm build      # typecheck and build to dist/
 ```
 
+## Releases
+
+The navbar shows the editor's version, taken from `package.json`. What changed in each version is in [CHANGELOG.md](./CHANGELOG.md) and on the [GitHub releases page](https://github.com/hainguyents13/mechvibes-editor/releases). [docs/release-guide.md](./docs/release-guide.md) covers the versioning policy, keeping the changelog and making a release (`pnpm release:bump`).
+
 ## Deployment
 
 The editor is a static site. The `Dockerfile` builds it and serves `dist/` with nginx on port 80, falling back to `index.html` for every path.
