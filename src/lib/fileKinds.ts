@@ -1,8 +1,13 @@
-import { mediaTypeOf, sharedPressSegment } from '@/utils/audioUtils';
+import {
+  formatLengthInText,
+  mediaTypeOf,
+  sharedPressSegment,
+} from '@/utils/audioUtils';
 import {
   type AudioSource,
   isWholeFile,
   type KeySounds,
+  type PackType,
   type Segment,
 } from '@/utils/soundPack';
 
@@ -22,6 +27,12 @@ export type AddTile = 'recording' | 'per-key' | 'video';
  * about 0.5 s with their release; recordings of clicks start at 1.1 s.
  */
 export const ONE_SOUND_MAX_SECONDS = 1;
+
+/**
+ * The longest file given whole to a key without asking: past it a file is a
+ * recording, and a key would play all of it.
+ */
+export const LONG_FILE_SECONDS = 2;
 
 /** A file's kind from its length; one the browser cannot measure keeps the waveform. */
 export function kindFromLength(seconds: number): FileKind {
@@ -51,12 +62,49 @@ export function inferNewFileKind(
 // 3 s file comes back about 3.003 s long, and MP3 at low rates pads more.
 const ENCODER_PADDING_MS = 100;
 
-// Whether a segment runs from the start to the end of a file that is
-// `seconds` long, as a key that plays the whole file is stored.
-function coversFile([start, end]: Segment, seconds: number) {
+/**
+ * Whether a key that plays `segment` plays all of a file `seconds` long: the
+ * whole file without timing, or from its start to its end, as a file of one
+ * sound is given. Such a key has no part of the file left for a release.
+ */
+export function playsWholeFile(segment: Segment, seconds: number) {
+  const [start, end] = segment;
   return (
-    start === 0 && seconds > 0 && end >= seconds * 1000 - ENCODER_PADDING_MS
+    isWholeFile(segment) ||
+    (start === 0 && seconds > 0 && end >= seconds * 1000 - ENCODER_PADDING_MS)
   );
+}
+
+/**
+ * What to ask before files become one sound each, when some are longer than
+ * `LONG_FILE_SECONDS`: a key given such a file would play all of it. Null
+ * when none is. Several files are the ones a Change ▾ turns at once.
+ */
+export function longFileWarning(
+  sources: readonly Pick<AudioSource, 'duration'>[],
+  packType: PackType,
+) {
+  const long = sources
+    .map((source) => source.duration)
+    .filter((seconds) => seconds > LONG_FILE_SECONDS);
+  if (long.length === 0) return null;
+  const every = packType === 'Mouse' ? 'Every button' : 'Every key';
+  const longest = formatLengthInText(Math.max(...long));
+  if (sources.length === 1) {
+    return {
+      title: 'Make this file one sound?',
+      message: `This file is ${longest} long. ${every} would play all of it.`,
+      confirmLabel: 'Make it one sound',
+    };
+  }
+  return {
+    title: 'Make these files one sound?',
+    message:
+      long.length === 1
+        ? `1 of these files is ${longest} long. ${every} would play all of it.`
+        : `${long.length} of these files are longer than ${LONG_FILE_SECONDS} s, up to ${longest}. ${every} would play all of each.`,
+    confirmLabel: 'Make them one sound',
+  };
 }
 
 function kindInPack(source: AudioSource, keySounds: KeySounds): FileKind {
@@ -69,8 +117,7 @@ function kindInPack(source: AudioSource, keySounds: KeySounds): FileKind {
   if (!shared) return 'many';
   // One part of a long recording that every key shares is still a recording:
   // its waveform stays when the pack is opened again.
-  return isWholeFile(shared) ||
-    coversFile(shared, source.duration) ||
+  return playsWholeFile(shared, source.duration) ||
     kindFromLength(source.duration) === 'one'
     ? 'one'
     : 'many';

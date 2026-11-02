@@ -254,6 +254,23 @@ export function routeDrop<F extends DroppedFile>(
 }
 
 /**
+ * Whether a drop can go onto a key: one audio or video file joining the open
+ * pack, while its keyboard takes clicks. Only then does the cover let the
+ * keys show through; every other drop is covered as before.
+ */
+export function offersKeyDrop(
+  route: DropRoute<DroppedFile>,
+  keyboardReady: boolean,
+) {
+  return (
+    keyboardReady &&
+    route.kind === 'add-media' &&
+    route.files.length === 1 &&
+    route.skipped.length === 0
+  );
+}
+
+/**
  * The audio and video of a folder chosen with Choose folder, and the names
  * of its other files, without system files. The person chose to add one
  * file for each key, so a chosen folder never opens a pack: its config.json

@@ -21,6 +21,8 @@ interface AudioFileSelectorProps {
   noun: string;
   /** Stacked, the most the list takes before it scrolls, when less than usual. */
   listMaxHeight?: number;
+  /** The key card follows in the column: the list gives way to it down to one row. */
+  hasKeyCard?: boolean;
   /** The file whose sound is playing from its row, if any. */
   playingSourceId: string | null;
   onPlay: (id: string) => void;
@@ -29,8 +31,17 @@ interface AudioFileSelectorProps {
   onAdd: (files: File[]) => void;
   onRemove: (id: string) => void;
   onSetKind: (id: string, kind: FileKind) => void;
+  /** Swap the audio of a file for another, for every key that plays it. */
+  onReplace: (id: string, file: File) => void;
+  /** Files are being read: Replace file… waits, so one replace runs at a time. */
+  isReading?: boolean;
+  /** A file of one sound starts being dragged towards the keys (its id), or stops (null). */
+  onDragFile: (id: string | null) => void;
   videoRef?: React.RefObject<HTMLVideoElement | null>;
 }
+
+/** What a row dragged onto a key carries: the id of its file. */
+export const SOURCE_DRAG_TYPE = 'application/x-mechvibes-source';
 
 /** Short format label from a MIME type, e.g. "audio/mpeg" -> "MPEG". */
 function formatLabel(file: File): string {
@@ -60,15 +71,22 @@ export function AudioFileSelector({
   selectedCount,
   noun,
   listMaxHeight,
+  hasKeyCard = false,
   playingSourceId,
   onPlay,
   onSelect,
   onAdd,
   onRemove,
   onSetKind,
+  onReplace,
+  isReading = false,
+  onDragFile,
   videoRef,
 }: AudioFileSelectorProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const replaceInputRef = React.useRef<HTMLInputElement>(null);
+  // The file Replace file… was chosen for, while its picker is open.
+  const replacingRef = React.useRef<string | null>(null);
   const listRef = React.useRef<HTMLUListElement>(null);
   const detailsIdBase = React.useId();
   const [pendingRemoval, setPendingRemoval] =
@@ -77,7 +95,7 @@ export function AudioFileSelector({
   // The open file's row stays in view: an add opens a file at the end of a
   // long list, and a selected key opens the file it plays. Only the list
   // scrolls, not the page around it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a file added or removed, or a shorter list, moves the row too
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a file added or removed, or a shorter list, moves the row too, as does the key card taking room
   React.useLayoutEffect(() => {
     const list = listRef.current;
     const row = list?.querySelector<HTMLElement>('[data-active]');
@@ -86,7 +104,7 @@ export function AudioFileSelector({
     const { top, bottom } = row.getBoundingClientRect();
     if (top < view.top) list.scrollTop -= view.top - top;
     else if (bottom > view.bottom) list.scrollTop += bottom - view.bottom;
-  }, [activeSourceId, sources.length, listMaxHeight]);
+  }, [activeSourceId, sources.length, listMaxHeight, hasKeyCard]);
 
   const addFiles = (files: FileList | null) => {
     const media = Array.from(files ?? []).filter(isMediaFile);
@@ -120,6 +138,23 @@ export function AudioFileSelector({
     />
   );
 
+  const replaceInput = (
+    <input
+      ref={replaceInputRef}
+      type="file"
+      className="hidden"
+      accept="audio/*,video/*"
+      aria-label="Replace file"
+      onChange={(event) => {
+        const file = event.target.files?.[0];
+        const id = replacingRef.current;
+        replacingRef.current = null;
+        event.target.value = '';
+        if (file && id && isMediaFile(file)) onReplace(id, file);
+      }}
+    />
+  );
+
   // Before the first file the workspace offers its own ways to add one.
   if (sources.length === 0) return null;
 
@@ -130,7 +165,15 @@ export function AudioFileSelector({
     kinds.get(activeSource?.id ?? '') !== 'one';
 
   return (
-    <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-3">
+    <div
+      className={cn(
+        'flex-1 min-w-0 flex flex-col gap-3',
+        // With the card, the column scrolls rather than squeeze the list
+        // below its heading and one row, or the heading and the short list
+        // over a clip, which gives way first.
+        hasKeyCard ? (isVideo ? 'min-h-37' : 'min-h-23') : 'min-h-0',
+      )}
+    >
       <div className="flex items-center justify-between gap-2 shrink-0">
         <h2
           id={SOURCES_HEADING_ID}
@@ -149,6 +192,7 @@ export function AudioFileSelector({
           Add
         </button>
         {fileInput}
+        {replaceInput}
       </div>
 
       {/* One row per source in its own fixed colour; the selected one is
@@ -160,6 +204,7 @@ export function AudioFileSelector({
         className={cn(
           'min-h-0 overflow-y-auto flex flex-col gap-2',
           isVideo ? 'shrink-0 max-h-28' : 'flex-1 max-lg:max-h-72',
+          hasKeyCard && 'min-h-14',
         )}
         // Never taller than max-h-72.
         style={
@@ -191,6 +236,21 @@ export function AudioFileSelector({
             <li
               key={source.id}
               data-active={isActive || undefined}
+              // A file of one sound drags onto keys. The row, not its button,
+              // since Firefox starts no drag from a button.
+              draggable={isOne || undefined}
+              onDragStart={
+                isOne
+                  ? (event) => {
+                      // Firefox starts a drag only once it carries data. No
+                      // text, so a drop in a text field types nothing.
+                      event.dataTransfer.setData(SOURCE_DRAG_TYPE, source.id);
+                      event.dataTransfer.effectAllowed = 'copy';
+                      onDragFile(source.id);
+                    }
+                  : undefined
+              }
+              onDragEnd={isOne ? () => onDragFile(null) : undefined}
               className={cn(
                 'flex items-center gap-1 rounded-box border border-l-4',
                 color.bg,
@@ -275,6 +335,14 @@ export function AudioFileSelector({
                         label: 'This file is one sound',
                         onSelect: () => onSetKind(source.id, 'one'),
                       },
+                  {
+                    label: 'Replace file…',
+                    disabled: isReading,
+                    onSelect: () => {
+                      replacingRef.current = source.id;
+                      replaceInputRef.current?.click();
+                    },
+                  },
                   { label: 'Remove', onSelect: () => requestRemoval(source) },
                 ]}
               >

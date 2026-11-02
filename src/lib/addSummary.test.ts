@@ -216,21 +216,21 @@ describe('summarizeAdd: files that match keys', () => {
   it('counts the files that still need a key', () => {
     const result = summary({ files });
     expect(lineOf(result?.lines, 'need-key')?.text).toBe(
-      '2 need a key: select keys, then click a file.',
+      '2 need a key: drag them onto keys, or select keys and click a file.',
     );
     const oneUsed = summary({
       files,
       keySounds: new Map([['KeyQ', plays('id-x y.wav')]]),
     });
     expect(lineOf(oneUsed?.lines, 'need-key')?.text).toBe(
-      '1 needs a key: select keys, then click a file.',
+      '1 needs a key: drag it onto a key, or select keys and click it.',
     );
     const mouse = summary({
       files: sources('left.wav', 'thing.wav'),
       packType: 'Mouse',
     });
     expect(lineOf(mouse?.lines, 'need-key')?.text).toBe(
-      '1 needs a button: select buttons, then click a file.',
+      '1 needs a button: drag it onto a button, or select buttons and click it.',
     );
   });
 
@@ -351,7 +351,7 @@ describe('summarizeAdd: lines for name patterns', () => {
     const result = summary({ files });
     expect(kindsOf(result?.lines)).toEqual(['no-match']);
     expect(lineOf(result?.lines, 'no-match')).toMatchObject({
-      text: 'None of the names match a key. Select keys and click a file, or',
+      text: 'None of the names match a key. Drag files onto keys, or',
       action: 'Give them to keys in order',
     });
     const given = new Map(

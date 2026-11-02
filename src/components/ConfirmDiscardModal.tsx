@@ -12,6 +12,7 @@ export function ConfirmDiscardModal({
   message = 'Changes you have not downloaded or updated will be lost.',
   cancelLabel = 'Cancel',
   confirmLabel = 'Discard',
+  confirmTone = 'error',
 }: {
   isOpen: boolean;
   onCancel: () => void;
@@ -20,6 +21,8 @@ export function ConfirmDiscardModal({
   message?: string;
   cancelLabel?: string;
   confirmLabel?: string;
+  /** The confirm button's colour: red for losing work, primary for a choice that loses none. */
+  confirmTone?: 'error' | 'primary';
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -45,10 +48,13 @@ export function ConfirmDiscardModal({
     >
       {isOpen && (
         <div className="modal-box max-w-sm">
-          <h2 id={titleId} className="text-lg font-semibold">
+          <h2 id={titleId} className="text-lg font-semibold break-words">
             {title}
           </h2>
-          <p id={messageId} className="text-sm text-base-content/70 mt-2">
+          <p
+            id={messageId}
+            className="text-sm text-base-content/70 mt-2 break-words"
+          >
             {message}
           </p>
           {/* The safe choice comes first, so it takes the focus. */}
@@ -63,7 +69,7 @@ export function ConfirmDiscardModal({
             <button
               type="button"
               onClick={onConfirm}
-              className="btn btn-sm btn-error rounded-box"
+              className={`btn btn-sm rounded-box ${confirmTone === 'primary' ? 'btn-primary' : 'btn-error'}`}
             >
               {confirmLabel}
             </button>

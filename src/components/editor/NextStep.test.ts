@@ -35,7 +35,7 @@ describe('nextStepText', () => {
       activeFileKind: 'one',
     } as const;
     expect(nextStepText({ ...one, stage: 'no-sounds' })).toBe(
-      'select keys, then click a sound to give it to them.',
+      'drag a sound onto a key, or select keys and click a sound.',
     );
     expect(nextStepText({ ...one, stage: 'no-sounds', selectedCount: 3 })).toBe(
       'click a sound to give it to the 3 selected keys.',
@@ -49,7 +49,7 @@ describe('nextStepText', () => {
     );
     expect(
       nextStepText({ ...one, packType: 'Mouse', stage: 'no-sounds' }),
-    ).toBe('select buttons, then click a sound to give it to them.');
+    ).toBe('drag a sound onto a button, or select buttons and click a sound.');
     expect(
       nextStepText({
         ...one,
@@ -83,5 +83,45 @@ describe('nextStepText', () => {
     expect(
       nextStepText({ stage: 'has-sounds', packType: 'Mouse', isTouch: true }),
     ).toBe('keep giving buttons a sound, or press Try it and tap the buttons.');
+  });
+});
+
+describe('nextStepText for the one selected key', () => {
+  const many = {
+    stage: 'has-sounds',
+    packType: 'Keyboard',
+    isTouch: false,
+    activeFileKind: 'many',
+    selectedCount: 1,
+  } as const;
+
+  it('says to cut the press out of a whole file, as after Split it', () => {
+    expect(nextStepText({ ...many, selectedKeyFile: 'whole' })).toBe(
+      'drag over the press on the waveform and apply it, then switch to Release.',
+    );
+  });
+
+  it('says to cut a sound for the key from another file', () => {
+    expect(nextStepText({ ...many, selectedKeyFile: 'other' })).toBe(
+      'drag over a sound on the waveform and apply it to the selected key.',
+    );
+    expect(
+      nextStepText({ ...many, packType: 'Mouse', selectedKeyFile: 'other' }),
+    ).toBe(
+      'drag over a sound on the waveform and apply it to the selected button.',
+    );
+  });
+
+  it('keeps the usual line for several keys, or a file of one sound', () => {
+    expect(
+      nextStepText({ ...many, selectedCount: 2, selectedKeyFile: 'whole' }),
+    ).toBe('keep giving keys a sound, or press Try it and type.');
+    expect(
+      nextStepText({
+        ...many,
+        activeFileKind: 'one',
+        selectedKeyFile: 'whole',
+      }),
+    ).toBe('click a sound to give it to the selected key.');
   });
 });

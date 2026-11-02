@@ -14,6 +14,7 @@ export function nextStepText({
   isTouch,
   activeFileKind = null,
   selectedCount = 0,
+  selectedKeyFile = null,
 }: {
   stage: WorkspaceStage;
   packType: PackType;
@@ -21,9 +22,25 @@ export function nextStepText({
   activeFileKind?: FileKind | null;
   /** Keys or buttons selected. */
   selectedCount?: number;
+  /**
+   * How the one selected key with a sound plays the file on the waveform:
+   * all of it (`whole`, as after Split it), or not at all (`other`, as after
+   * choosing a file of many sounds for it).
+   */
+  selectedKeyFile?: 'whole' | 'other' | null;
 }) {
   const isMouse = packType === 'Mouse';
   const noun = isMouse ? 'button' : 'key';
+  if (
+    stage !== 'no-files' &&
+    activeFileKind === 'many' &&
+    selectedCount === 1 &&
+    selectedKeyFile
+  ) {
+    return selectedKeyFile === 'whole'
+      ? 'drag over the press on the waveform and apply it, then switch to Release.'
+      : `drag over a sound on the waveform and apply it to the selected ${noun}.`;
+  }
   if (stage !== 'no-files' && activeFileKind === 'one') {
     if (selectedCount > 0) {
       const them =
@@ -33,7 +50,7 @@ export function nextStepText({
       return `click a sound to give it to ${them}.`;
     }
     if (stage === 'no-sounds') {
-      return `select ${noun}s, then click a sound to give it to them.`;
+      return `drag a sound onto a ${noun}, or select ${noun}s and click a sound.`;
     }
   }
   switch (stage) {

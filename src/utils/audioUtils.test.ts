@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   AUDIO_FILE_ACCEPT,
+  addFileToKeys,
   applyPressToKeys,
   applyReleaseToKeys,
   clearKeySounds,
   formatDuration,
   formatLength,
+  formatLengthInText,
   giveFilesToKeysInOrder,
   giveFilesToTheirKeys,
   giveOneSoundToKeys,
@@ -18,6 +20,7 @@ import {
   removeReleaseFromKeys,
   sharedPressSegment,
   spreadFilesAcrossKeys,
+  swapPressAndRelease,
   VIDEO_FILE_ACCEPT,
   withMediaType,
 } from '@/utils/audioUtils';
@@ -315,6 +318,13 @@ describe('formatLength', () => {
   });
 });
 
+describe('formatLengthInText', () => {
+  it('joins the numbers and units with no-break spaces', () => {
+    expect(formatLengthInText(0.2)).toBe('0.2\u00a0s');
+    expect(formatLengthInText(252)).toBe('4\u00a0min\u00a012\u00a0s');
+  });
+});
+
 const source = (id: string, name: string, duration: number): AudioSource => ({
   id,
   file: new File([], name, { type: 'audio/wav' }),
@@ -507,5 +517,71 @@ describe('spreadFilesAcrossKeys and giveFilesToKeysInOrder', () => {
     expect(spreadFilesAcrossKeys(clicks, keys, input)).toBe(input);
     expect(giveFilesToKeysInOrder([], keys, input)).toBe(input);
     expect(spreadFilesAcrossKeys(clicks, [], input)).toBe(input);
+  });
+});
+
+describe('swapPressAndRelease', () => {
+  it('swaps the two halves of keys that have both, from the same file', () => {
+    const input = keySounds();
+    const result = updated(input, (sounds) =>
+      swapPressAndRelease(['KeyA', 'KeyC'], sounds),
+    );
+    expect(result.get('KeyA')).toEqual({
+      source: 'a',
+      press: [50, 100],
+      release: [0, 50],
+    });
+    // Without a release there is nothing to swap.
+    expect(result.get('KeyC')).toBe(input.get('KeyC'));
+    expect(result.get('KeyB')).toBe(input.get('KeyB'));
+  });
+
+  it('returns the same map when no key has a release', () => {
+    const input = keySounds();
+    expect(swapPressAndRelease(['KeyC', 'KeyZ'], input)).toBe(input);
+  });
+});
+
+describe('addFileToKeys', () => {
+  it('adds the file and gives it to the keys as one change', () => {
+    const a = { ...source('a', 'a.wav', 0.3), colorIndex: 0 };
+    const b = source('b', 'b.wav', 0.2);
+    const current = {
+      sources: [a],
+      keySounds: new Map<string, KeySound>([
+        ['KeyA', { source: 'a', press: [0, 300] }],
+      ]),
+    };
+    const result = addFileToKeys(current, b, ['KeyS', 'Numpad1']);
+    expect(
+      result.sources.map(({ id, colorIndex }) => [id, colorIndex]),
+    ).toEqual([
+      ['a', 0],
+      ['b', 1],
+    ]);
+    expect(result.keySounds.get('KeyS')).toEqual({
+      source: 'b',
+      press: [0, 200],
+    });
+    // A key the drawn layout leaves out takes it too.
+    expect(result.keySounds.get('Numpad1')).toEqual({
+      source: 'b',
+      press: [0, 200],
+    });
+    expect(result.keySounds.get('KeyA')).toBe(current.keySounds.get('KeyA'));
+    expect(current.sources).toEqual([a]);
+  });
+
+  it('drops the release a key had from its old file', () => {
+    const fresh = source('fresh', 'fresh.wav', 0.25);
+    const result = addFileToKeys(
+      { sources: [], keySounds: keySounds() },
+      fresh,
+      ['KeyA'],
+    );
+    expect(result.keySounds.get('KeyA')).toEqual({
+      source: 'fresh',
+      press: [0, 250],
+    });
   });
 });

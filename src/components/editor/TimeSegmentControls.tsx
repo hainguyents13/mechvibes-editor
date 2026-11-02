@@ -55,6 +55,8 @@ interface TimeSegmentControlsProps {
   keys?: LayoutKey[];
   /** Same id builder the keyboard uses, so group ids match selection ids. */
   getKeyId?: (key: LayoutKey, index: number) => string;
+  /** What the pack's keys are called: 'key' or 'button'. */
+  noun?: string;
 }
 
 export function TimeSegmentControls({
@@ -78,6 +80,7 @@ export function TimeSegmentControls({
   setShowExactTimes,
   keys,
   getKeyId,
+  noun = 'key',
 }: TimeSegmentControlsProps) {
   const exactTimesId = React.useId();
   const exactTimesRef = React.useRef<HTMLDivElement>(null);
@@ -103,7 +106,7 @@ export function TimeSegmentControls({
       waveformSelection.end,
     ];
     commitKeySounds(
-      `${slot === 'press' ? 'Apply' : 'Apply release'} to ${plural(targetCodes.length, 'key')}`,
+      `${slot === 'press' ? 'Apply' : 'Apply release'} to ${plural(targetCodes.length, noun)}`,
       (current) =>
         slot === 'press'
           ? applyPressToKeys(targetCodes, activeSourceId, segment, current)
@@ -113,10 +116,9 @@ export function TimeSegmentControls({
 
   let hint: string | null = null;
   if (selectedCodes.length === 0) {
-    hint = 'Select at least one key to assign this sound.';
+    hint = `Select at least one ${noun} to assign this sound.`;
   } else if (slot === 'release' && targetCodes.length === 0) {
-    hint =
-      'A release sound plays when the key comes up. Give the selected keys a press sound from this file first.';
+    hint = `A release sound plays when the ${noun} comes up. Give the selected ${noun}s a press sound from this file first.`;
   } else if (!hasValidSelection) {
     hint = 'Drag on the waveform to pick the sound first.';
   } else if (endsPastFile) {
@@ -207,10 +209,10 @@ export function TimeSegmentControls({
                   className="btn btn-sm btn-primary rounded-box"
                   onClick={applySelection}
                   disabled={!canApply}
-                  title={`Assign this ${slot} sound to ${plural(targetCodes.length, 'key')}`}
+                  title={`Assign this ${slot} sound to ${plural(targetCodes.length, noun)}`}
                 >
                   {slot === 'press' ? 'Apply' : 'Apply release'} to{' '}
-                  {plural(targetCodes.length, 'key')}
+                  {plural(targetCodes.length, noun)}
                 </button>
               </div>
               {slot === 'release' && (
@@ -220,13 +222,13 @@ export function TimeSegmentControls({
                     className="btn btn-sm rounded-box"
                     onClick={() =>
                       commitKeySounds(
-                        `Remove release from ${plural(codesWithRelease.length, 'key')}`,
+                        `Remove release from ${plural(codesWithRelease.length, noun)}`,
                         (current) =>
                           removeReleaseFromKeys(codesWithRelease, current),
                       )
                     }
                     disabled={codesWithRelease.length === 0}
-                    title="Make the selected keys silent when they come up"
+                    title={`Make the selected ${noun}s silent when they come up`}
                   >
                     Remove release ({codesWithRelease.length})
                   </button>
@@ -236,6 +238,7 @@ export function TimeSegmentControls({
                 selectedCodes={selectedCodes}
                 keySounds={keySounds}
                 onClearSelected={onClearSelected}
+                noun={noun}
               />
               <div>
                 <button
@@ -269,6 +272,7 @@ export function TimeSegmentControls({
                 keySounds={keySounds}
                 hiddenCount={hiddenCount}
                 commitKeySounds={commitKeySounds}
+                noun={noun}
               />
             </div>
 
