@@ -20,7 +20,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     // Everything under test runs in plain Node: JSZip reads and writes File
     // and Blob there, and the Web Audio parts are stubbed per test.
     environment: 'node',

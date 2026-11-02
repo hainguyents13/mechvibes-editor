@@ -12,7 +12,9 @@
     "test": "vitest run",
     "lint": "biome check",
     "format": "biome format --write",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "release:bump": "node scripts/bump-version.mjs",
+    "release:notes": "node scripts/extract-changelog.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
