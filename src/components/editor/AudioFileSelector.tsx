@@ -173,6 +173,7 @@ export function AudioFileSelector({
   // The clip plays along with the waveform, which only a file of many sounds has.
   const isVideo =
     (activeSource?.file.type.startsWith('video/') ?? false) &&
+    !activeSource?.missing &&
     kinds.get(activeSource?.id ?? '') !== 'one';
 
   return (

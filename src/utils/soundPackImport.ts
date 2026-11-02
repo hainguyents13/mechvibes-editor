@@ -287,12 +287,17 @@ export async function parseSoundPackZip(
   // audio, until Replace file… gives it some. Null when the zip has the file,
   // so a file that is there but is not audio stays left out.
   const missingByName = new Map<string, AudioSource>();
+  // As config.json names them, for the notice.
+  const missingPaths: string[] = [];
   const missingSource = (path: string | undefined) => {
     if (!path || findEntry(path)) return null;
-    const name = path.replace(/\\/g, '/').split('/').pop() || path;
-    const key = name.toLowerCase();
+    // Paths the app reads as one file share an entry; files of the same name
+    // in different folders do not.
+    const key = normalizePath(path).toLowerCase();
+    const name = normalizePath(path).split('/').pop() || path;
     if (!missingByName.has(key)) {
       missingByName.set(key, createMissingSource(name, getAudioMimeType(name)));
+      missingPaths.push(normalizePath(path));
     }
     return missingByName.get(key) ?? null;
   };
@@ -416,12 +421,9 @@ export async function parseSoundPackZip(
       `Left out because their audio is not in the zip: ${listKeys(missingAudio)}.`,
     );
   }
-  const missingFiles = [...missingByName.values()].map(
-    (source) => source.file.name,
-  );
-  if (missingFiles.length > 0) {
+  if (missingPaths.length > 0) {
     warnings.push(
-      `The zip does not have ${listKeys(missingFiles)}, so ${missingFiles.length === 1 ? 'its keys play' : 'their keys play'} nothing for now. They keep their times: use Replace file… in the file's menu to give them audio.`,
+      `The zip does not have ${listKeys(missingPaths)}, so ${missingPaths.length === 1 ? 'its keys play' : 'their keys play'} nothing for now. They keep their times: use Replace file… in the file's menu to give them audio.`,
     );
   }
   if (invalidTiming.length > 0) {

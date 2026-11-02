@@ -632,10 +632,15 @@ export function EditorPage() {
   // The work kept in this browser by an earlier visit, offered on the start
   // screen until work starts in this tab.
   const [savedWork, setSavedWork] = useState<SavedWork | null>(null);
+  // Until it is known, a link into the editor waits, so it cannot replace
+  // kept work without asking.
+  const [savedWorkChecked, setSavedWorkChecked] = useState(false);
   useEffect(() => {
     let cancelled = false;
     loadWork().then((work) => {
-      if (!cancelled && work) setSavedWork(work);
+      if (cancelled) return;
+      if (work) setSavedWork(work);
+      setSavedWorkChecked(true);
     });
     return () => {
       cancelled = true;
@@ -646,10 +651,48 @@ export function EditorPage() {
   // crash, a reload or a closed tab does not lose it. Only one pack is kept:
   // new work takes the place of the last once it has something in it.
   const saveFailedRef = useRef(false);
+  // One save at a time: work that changes while one runs is saved after it,
+  // once, as it is by then.
+  const savingRef = useRef<{ running: boolean; next: SavedWork | null }>({
+    running: false,
+    next: null,
+  });
+  const keepWork = useCallback((work: SavedWork) => {
+    const saving = savingRef.current;
+    if (saving.running) {
+      saving.next = work;
+      return;
+    }
+    saving.running = true;
+    saveWork(work)
+      .then(() => {
+        saveFailedRef.current = false;
+      })
+      .catch(() => {
+        // Said once, until a save works again.
+        if (saveFailedRef.current) return;
+        saveFailedRef.current = true;
+        setNotice({
+          tone: 'warning',
+          message:
+            'This browser could not keep a copy of your work, as when its storage is full or blocked. Download a .zip to keep it.',
+        });
+      })
+      .finally(() => {
+        saving.running = false;
+        const next = saving.next;
+        saving.next = null;
+        if (next) keepWork(next);
+      });
+  }, []);
+  // The open file comes back with the work, but opening another is no change
+  // worth a save of its own.
+  const activeSourceIdRef = useRef(activeSourceId);
+  activeSourceIdRef.current = activeSourceId;
   useEffect(() => {
     if (!workId || isBlankPack(present)) return;
     const timer = window.setTimeout(() => {
-      saveWork({
+      keepWork({
         savedAt: Date.now(),
         snapshot: present,
         unsaved: isDirty,
@@ -657,21 +700,8 @@ export function EditorPage() {
         loadedPackId,
         packExtras,
         libraryPack,
-        activeSourceId,
-      })
-        .then(() => {
-          saveFailedRef.current = false;
-        })
-        .catch(() => {
-          // Said once, until a save works again.
-          if (saveFailedRef.current) return;
-          saveFailedRef.current = true;
-          setNotice({
-            tone: 'warning',
-            message:
-              'This browser could not keep a copy of your work, as when its storage is full or blocked. Download a .zip to keep it.',
-          });
-        });
+        activeSourceId: activeSourceIdRef.current,
+      });
     }, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [
@@ -682,7 +712,7 @@ export function EditorPage() {
     loadedPackId,
     packExtras,
     libraryPack,
-    activeSourceId,
+    keepWork,
   ]);
 
   const commitKeySounds = useCallback(
@@ -711,10 +741,14 @@ export function EditorPage() {
     const otherKind = new Set(
       codesOfOtherKind(keySounds.keys(), packInfo.packType),
     );
+    // A key of a file without audio plays nothing.
     return [...keySounds].filter(
-      ([code, { press }]) => !otherKind.has(code) && !isWholeFile(press),
+      ([code, { press, source }]) =>
+        !otherKind.has(code) &&
+        !isWholeFile(press) &&
+        !sourcesById.get(source)?.missing,
     ).length;
-  }, [keySounds, packInfo.packType]);
+  }, [keySounds, packInfo.packType, sourcesById]);
   const hasHiddenKeys = hiddenKeys.length > 0;
 
   const [viewport, setViewport] = useState(readViewport);
@@ -1890,7 +1924,13 @@ export function EditorPage() {
     setSavedWork(null);
     resetView();
     const { snapshot } = saved;
-    startFrom(snapshot, null, null);
+    // Saved work was published to its library pack, or else downloaded.
+    const savedAs = saved.unsaved ? null : snapshot;
+    startFrom(
+      snapshot,
+      saved.libraryPack ? savedAs : null,
+      saved.libraryPack ? null : savedAs,
+    );
     if (saved.unsaved) {
       setSavedSnapshot(createBlankSnapshot(snapshot.packInfo.packType));
     }
@@ -1908,8 +1948,10 @@ export function EditorPage() {
   };
 
   // Each way in replaces the work there is, so it asks first over changes
-  // that are not saved.
-  const asksFirst = asksBeforeReplacing({ workId, isDirty });
+  // that are not saved, also those of work kept from an earlier visit: new
+  // work takes its place in the browser once it has something in it.
+  const keptUnsaved = !workId && savedWork?.unsaved === true;
+  const asksFirst = asksBeforeReplacing({ workId, isDirty }) || keptUnsaved;
 
   const chooseNewPack = (
     packType: PackType,
@@ -1926,6 +1968,8 @@ export function EditorPage() {
     const action = confirmDiscardAction;
     setConfirmDiscardAction(null);
     if (!action) return;
+    // The kept work was the one asked about; it is no longer offered.
+    if (!workId) setSavedWork(null);
     if ('packType' in action) {
       startNewPack(action.packType, action);
     } else if ('file' in action) {
@@ -2413,7 +2457,8 @@ export function EditorPage() {
       !startLink ||
       isPhone ||
       screen !== 'start' ||
-      session.status === 'loading'
+      session.status === 'loading' ||
+      !savedWorkChecked
     ) {
       return;
     }
@@ -2435,6 +2480,8 @@ export function EditorPage() {
     const linked = findLinkedPack(session.packs, startLink.packId);
     if ('problem' in linked) {
       setLibraryOpenError(linked.problem);
+    } else if (keptUnsaved) {
+      setConfirmDiscardAction({ pack: linked.pack });
     } else {
       openLibraryPack(linked.pack);
     }
@@ -2624,13 +2671,15 @@ export function EditorPage() {
     if (playingRef.current?.kind === 'key') stopSound();
   }, [cardCode, cardSound, stopSound]);
 
-  // A file that stops being one sound, or leaves the pack, takes away the
-  // buttons that stop its sound, so the sound stops with them.
+  // A file that stops being one sound, leaves the pack or loses its audio
+  // takes away the buttons that stop its sound, so the sound stops with them.
   useEffect(() => {
     if (
       playingSourceId !== null &&
       (fileKinds.get(playingSourceId) !== 'one' ||
-        !sources.some((source) => source.id === playingSourceId))
+        !sources.some(
+          (source) => source.id === playingSourceId && !source.missing,
+        ))
     ) {
       stopSound();
     }
@@ -2797,12 +2846,19 @@ export function EditorPage() {
           onConfirm={confirmDiscard}
           // Away from the workspace, the work asked about is the one kept
           // behind the start screens.
-          {...(!isWorkspace && {
-            title: 'Start over?',
-            message:
-              'Your changes in this tab will be lost. Download a .zip first to keep them.',
-            confirmLabel: 'Discard and continue',
-          })}
+          {...(!isWorkspace &&
+            (keptUnsaved && savedWork
+              ? {
+                  title: 'Replace your kept work?',
+                  message: `"${savedWork.snapshot.packInfo.name}" from your last visit has changes you have not downloaded. Continue it from the start screen to keep it, or replace it.`,
+                  confirmLabel: 'Replace it',
+                }
+              : {
+                  title: 'Start over?',
+                  message:
+                    'Your changes in this tab will be lost. Download a .zip first to keep them.',
+                  confirmLabel: 'Discard and continue',
+                }))}
         />
 
         <ConfirmPackTypeModal

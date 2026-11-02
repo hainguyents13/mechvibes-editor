@@ -586,7 +586,8 @@ describe('a file without audio', () => {
               [150, 200],
             ],
           },
-          KeyD: { audio_file: 'Gone.ogg' },
+          KeyD: { audio_file: 'sounds\\Gone.ogg' },
+          KeyE: { audio_file: 'other/gone.ogg', timing: [[0, 5]] },
         },
       }),
       'a.ogg': fakeAudio('a'),
@@ -598,6 +599,7 @@ describe('a file without audio', () => {
     expect(pack.sources.map((source) => source.file.name)).toEqual([
       'gone.ogg',
       'a.ogg',
+      'gone.ogg',
     ]);
     expect(gone?.duration).toBe(0);
     expect(gone?.file.size).toBe(0);
@@ -616,7 +618,7 @@ describe('a file without audio', () => {
       press: WHOLE_FILE,
     });
     expect(pack.warnings).toEqual([
-      "The zip does not have gone.ogg, so its keys play nothing for now. They keep their times: use Replace file… in the file's menu to give them audio.",
+      "The zip does not have sounds/gone.ogg, other/gone.ogg, so their keys play nothing for now. They keep their times: use Replace file… in the file's menu to give them audio.",
     ]);
   });
 
@@ -640,15 +642,19 @@ describe('a file without audio', () => {
         extras: pack.extras,
       }),
     ).rejects.toThrow(
-      "gone.ogg has no audio. In the file's menu, Replace file… gives it audio, and Remove takes the sounds of its keys with it.",
+      "gone.ogg, gone.ogg have no audio. In the file's menu, Replace file… gives them audio, and Remove takes the sounds of their keys with them.",
     );
   });
 
   it('leaves out a file without audio that no key plays', async () => {
     const pack = await parseSoundPackZip(await multiPack());
-    const gone = pack.sources.find((source) => source.missing);
+    const gone = new Set(
+      pack.sources
+        .filter((source) => source.missing)
+        .map((source) => source.id),
+    );
     const keySounds = new Map(
-      [...pack.keySounds].filter(([, sound]) => sound.source !== gone?.id),
+      [...pack.keySounds].filter(([, sound]) => !gone.has(sound.source)),
     );
     const out = await readPackZip(
       await buildSoundPackZip({
@@ -670,7 +676,7 @@ describe('a file without audio', () => {
     expect(taken).toEqual({
       id: a.id,
       file: expect.any(File),
-      duration: 0,
+      duration: a.duration,
       colorIndex: a.colorIndex,
       missing: true,
     });
@@ -690,5 +696,27 @@ describe('a file without audio', () => {
       source: a.id,
       press: [0, 40],
     });
+  });
+  it('stretches keys that played all of a file to its new audio', async () => {
+    const pack = await parseSoundPackZip(await multiPack());
+    const gone = pack.sources.find((source) => source.missing);
+    if (!gone) throw new Error('no gone.ogg');
+    // KeyD named the file without timing, so it plays all of the new one.
+    const take = new File([fakeAudio('take')], 'take.wav');
+    const opened = replaceSourceFile(gone, take, 0.25, pack.keySounds);
+    expect(opened.keySounds.get('KeyD')).toEqual({
+      source: gone.id,
+      press: [0, 250],
+    });
+    expect(opened.keySounds.get('KeyB')?.press).toEqual([10, 60]);
+
+    // A file of one sound, taken out and replaced by a longer one.
+    const click = pack.sources.find((source) => source.file.name === 'a.ogg');
+    if (!click) throw new Error('no a.ogg');
+    const whole = new Map([
+      ['KeyX', { source: click.id, press: [0, 1500] as [number, number] }],
+    ]);
+    const longer = replaceSourceFile(withoutAudio(click), take, 2, whole);
+    expect(longer.keySounds.get('KeyX')?.press).toEqual([0, 2000]);
   });
 });

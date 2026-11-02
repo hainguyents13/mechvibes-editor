@@ -232,32 +232,44 @@ async function packAudio(
   const { file } = source;
   const ext = getExtension(file.name);
   const isVideo = file.type.startsWith('video/');
-  // A key that plays the whole file has no times to cut to.
+  const fileMs = source.duration * 1000;
+  // A key that plays the whole file has no times to cut to. A part that
+  // starts past the end is one the app skips, which cutting would turn into
+  // silence, so such a file is kept whole too.
   const mostlyUnused =
     source.duration > 0 &&
     !segments.some(isWholeFile) &&
-    usedMs(segments) < source.duration * 1000 * TRIM_WHEN_USED_BELOW;
+    !segments.some(([start]) => start >= fileMs) &&
+    usedMs(segments) < fileMs * TRIM_WHEN_USED_BELOW;
 
-  if (isVideo || mostlyUnused) {
-    let decoded: DecodedPcm | null = null;
+  if (isVideo) {
+    let decoded: DecodedPcm;
     try {
       decoded = await decodeFileToPcm(file);
     } catch (err) {
-      console.warn('[editor] decoding for trimming failed:', err);
-      // A video has no audio file to fall back to; audio is kept whole below.
-      if (isVideo) {
-        throw new Error(
-          `Could not extract audio from ${file.name} for export.`,
-        );
-      }
+      console.warn('[editor] video audio extraction failed:', err);
+      throw new Error(`Could not extract audio from ${file.name} for export.`);
     }
-    if (decoded) {
-      const trimmed = trimAndConcat(decoded, segments);
+    const trimmed = trimAndConcat(decoded, segments);
+    return {
+      blob: await encodePcmToOgg(trimmed.channels, trimmed.sampleRate),
+      ext: '.ogg',
+      moved: trimmed.moved,
+    };
+  }
+
+  if (mostlyUnused) {
+    try {
+      const trimmed = trimAndConcat(await decodeFileToPcm(file), segments);
       return {
         blob: await encodePcmToOgg(trimmed.channels, trimmed.sampleRate),
         ext: '.ogg',
         moved: trimmed.moved,
       };
+    } catch (err) {
+      // Cutting is only to make the pack smaller: the file goes in whole,
+      // kept or encoded below as it would be otherwise.
+      console.warn('[editor] trimming failed, keeping the whole file:', err);
     }
   }
 

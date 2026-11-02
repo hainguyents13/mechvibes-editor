@@ -30,46 +30,66 @@ function work(): SavedWork {
   };
 }
 
+/** The files of `kept`, as the file store holds them. */
+const filesOf = (kept: SavedWork) =>
+  new Map(kept.snapshot.sources.map((source) => [source.id, source.file]));
+
 describe('saved work', () => {
   it('comes back as it was kept', () => {
     const kept = work();
     // IndexedDB stores a structured clone of the record.
     const record = structuredClone(toSavedRecord(kept));
-    const back = fromSavedRecord(record);
+    expect(record.sources.every((source) => !('file' in source))).toBe(true);
+    const back = fromSavedRecord(record, filesOf(kept));
     expect(back).toEqual(kept);
     expect(back?.snapshot.sources[1].missing).toBe(true);
   });
 
   it('leaves out a key whose file is not there', () => {
-    const record = toSavedRecord(work());
+    const kept = work();
+    const record = toSavedRecord(kept);
     record.keySounds.push(['KeyC', { source: 'source-gone', press: [0, 1] }]);
     expect([
-      ...(fromSavedRecord(record)?.snapshot.keySounds.keys() ?? []),
+      ...(fromSavedRecord(record, filesOf(kept))?.snapshot.keySounds.keys() ??
+        []),
     ]).toEqual(['KeyA', 'KeyB']);
   });
 
   it('opens the first file when the open one is not there', () => {
     const kept = work();
     const record = { ...toSavedRecord(kept), activeSourceId: 'source-gone' };
-    expect(fromSavedRecord(record)?.activeSourceId).toBe(
+    expect(fromSavedRecord(record, filesOf(kept))?.activeSourceId).toBe(
       kept.snapshot.sources[0].id,
     );
   });
 
   it('offers nothing for a record of another version or shape', () => {
-    expect(fromSavedRecord(undefined)).toBeNull();
+    const kept = work();
+    const files = filesOf(kept);
+    expect(fromSavedRecord(undefined, files)).toBeNull();
     expect(
-      fromSavedRecord({ ...toSavedRecord(work()), version: 2 }),
+      fromSavedRecord({ ...toSavedRecord(kept), version: 2 }, files),
     ).toBeNull();
     expect(
-      fromSavedRecord({ ...toSavedRecord(work()), sources: [{ id: 'x' }] }),
+      fromSavedRecord(
+        { ...toSavedRecord(kept), sources: [{ id: 'x' }] },
+        files,
+      ),
+    ).toBeNull();
+    // A file the store lost.
+    expect(
+      fromSavedRecord(toSavedRecord(kept), new Map([...files].slice(1))),
     ).toBeNull();
   });
 
   it('gives files added after restoring their own ids', () => {
-    const record = toSavedRecord(work());
+    const kept = work();
+    const record = toSavedRecord(kept);
     record.sources = [{ ...record.sources[0], id: 'source-9000' }];
-    fromSavedRecord(record);
+    fromSavedRecord(
+      record,
+      new Map([['source-9000', kept.snapshot.sources[0].file]]),
+    );
     const next = createAudioSource(new File(['c'], 'c.ogg'), 1);
     expect(Number(next.id.slice('source-'.length))).toBeGreaterThan(9000);
   });

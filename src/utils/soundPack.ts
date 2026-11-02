@@ -38,7 +38,8 @@ export type AudioSource = {
   /**
    * The file's audio is gone, as a file a pack names but its zip lacks, or
    * one taken out with Remove audio, keep keys. `file` is then an empty
-   * stand-in with the same name. Its keys keep their times and play nothing
+   * stand-in with the same name, and `duration` the old file's, or 0 when
+   * it was never there. Its keys keep their times and play nothing
    * until Replace file… gives it audio again.
    */
   missing?: true;
@@ -154,13 +155,16 @@ export function createMissingSource(name: string, type = ''): AudioSource {
   };
 }
 
-/** `source` with its audio taken out; its id, name and colour stay. */
+/**
+ * `source` with its audio taken out; its id, name, colour and length stay,
+ * so new audio can stretch the keys that played all of it.
+ */
 export function withoutAudio(source: AudioSource): AudioSource {
   const { file } = source;
   return {
     id: source.id,
     file: new File([], file.name, { type: file.type }),
-    duration: 0,
+    duration: source.duration,
     colorIndex: source.colorIndex,
     missing: true,
   };

@@ -28,11 +28,16 @@ export function replaceSourceFile(
 ): { source: AudioSource; keySounds: KeySounds } {
   let next: KeySounds | null = null;
   keySounds.forEach((sound, code) => {
+    // A key of a file without audio that plays all of it, as one opened
+    // without its file, plays all of the new one, with its length known.
+    const playsAll = source.missing
+      ? isWholeFile(sound.press) || playsWholeFile(sound.press, source.duration)
+      : !isWholeFile(sound.press) &&
+        playsWholeFile(sound.press, source.duration);
     if (
       sound.source !== source.id ||
       sound.release ||
-      isWholeFile(sound.press) ||
-      !playsWholeFile(sound.press, source.duration) ||
+      !playsAll ||
       duration <= 0
     ) {
       return;
