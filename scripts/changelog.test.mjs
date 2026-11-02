@@ -153,4 +153,17 @@ describe('extractSection', () => {
     const empty = releaseUnreleased(released, '1.2.0', '2026-12-02');
     expect(() => extractSection(empty, '1.2.0')).toThrow(/empty/);
   });
+
+  it('refuses a section with headings but no entries', () => {
+    const released = releaseUnreleased(CHANGELOG, '1.1.0', '2026-12-01');
+    const headingsOnly = releaseUnreleased(
+      released,
+      '1.2.0',
+      '2026-12-02',
+    ).replace(
+      '## [1.2.0] - 2026-12-02',
+      '## [1.2.0] - 2026-12-02\n\n### Added\n\n### Fixed',
+    );
+    expect(() => extractSection(headingsOnly, '1.2.0')).toThrow(/empty/);
+  });
 });

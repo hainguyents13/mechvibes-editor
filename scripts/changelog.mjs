@@ -5,6 +5,7 @@
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const UNRELEASED_HEADING = /^## \[Unreleased\]\s*$/;
 const SECTION_HEADING = /^## \[/;
+const HEADING = /^#{1,6}\s/;
 // A Keep a Changelog file may end with link definitions such as
 // "[1.0.0]: https://...", which belong to no section.
 const LINK_DEFINITION = /^\[[^\]]+\]:\s/;
@@ -119,7 +120,8 @@ export function extractSection(changelog, version) {
     .slice(start + 1, end)
     .join('\n')
     .trim();
-  if (!body) {
+  // Headings such as "### Added" with no entries under them say nothing.
+  if (!body.split('\n').some((line) => line.trim() && !HEADING.test(line))) {
     throw new Error(`The CHANGELOG.md section for ${version} is empty.`);
   }
   return body;
