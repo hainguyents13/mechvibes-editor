@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { replaceSourceFile } from '@/lib/replaceFile';
 import { fakeAudio, makePackZip, readPackZip } from '@/test/packZip';
 import { getAudioDuration } from '@/utils/audioUtils';
-import { WHOLE_FILE } from '@/utils/soundPack';
+import { WHOLE_FILE, withoutAudio } from '@/utils/soundPack';
 import { buildSoundPackZip } from '@/utils/soundPackExport';
 import { parseSoundPackZip } from '@/utils/soundPackImport';
 
@@ -206,16 +206,13 @@ describe('import then export', () => {
           },
           KeyC: { audio_file: './sounds/a.ogg' },
           KeyD: { timing: [[10, 20]] },
-          KeyE: { audio_file: 'missing.ogg', timing: [[0, 10]] },
         },
       }),
       'sounds/a.ogg': fakeAudio('a'),
       'sounds/b.mp3': fakeAudio('b'),
     });
 
-    expect(pack.warnings).toEqual([
-      'Left out because their audio is not in the zip: KeyE.',
-    ]);
+    expect(pack.warnings).toEqual([]);
     expect(out.names).toEqual(['config.json', 'sounds-a.ogg', 'sounds-b.mp3']);
     expect(out.config).toEqual(
       exportedConfig({
@@ -570,5 +567,128 @@ describe('import then export', () => {
       'This browser cannot read the audio of these keys, so you cannot hear or edit them here. They still play their whole file in the app and are exported unchanged: KeyC.',
     ]);
     expect(second.pack.warnings).toEqual(first.pack.warnings);
+  });
+});
+
+describe('a file without audio', () => {
+  const multiPack = () =>
+    makePackZip({
+      'config.json': packConfig({
+        definition_method: 'multi',
+        audio_file: 'a.ogg',
+        definitions: {
+          KeyA: { audio_file: 'a.ogg', timing: [[0, 40]] },
+          KeyB: { audio_file: 'sounds/gone.ogg', timing: [[10, 60]] },
+          KeyC: {
+            audio_file: 'sounds/gone.ogg',
+            timing: [
+              [100, 150],
+              [150, 200],
+            ],
+          },
+          KeyD: { audio_file: 'Gone.ogg' },
+        },
+      }),
+      'a.ogg': fakeAudio('a'),
+    });
+
+  it('keeps the keys of a file the zip lacks, with their times', async () => {
+    const pack = await parseSoundPackZip(await multiPack());
+    const gone = pack.sources.find((source) => source.missing);
+    expect(pack.sources.map((source) => source.file.name)).toEqual([
+      'gone.ogg',
+      'a.ogg',
+    ]);
+    expect(gone?.duration).toBe(0);
+    expect(gone?.file.size).toBe(0);
+    expect(pack.keySounds.get('KeyB')).toEqual({
+      source: gone?.id,
+      press: [10, 60],
+    });
+    expect(pack.keySounds.get('KeyC')).toEqual({
+      source: gone?.id,
+      press: [100, 150],
+      release: [150, 200],
+    });
+    // A key that plays its whole file keeps playing all of the new one.
+    expect(pack.keySounds.get('KeyD')).toEqual({
+      source: gone?.id,
+      press: WHOLE_FILE,
+    });
+    expect(pack.warnings).toEqual([
+      "The zip does not have gone.ogg, so its keys play nothing for now. They keep their times: use Replace file… in the file's menu to give them audio.",
+    ]);
+  });
+
+  it('opens a single pack whose main file the zip lacks', async () => {
+    const pack = await parseSoundPackZip(
+      await makePackZip({ 'config.json': packConfig({}) }),
+    );
+    expect(pack.sources).toHaveLength(1);
+    expect(pack.sources[0]).toMatchObject({ missing: true, duration: 0 });
+    expect(pack.sources[0].file.name).toBe('sound.ogg');
+    expect(pack.keySounds.get('KeyA')?.press).toEqual([0, 50]);
+  });
+
+  it('refuses to export while a key plays it, before encoding anything', async () => {
+    const pack = await parseSoundPackZip(await multiPack());
+    await expect(
+      buildSoundPackZip({
+        info: pack.info,
+        sources: pack.sources,
+        keySounds: pack.keySounds,
+        extras: pack.extras,
+      }),
+    ).rejects.toThrow(
+      "gone.ogg has no audio. Give it audio with Replace file… in the file's menu, or remove the sounds of the keys that use it.",
+    );
+  });
+
+  it('leaves out a file without audio that no key plays', async () => {
+    const pack = await parseSoundPackZip(await multiPack());
+    const gone = pack.sources.find((source) => source.missing);
+    const keySounds = new Map(
+      [...pack.keySounds].filter(([, sound]) => sound.source !== gone?.id),
+    );
+    const out = await readPackZip(
+      await buildSoundPackZip({
+        info: pack.info,
+        sources: pack.sources,
+        keySounds,
+        extras: pack.extras,
+      }),
+    );
+    // One file left, so it is a single pack again.
+    expect(out.names).toEqual(['audio.ogg', 'config.json']);
+  });
+
+  it('takes audio out and puts new audio in, keeping the times', async () => {
+    const pack = await parseSoundPackZip(await multiPack());
+    const a = pack.sources.find((source) => source.file.name === 'a.ogg');
+    if (!a) throw new Error('no a.ogg');
+    const taken = withoutAudio(a);
+    expect(taken).toEqual({
+      id: a.id,
+      file: expect.any(File),
+      duration: 0,
+      colorIndex: a.colorIndex,
+      missing: true,
+    });
+    expect(taken.file.name).toBe('a.ogg');
+    expect(taken.file.size).toBe(0);
+
+    const flac = new File([fakeAudio('new')], 'a.flac', { type: 'audio/flac' });
+    const replaced = replaceSourceFile(taken, flac, 2, pack.keySounds);
+    expect(replaced.source).toEqual({
+      id: a.id,
+      file: flac,
+      duration: 2,
+      colorIndex: a.colorIndex,
+    });
+    expect(replaced.keySounds).toBe(pack.keySounds);
+    expect(pack.keySounds.get('KeyA')).toEqual({
+      source: a.id,
+      press: [0, 40],
+    });
   });
 });

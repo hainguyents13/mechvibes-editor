@@ -6,6 +6,7 @@ import {
   isRecord,
   isWholeFile,
   type KeySounds,
+  listKeys,
   type PackExtras,
   type PackInfo,
   type Segment,
@@ -333,6 +334,14 @@ export async function buildSoundPackZip({
     );
   if (usedSources.length !== segmentsBySource.size) {
     throw new Error('Some keys use an audio file that is no longer loaded.');
+  }
+  // Checked before any file is encoded, so nothing fails halfway.
+  const missing = usedSources.filter((source) => source.missing);
+  if (missing.length > 0) {
+    const names = listKeys(missing.map((source) => source.file.name));
+    throw new Error(
+      `${names} ${missing.length === 1 ? 'has' : 'have'} no audio. Give ${missing.length === 1 ? 'it' : 'them'} audio with Replace file… in the file's menu, or remove the sounds of the keys that use ${missing.length === 1 ? 'it' : 'them'}.`,
+    );
   }
   // A key that plays its whole file has no timing, which only a multi pack allows.
   const isMulti =

@@ -24,9 +24,10 @@ export function usePreviewPlayback(
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Only the files keys play: one no key uses cannot break the preview.
+  // Only the files keys play: one no key uses cannot break the preview. A
+  // file without audio is not decoded; its keys play nothing.
   const playedSources = useMemo(
-    () => sourcesInUse(sources, keySounds),
+    () => sourcesInUse(sources, keySounds).filter((source) => !source.missing),
     [sources, keySounds],
   );
 

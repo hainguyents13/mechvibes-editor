@@ -41,7 +41,8 @@ export function replaceSourceFile(
     next.set(code, { ...sound, press: [0, duration * 1000] });
   });
   return {
-    source: { ...source, file, duration },
+    // A file without audio has some again.
+    source: { id: source.id, file, duration, colorIndex: source.colorIndex },
     keySounds: next ?? keySounds,
   };
 }

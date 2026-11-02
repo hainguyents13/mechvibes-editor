@@ -51,6 +51,7 @@ import {
   type LayoutKey,
   parseKeyboardLayout,
 } from '@/components/editor/keyboardLayouts';
+import { MissingAudioPane } from '@/components/editor/MissingAudioPane';
 import {
   MOUSE_DISPLAY_SIZE,
   MouseDisplay,
@@ -164,6 +165,7 @@ import {
   type PackInfo,
   type PackType,
   type Segment,
+  withoutAudio,
 } from '@/utils/soundPack';
 import { buildSoundPackZip, exportSoundPack } from '@/utils/soundPackExport';
 import {
@@ -597,7 +599,9 @@ export function EditorPage() {
 
   const activeSource =
     sources.find((source) => source.id === activeSourceId) ?? null;
-  const audioFile = activeSource?.file ?? null;
+  // A file without audio has nothing to draw or play.
+  const audioFile =
+    activeSource && !activeSource.missing ? activeSource.file : null;
   const audioDuration = activeSource?.duration ?? 0;
   // The keys that play each file.
   const codesBySource = useMemo(() => {
@@ -1342,13 +1346,15 @@ export function EditorPage() {
 
   // Play a file of one sound as its keys do: the part they share, else the
   // whole file.
-  const playSource = (source: AudioSource, restart = false) =>
+  const playSource = (source: AudioSource, restart = false) => {
+    if (source.missing) return;
     playPart(
       { kind: 'file', id: source.id },
       source.file,
       oneSoundSegment(source, keySounds),
       restart,
     );
+  };
 
   // Give a file of one sound to keys, as one step. Giving it again to keys
   // that already play it adds none.
@@ -1367,7 +1373,7 @@ export function EditorPage() {
   // those keys selected would: it plays and opens, and the selection stays.
   const dropSourceOn = (id: string, code: string) => {
     const source = sourcesById.get(id);
-    if (!source || fileKinds.get(id) !== 'one') return;
+    if (!source || source.missing || fileKinds.get(id) !== 'one') return;
     giveFileTo(source, dropTargetCodes(code, selectedCodes));
     playSource(source, true);
     if (id === activeSourceId) return;
@@ -1386,7 +1392,7 @@ export function EditorPage() {
   const handleSelectSource = (id: string) => {
     const source = sourcesById.get(id);
     if (!source) return;
-    if (fileKinds.get(id) === 'one') {
+    if (fileKinds.get(id) === 'one' && !source.missing) {
       giveToSelected(source);
       playSource(source, true);
     }
@@ -1471,7 +1477,7 @@ export function EditorPage() {
     const sound = keySounds.get(code);
     const source = sound && sourcesById.get(sound.source);
     const segment = slot === 'press' ? sound?.press : sound?.release;
-    if (!source || !segment) return;
+    if (!source || source.missing || !segment) return;
     playPart({ kind: 'key', code, slot }, source.file, segment);
   };
 
@@ -1564,6 +1570,16 @@ export function EditorPage() {
         (current) => giveFilesToKeysInOrder(files, targetsIn(current), current),
       );
     }
+  };
+
+  // Take a file's audio out and keep its keys with their times, as one step,
+  // so new audio can take its place with Replace file….
+  const handleRemoveAudio = (id: string) => {
+    const source = sources.find((s) => s.id === id);
+    if (!source || source.missing) return;
+    commit(`Remove the audio of ${source.file.name}`, (current) => ({
+      sources: current.sources.map((s) => (s.id === id ? withoutAudio(s) : s)),
+    }));
   };
 
   // Removing a file also removes the sounds cut from it, as one step. Undo
@@ -2720,7 +2736,8 @@ export function EditorPage() {
 
         <ChangeFileDialog
           keyName={changeFileFor === null ? null : keyLabel(changeFileFor)}
-          sources={sources}
+          // A file without audio has no sound to give.
+          sources={sources.filter((source) => !source.missing)}
           kinds={fileKinds}
           currentId={
             changeFileFor === null
@@ -3249,6 +3266,7 @@ export function EditorPage() {
                       onSelect={handleSelectSource}
                       onAdd={(files) => handleAddSources(files)}
                       onRemove={handleRemoveSource}
+                      onRemoveAudio={handleRemoveAudio}
                       onSetKind={(id, kind) => requestKinds([id], kind)}
                       onReplace={replaceSource}
                       isReading={reading !== null}
@@ -3357,42 +3375,59 @@ export function EditorPage() {
                         />
                       </div>
                     )}
-                    {visibility.oneSoundPane && activeSource && (
-                      // Measured as controls with no waveform.
-                      <div
-                        ref={panelControlsRef}
-                        className="min-w-0 flex flex-col gap-3"
-                      >
-                        <OneSoundPane
-                          source={activeSource}
-                          codes={codesBySource.get(activeSource.id) ?? []}
-                          noun={noun}
-                          isPlaying={playingSourceId === activeSource.id}
-                          onPlay={() => playSource(activeSource)}
-                          onGive={() => {
-                            giveToSelected(activeSource);
-                            playSource(activeSource, true);
-                          }}
-                          given={
-                            selectedCodes.length > 0 &&
-                            giveOneSoundToKeys(
-                              selectedCodes,
-                              activeSource,
-                              keySounds,
-                            ) === keySounds
+                    {activeSource?.missing && (
+                      <div ref={panelControlsRef} className="min-w-0 px-4">
+                        <MissingAudioPane
+                          name={activeSource.file.name}
+                          count={
+                            codesBySource.get(activeSource.id)?.length ?? 0
                           }
-                          selectedKeys={selectedKeys}
-                          setSelectedKeys={setSelectedKeys}
-                          selectedCodes={selectedCodes}
-                          keySounds={keySounds}
-                          commitKeySounds={commitKeySounds}
-                          onClearSelected={clearSelectedKeySounds}
-                          hiddenCount={hiddenKeys.length}
-                          keys={visibility.keyGroups ? keys : undefined}
-                          getKeyId={getKeyId}
+                          noun={noun}
+                          isReading={reading !== null}
+                          onReplace={(file) =>
+                            replaceSource(activeSource.id, file)
+                          }
                         />
                       </div>
-                    )}{' '}
+                    )}
+                    {visibility.oneSoundPane &&
+                      activeSource &&
+                      !activeSource.missing && (
+                        // Measured as controls with no waveform.
+                        <div
+                          ref={panelControlsRef}
+                          className="min-w-0 flex flex-col gap-3"
+                        >
+                          <OneSoundPane
+                            source={activeSource}
+                            codes={codesBySource.get(activeSource.id) ?? []}
+                            noun={noun}
+                            isPlaying={playingSourceId === activeSource.id}
+                            onPlay={() => playSource(activeSource)}
+                            onGive={() => {
+                              giveToSelected(activeSource);
+                              playSource(activeSource, true);
+                            }}
+                            given={
+                              selectedCodes.length > 0 &&
+                              giveOneSoundToKeys(
+                                selectedCodes,
+                                activeSource,
+                                keySounds,
+                              ) === keySounds
+                            }
+                            selectedKeys={selectedKeys}
+                            setSelectedKeys={setSelectedKeys}
+                            selectedCodes={selectedCodes}
+                            keySounds={keySounds}
+                            commitKeySounds={commitKeySounds}
+                            onClearSelected={clearSelectedKeySounds}
+                            hiddenCount={hiddenKeys.length}
+                            keys={visibility.keyGroups ? keys : undefined}
+                            getKeyId={getKeyId}
+                          />
+                        </div>
+                      )}{' '}
                     {/* The column's bottom padding, kept over what the panel is
                     too short for, so cut content fades out at the edge
                     rather than ending in a sliver. */}

@@ -35,6 +35,13 @@ export type AudioSource = {
   duration: number;
   /** Slot in the source colour palette, kept for the life of the source. */
   colorIndex: number;
+  /**
+   * The file's audio is gone, as a file a pack names but its zip lacks, or
+   * one taken out with Remove audio, keep keys. ile is then an empty
+   * stand-in with the same name. Its keys keep their times and play nothing
+   * until Replace file… gives it audio again.
+   */
+  missing?: true;
 };
 
 /** Number of source colours (AUDIO_TRACK_COLORS in components/editor/audio-track-colors.ts). */
@@ -126,6 +133,37 @@ export function createAudioSource(
 ): AudioSource {
   lastSourceId += 1;
   return { id: `source-${lastSourceId}`, file, duration, colorIndex };
+}
+
+/** A file with no audio, named 
+ame, for keys to keep until it has some. */
+export function createMissingSource(name: string, type = ''): AudioSource {
+  return {
+    ...createAudioSource(new File([], name, { type }), 0),
+    missing: true,
+  };
+}
+
+/** source with its audio taken out; its id, name and colour stay. */
+export function withoutAudio(source: AudioSource): AudioSource {
+  const { file } = source;
+  return {
+    id: source.id,
+    file: new File([], file.name, { type: file.type }),
+    duration: 0,
+    colorIndex: source.colorIndex,
+    missing: true,
+  };
+}
+
+/** The names of the files without audio that keys play. */
+export function missingFilesInUse(
+  sources: AudioSource[],
+  keySounds: KeySounds,
+): string[] {
+  return sourcesInUse(sources, keySounds)
+    .filter((source) => source.missing)
+    .map((source) => source.file.name);
 }
 
 /**
