@@ -3,7 +3,11 @@
   var libvorbis, encoder_init, encoder_stream_init, encoder_clear, encoder_analysis_buffer, encoder_process, encoder_data_len, encoder_transfer_data, HEAPU8, HEAPU32, HEAPF32, ref$, keys, each, map, apply, at, encoder_set_tag, setTags, Encoder, slice$ = [].slice;
   libvorbis = require('./libvorbis.js'), encoder_init = libvorbis._encoder_init, encoder_stream_init = libvorbis._encoder_stream_init, encoder_clear = libvorbis._encoder_clear, encoder_analysis_buffer = libvorbis._encoder_analysis_buffer, encoder_process = libvorbis._encoder_process, encoder_data_len = libvorbis._encoder_data_len, encoder_transfer_data = libvorbis._encoder_transfer_data, HEAPU8 = libvorbis.HEAPU8, HEAPU32 = libvorbis.HEAPU32, HEAPF32 = libvorbis.HEAPF32;
   ref$ = require('prelude-ls'), keys = ref$.keys, each = ref$.each, map = ref$.map, apply = ref$.apply, at = ref$.at;
-  encoder_set_tag = libvorbis.cwrap('encoder_set_tag', void 8, ['number', 'string', 'string']);
+  // ccall rather than cwrap: cwrap builds its string-converting wrapper with
+  // eval, which the editor's Content-Security-Policy blocks.
+  encoder_set_tag = function(encoder, key, value){
+    return libvorbis.ccall('encoder_set_tag', null, ['number', 'string', 'string'], [encoder, key, value]);
+  };
   setTags = function(encoder, tags){
     return each(compose$(function(it){
       return [encoder, it, tags[it].toString()];
