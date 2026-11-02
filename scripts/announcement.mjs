@@ -10,6 +10,9 @@ export const EDITOR_URL = 'https://editor.mechvibes.com';
 export const MESSAGE_LIMIT = 2000;
 // The largest image a release announcement attaches.
 export const IMAGE_LIMIT = 8 * 1024 * 1024;
+// The name the message is posted under. The webhook is shared with the
+// desktop app, whose posts show as "Release Bot".
+export const SENDER_NAME = 'Editor Release Bot';
 
 const IMAGE_NAME = /^announcement\.(png|jpe?g|webp|gif)$/i;
 const IMAGE_TYPES = {
@@ -218,6 +221,7 @@ export function buildPayload({
   }
   const image = pickImageAsset(release.tag_name, release.assets);
   return {
+    username: SENDER_NAME,
     content: buildContent({
       tag: release.tag_name,
       url: releaseUrl(repoUrl, release.tag_name),
@@ -262,6 +266,7 @@ export function previewMarkdown({ tag, payload, imageSize, imageUrl }) {
   return [
     `## Discord announcement for ${tag}`,
     '',
+    `- Sender: ${payload.username}`,
     `- Pings: ${roles.length ? `the release role (${roles[0]})` : 'nobody'}`,
     `- Image: ${payload.attachments[0].filename}, ${megabytes(imageSize)}`,
     `- Length: ${payload.content.length} of ${MESSAGE_LIMIT} characters`,

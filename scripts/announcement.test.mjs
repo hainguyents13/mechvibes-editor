@@ -234,6 +234,7 @@ describe('checkImage', () => {
 describe('buildPayload', () => {
   it('pings only the release role and attaches the image', () => {
     expect(payloadFor({ release: release(), roleId: ROLE })).toEqual({
+      username: 'Editor Release Bot',
       content: expect.stringMatching(/^Hi <@&123456789012345678>/),
       allowed_mentions: { parse: [], roles: [ROLE] },
       attachments: [{ id: 0, filename: 'announcement.png' }],
