@@ -31,6 +31,8 @@ Changes users cannot see (refactors, tests, CI, docs) need no entry.
 
 ## Making a release
 
+Before the first release, do the [one-time setup](#one-time-setup) for the Discord announcement. For 1.0.0, the version and its changelog section are already set: merge them (fix the date in `## [1.0.0]` if the merge is on a later day) and start at step 4.
+
 1. On an up-to-date branch from `main`, set the version:
 
    ```bash
@@ -72,7 +74,9 @@ Changes users cannot see (refactors, tests, CI, docs) need no entry.
 
 9. Press **Publish release**.
 
-10. Publishing starts the [Announce release workflow](../.github/workflows/announce-release.yml). Its preview job builds the message again from the published release and shows it with the image in the run summary. Check that it matches, then approve the **Post to Discord** job (**Review deployments**, then **Approve and deploy**) to post it. Reject it to post nothing.
+10. Publishing starts the [Announce release workflow](../.github/workflows/announce-release.yml). Its preview job builds the message again from the published release and shows it with the image in the run summary. Check that it matches, then approve the **Post to Discord** job (**Review deployments**, then **Approve and deploy**) to post it, within 30 days. Reject it to post nothing.
+
+    The post sends the image the preview job saved. If you replace the image on the release after that, the post job refuses to post: use **Re-run all jobs** to preview the new image, then approve.
 
 If the Release workflow fails, fix the cause on `main` through a pull request, then move the tag to the fixed commit (`git tag -f v1.1.0 <commit>` and `git push -f origin v1.1.0`) while the release is not published yet. Delete a draft before tagging again, or the workflow refuses to make a second one.
 
@@ -89,7 +93,7 @@ A manual run for a release that was already announced posts a second message, an
 
 ### One-time setup
 
-1. In **Settings**, **Environments**, create `discord-announce` and add the owner as a **Required reviewer**.
+1. In **Settings**, **Environments**, create `discord-announce`, or open it if a run already created it (a run creates it without any protection). Add the owner as a **Required reviewer**, and under **Deployment branches and tags** choose **Selected branches and tags** and add the branch `main` and the tag pattern `v*`. Check both are saved before the next step.
 2. In the Discord channel, open **Integrations**, **Webhooks**, create a webhook, copy its URL and store it as a secret of that environment, so the workflow only gets it after the approval:
 
    ```bash
