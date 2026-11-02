@@ -13,6 +13,10 @@ export const IMAGE_LIMIT = 8 * 1024 * 1024;
 // The name the message is posted under. The webhook is shared with the
 // desktop app, whose posts show as "Release Bot".
 export const SENDER_NAME = 'Editor Release Bot';
+// Discord's SUPPRESS_EMBEDS message flag: links in the message show no
+// preview cards, so the attached image is the only picture. Attachments are
+// not embeds and still show.
+export const SUPPRESS_EMBEDS = 1 << 2;
 
 const IMAGE_NAME = /^announcement\.(png|jpe?g|webp|gif)$/i;
 const IMAGE_TYPES = {
@@ -222,6 +226,7 @@ export function buildPayload({
   const image = pickImageAsset(release.tag_name, release.assets);
   return {
     username: SENDER_NAME,
+    flags: SUPPRESS_EMBEDS,
     content: buildContent({
       tag: release.tag_name,
       url: releaseUrl(repoUrl, release.tag_name),

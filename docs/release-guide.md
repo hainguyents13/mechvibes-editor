@@ -82,7 +82,7 @@ If the Release workflow fails, fix the cause on `main` through a pull request, t
 
 ## Announcing on Discord
 
-The announcement goes to the same channel as the desktop app's releases, through the same webhook, and pings the same opt-in release role, never `@everyone`. It is posted under the name **Editor Release Bot**, so it is not mistaken for the app's **Release Bot**. The message says it is about the Mechvibes Editor on the web, not the desktop app, then lists one line per change (the bold lead of each changelog bullet) and links the live editor and the release. A long list is shortened to fit Discord's 2000 characters.
+The announcement goes to the same channel as the desktop app's releases, through the same webhook, and pings the same opt-in release role, never `@everyone`. It is posted under the name **Editor Release Bot**, so it is not mistaken for the app's **Release Bot**. Its links show no preview cards, so the release image is the only picture in it. The message says it is about the Mechvibes Editor on the web, not the desktop app, then lists one line per change (the bold lead of each changelog bullet) and links the live editor and the release. A long list is shortened to fit Discord's 2000 characters.
 
 The workflow fails, and posts nothing, when the release has no announcement image or more than one, when the image is over 8 MB or not the type its name says, or when the webhook secret is missing. Fix the cause and run it again from the Actions tab: **Announce release**, **Run workflow**, with the tag. A manual run has two options:
 
