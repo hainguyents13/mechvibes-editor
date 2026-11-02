@@ -157,6 +157,7 @@ async function preview(values, positionals) {
 
 ---
 Release: ${releaseUrl(REPO_URL, tag)}${release.draft ? ' (draft)' : ''}
+Sender:  ${payload.username}
 Pings:   ${roles.length ? `the release role (${roles[0]})` : 'nobody (test)'}
 Image:   ${join(out, filename)}
 Saved:   ${join(out, 'payload.json')}
