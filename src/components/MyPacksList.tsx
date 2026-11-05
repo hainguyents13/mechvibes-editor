@@ -1,5 +1,7 @@
-import { Package } from 'lucide-react';
 import { useId, useState } from 'react';
+import { Loader, Package } from '@/components/icons';
+import { Badge } from '@/components/ui/badge';
+import { buttonVariants } from '@/components/ui/button';
 import {
   canOpenPack,
   type LibraryPackSummary,
@@ -15,22 +17,27 @@ function PackIcon({ url }: { url: string | null }) {
         src={url}
         alt=""
         onError={() => setFailed(true)}
-        className="h-10 w-10 shrink-0 rounded-box bg-base-200 object-cover"
+        className="size-10 shrink-0 rounded-[10px] bg-mv-fill object-cover"
       />
     );
   }
   return (
-    <div className="h-10 w-10 shrink-0 rounded-box bg-base-200 flex items-center justify-center">
-      <Package className="h-5 w-5 text-base-content/40" />
+    <div className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-mv-fill">
+      <Package className="size-5 text-mv-faint" />
     </div>
   );
 }
 
-function statusLabel(pack: LibraryPackSummary) {
+function statusBadge(pack: LibraryPackSummary) {
   if (pack.status === 'REMOVED') return 'Removed';
-  if (pack.status === 'PUBLISHED')
-    return `Published · revision ${pack.revision}`;
-  return 'Draft, no zip yet';
+  if (pack.status === 'PUBLISHED') return 'Published';
+  return 'Draft';
+}
+
+function statusDetail(pack: LibraryPackSummary) {
+  if (pack.status === 'PUBLISHED') return `revision ${pack.revision}`;
+  if (pack.status === 'REMOVED') return null;
+  return 'no zip yet';
 }
 
 /** The visitor's library packs, each to open here or see on the website. */
@@ -47,29 +54,48 @@ export function MyPacksList({
   const statusIdPrefix = useId();
   if (packs.length === 0) {
     return (
-      <p className="py-8 text-center text-sm text-base-content/60">
+      <p className="m-0 py-8 text-center text-sm text-mv-subtle">
         You have no packs in the library yet.
       </p>
     );
   }
   return (
-    <ul className="divide-y divide-base-300">
+    <ul className="m-0 list-none p-0">
       {packs.map((pack, index) => {
         const pageUrl = packPageUrl(pack);
+        const detail = statusDetail(pack);
         return (
-          <li key={pack.id} className="flex items-center gap-3 py-3">
+          <li
+            key={pack.id}
+            className="flex items-center gap-3 py-3.5 not-last:shadow-[inset_0_-1px_0_var(--mv-line)]"
+          >
             <PackIcon url={pack.iconUrl} />
             <div className="min-w-0 flex-1">
-              <p className="font-medium truncate">{pack.name}</p>
+              <p className="m-0 truncate font-bold text-mv-ink">{pack.name}</p>
               {/* Also read with the button, so it says why it cannot open. */}
-              <div id={`${statusIdPrefix}-${index}`}>
-                <p className="text-xs text-base-content/60">
-                  {statusLabel(pack)}
-                </p>
+              <div
+                id={`${statusIdPrefix}-${index}`}
+                className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"
+              >
+                <Badge
+                  variant="soft"
+                  className={
+                    pack.status === 'REMOVED'
+                      ? 'bg-mv-danger-fill text-mv-danger'
+                      : undefined
+                  }
+                >
+                  {statusBadge(pack)}
+                </Badge>
+                {detail && (
+                  <span className="font-code text-xs text-mv-subtle">
+                    {detail}
+                  </span>
+                )}
                 {pack.status === 'REMOVED' && pack.removedReason && (
-                  <p className="text-xs text-error-strong">
+                  <span className="text-xs text-mv-danger">
                     {pack.removedReason}
-                  </p>
+                  </span>
                 )}
               </div>
             </div>
@@ -80,7 +106,7 @@ export function MyPacksList({
                 target="_blank"
                 rel="noopener"
                 aria-label={`View details of ${pack.name}`}
-                className="btn btn-sm btn-ghost rounded-box shrink-0"
+                className={buttonVariants({ variant: 'ghost', size: 'sm' })}
               >
                 View details
               </a>
@@ -95,10 +121,10 @@ export function MyPacksList({
                   : `Open to edit: ${pack.name}`
               }
               aria-describedby={`${statusIdPrefix}-${index}`}
-              className="btn btn-sm rounded-box shrink-0 min-w-[6.75rem]"
+              className={`${buttonVariants({ variant: 'secondary', size: 'sm' })} min-w-[6.75rem]`}
             >
               {openingId === pack.id ? (
-                <span className="loading loading-spinner loading-xs" />
+                <Loader className="size-4 animate-spin" aria-hidden="true" />
               ) : (
                 'Open to edit'
               )}

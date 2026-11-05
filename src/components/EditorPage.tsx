@@ -1,4 +1,3 @@
-import { X } from 'lucide-react';
 import React, {
   useCallback,
   useEffect,
@@ -69,6 +68,8 @@ import {
   WaveformEditor,
 } from '@/components/editor/WaveformEditor';
 import { dropCodeAt, FileDropOverlay } from '@/components/FileDropOverlay';
+import { Footer } from '@/components/Footer';
+import { X } from '@/components/icons';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
@@ -2755,6 +2756,7 @@ export function EditorPage() {
     return (
       <div className="flex flex-col h-full min-h-0">
         <PhoneScreen />
+        <Footer />
         {dropOverlay}
       </div>
     );
@@ -3603,6 +3605,7 @@ export function EditorPage() {
             </div>
           </div>
         )}
+        {!isWorkspace && <Footer />}
       </div>
     </>
   );

@@ -221,7 +221,7 @@ body[data-editor-preview="true"] footer {
 @keyframes try-it-cue {
   from {
     box-shadow: 0 0 0 0
-      color-mix(in oklab, var(--color-primary) 55%, transparent);
+      color-mix(in oklab, var(--mv-ink) 35%, transparent);
   }
   to {
     box-shadow: 0 0 0 10px transparent;

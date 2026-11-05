@@ -1,39 +1,38 @@
 import { editorRepoUrl, siteIdentity, websiteUrl } from '@/config/siteIdentity';
 
-interface LogoProps {
-  text: string;
-  /** The navbar leaves the logo out on phones to keep room for its buttons. */
-  showOnPhones?: boolean;
-  /** Just the mark below xl, where the open pack's controls need the room. */
-  compact?: boolean;
-}
-
-export const Logo = ({
-  text,
-  showOnPhones = false,
-  compact = false,
-}: LogoProps) => {
-  const textClass = compact ? 'hidden xl:inline' : '';
+/**
+ * mechvibes.com's mark and name, linking to the site, then the editor's badge
+ * and version. `compact` keeps just the mark and badge below xl, where the
+ * open pack's controls need the room.
+ */
+export const Logo = ({ compact = false }: { compact?: boolean }) => {
+  const wide = compact ? 'hidden xl:inline-flex' : 'inline-flex';
 
   return (
-    <div
-      className={`${showOnPhones ? 'flex' : 'hidden sm:flex'} shrink-0 items-center`}
-    >
+    <div className="flex shrink-0 items-center gap-2.5">
       <a
         href={websiteUrl}
         target="_blank"
         rel="noopener"
-        className="flex items-center space-x-2 whitespace-nowrap"
+        aria-label={`${siteIdentity.productName} website`}
+        className="flex shrink-0 items-center gap-2.5 text-mv-ink no-underline"
       >
         <img
-          src="/logo.png"
-          alt={`${siteIdentity.productName} Logo`}
-          width={32}
-          height={32}
-          className="h-8 w-8"
+          src="/logo-mark.png"
+          alt=""
+          width={30}
+          height={30}
+          className="size-[30px]"
         />
-        <span className={`font-bold ${textClass}`}>{text}</span>
+        <span
+          className={`${wide} font-display text-[17px] font-extrabold tracking-[-0.02em]`}
+        >
+          {siteIdentity.productName}
+        </span>
       </a>
+      <span className="inline-flex h-[22px] items-center rounded-md bg-mv-fill px-2 font-code text-[11px] font-bold uppercase tracking-[0.08em] text-mv-ink">
+        Editor
+      </span>
       {/* The releases page rather than this version's own, which is missing
           while its release is still a draft. */}
       <a
@@ -42,7 +41,7 @@ export const Logo = ({
         rel="noopener"
         aria-label={`Version ${__APP_VERSION__}, what's new`}
         title={`Version ${__APP_VERSION__}: see what's new`}
-        className={`ml-2 items-center whitespace-nowrap rounded-full bg-base-content/10 px-2 py-0.5 text-xs font-medium text-base-content/70 hover:bg-base-content/15 hover:text-base-content ${compact ? 'hidden xl:inline-flex' : 'inline-flex'}`}
+        className={`${wide} whitespace-nowrap font-code text-xs font-medium text-mv-subtle no-underline hover:text-mv-ink`}
       >
         v{__APP_VERSION__}
       </a>
