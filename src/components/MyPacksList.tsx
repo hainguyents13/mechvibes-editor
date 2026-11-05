@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Loader, Package } from '@/components/icons';
+import { ExternalMark, Loader, Package } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import {
@@ -109,6 +109,7 @@ export function MyPacksList({
                 className={buttonVariants({ variant: 'ghost', size: 'sm' })}
               >
                 View details
+                <ExternalMark className="ml-0" />
               </a>
             )}
             <button

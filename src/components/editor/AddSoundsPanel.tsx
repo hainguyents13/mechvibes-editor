@@ -107,9 +107,10 @@ function AddTile({
   // The tile of files for each key also takes a whole folder of them.
   const takesFolder = tile.kind === 'per-key';
   return (
-    // A cell of the ruled grid: lines on its right and bottom meet the
-    // grid's own outline.
-    <section className="relative flex flex-col gap-1.5 p-[22px] shadow-[1px_0_0_var(--mv-line),0_1px_0_var(--mv-line)] transition-colors hover:bg-mv-raised">
+    // A cell of the ruled grid: its lines on the right and bottom are drawn
+    // inside it, over its own background, so a neighbour taking the hover
+    // colour never covers them. The grid's outline is drawn over all cells.
+    <section className="relative flex flex-col gap-1.5 p-[22px] shadow-[inset_-1px_0_0_var(--mv-line),inset_0_-1px_0_var(--mv-line)] transition-colors hover:bg-mv-raised">
       <Icon className="size-[22px] shrink-0 text-mv-chart" aria-hidden="true" />
       <h3 className="m-0 mt-2 text-base font-bold text-mv-ink">{tile.title}</h3>
       <p className="m-0 text-[13px] text-mv-muted">{tile.hint}</p>
@@ -228,7 +229,7 @@ export function AddSoundsPanel({
         </h2>
         <div
           data-tour="add-tiles"
-          className="mt-4 grid overflow-hidden rounded-[14px] shadow-[inset_0_0_0_1px_var(--mv-line)] md:grid-cols-3"
+          className="mt-4 grid overflow-hidden rounded-[14px] outline -outline-offset-1 outline-mv-line md:grid-cols-3"
         >
           {tilesFor(packType).map((tile) => (
             <AddTile

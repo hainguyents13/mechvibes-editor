@@ -1,3 +1,4 @@
+import { ExternalMark } from '@/components/icons';
 import {
   discordUrl,
   editorGuideUrl,
@@ -28,6 +29,7 @@ export function Footer() {
             className="text-mv-muted no-underline hover:text-mv-ink"
           >
             {label}
+            <ExternalMark />
           </a>
         ))}
       </div>

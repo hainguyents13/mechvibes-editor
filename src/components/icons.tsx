@@ -27,6 +27,7 @@ import {
   KeyboardIcon,
   LaptopIcon,
   Link01Icon,
+  LinkSquare02Icon,
   Loading03Icon,
   Login01Icon,
   Menu01Icon,
@@ -48,6 +49,7 @@ import {
   ViewOffIcon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon, type HugeiconsIconProps } from '@hugeicons/react';
+import { cn } from '@/lib/utils';
 
 /**
  * The editor's icons, from the free Hugeicons set (stroke rounded) that
@@ -88,6 +90,7 @@ export const Download = icon(Download01Icon, 'Download');
 export const Ellipsis = icon(MoreHorizontalIcon, 'Ellipsis');
 export const EyeOff = icon(ViewOffIcon, 'EyeOff');
 export const FileAudio = icon(FileAudioIcon, 'FileAudio');
+export const ExternalLink = icon(LinkSquare02Icon, 'ExternalLink');
 export const Files = icon(Files01Icon, 'Files');
 export const FolderOpen = icon(FolderOpenIcon, 'FolderOpen');
 export const GitHub = icon(GithubIcon, 'GitHub');
@@ -119,3 +122,19 @@ export const Undo2 = icon(Undo02Icon, 'Undo2');
 export const Video = icon(Video01Icon, 'Video');
 export const X = icon(Cancel01Icon, 'X');
 export const Zap = icon(FlashIcon, 'Zap');
+
+/**
+ * Marks a link that leaves the editor (another site, or a new tab): a small
+ * external-link icon after its text, lighter than the text.
+ */
+export function ExternalMark({ className = '' }: { className?: string }) {
+  return (
+    <ExternalLink
+      aria-hidden="true"
+      className={cn(
+        'ml-1 inline size-3.5 shrink-0 align-[-0.15em] text-mv-faint',
+        className,
+      )}
+    />
+  );
+}

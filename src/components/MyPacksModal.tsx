@@ -1,4 +1,4 @@
-import { X } from '@/components/icons';
+import { ExternalMark, X } from '@/components/icons';
 import { MyPacksList } from '@/components/MyPacksList';
 import { TEXT_LINK_CLASS } from '@/components/start/StartPage';
 import { buttonVariants } from '@/components/ui/button';
@@ -62,6 +62,7 @@ export function MyPacksModal({
             className={TEXT_LINK_CLASS}
           >
             create it on the website
+            <ExternalMark />
           </a>
           .
         </p>

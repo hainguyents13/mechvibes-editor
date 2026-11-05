@@ -6,6 +6,7 @@ import {
   CloudUpload,
   Discord,
   Download,
+  ExternalMark,
   FolderOpen,
   GitHub,
   House,
@@ -230,6 +231,7 @@ function PackControls({
           <DropdownMenuItem asChild>
             <a href={editorGuideUrl} target="_blank" rel="noopener">
               Editor guide
+              <ExternalMark className="ml-auto" />
             </a>
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -358,6 +360,7 @@ function WebsiteMenu() {
             <a href={href} target="_blank" rel="noopener">
               <Icon aria-hidden="true" />
               {label}
+              <ExternalMark className="ml-auto" />
             </a>
           </DropdownMenuItem>
         ))}
@@ -367,6 +370,7 @@ function WebsiteMenu() {
             <a href={href} target="_blank" rel="noopener">
               <Icon aria-hidden="true" />
               {label}
+              <ExternalMark className="ml-auto" />
             </a>
           </DropdownMenuItem>
         ))}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Check, Laptop, Link } from '@/components/icons';
+import { Check, ExternalMark, Laptop, Link } from '@/components/icons';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { buttonVariants } from '@/components/ui/button';
 import { websiteHost, websiteUrl } from '@/config/siteIdentity';
@@ -96,7 +96,7 @@ export function PhoneScreen() {
             className={`${buttonVariants({ variant: 'outline' })} h-11`}
           >
             Browse sound packs on {websiteHost}
-            <ArrowRight className="size-4" aria-hidden="true" />
+            <ExternalMark className="ml-0 size-4" />
           </a>
         </div>
       </div>

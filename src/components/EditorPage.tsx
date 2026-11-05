@@ -70,7 +70,7 @@ import {
 } from '@/components/editor/WaveformEditor';
 import { dropCodeAt, FileDropOverlay } from '@/components/FileDropOverlay';
 import { Footer } from '@/components/Footer';
-import { Loader, X } from '@/components/icons';
+import { ExternalMark, Loader, X } from '@/components/icons';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
@@ -3075,6 +3075,7 @@ export function EditorPage() {
                           className={TEXT_LINK_CLASS}
                         >
                           {notice.link.label}
+                          <ExternalMark />
                         </a>
                       </>
                     )}
