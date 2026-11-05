@@ -91,7 +91,6 @@ describe('shouldIgnoreShortcut', () => {
   });
 
   it.each([
-    '.modal-open',
     'dialog[open]',
     '[role="dialog"][data-state="open"]',
     '[role="menu"][data-state="open"]',

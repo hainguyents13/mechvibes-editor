@@ -57,7 +57,7 @@ function isPopoverOpen() {
  * dialogs and menus with data-state.
  */
 const OVERLAY_OPEN =
-  '.modal-open, dialog[open], [role="dialog"][data-state="open"], [role="menu"][data-state="open"], .driver-popover';
+  'dialog[open], [role="dialog"][data-state="open"], [role="menu"][data-state="open"], .driver-popover';
 
 /** Whether a dialog, a popover or the guided tour is open; it owns the keyboard. */
 function isOverlayOpen() {
