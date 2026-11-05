@@ -1,12 +1,12 @@
 import { editorRepoUrl, siteIdentity, websiteUrl } from '@/config/siteIdentity';
 
 /**
- * mechvibes.com's mark and name, linking to the site, then the editor's badge
- * and version. `compact` keeps just the mark and badge below xl, where the
- * open pack's controls need the room.
+ * mechvibes.com's mark and name, linking to the site, with "Editor" small
+ * under the name and the version in a badge beside it. `compact` keeps just
+ * the mark below xl, where the open pack's controls need the room.
  */
 export const Logo = ({ compact = false }: { compact?: boolean }) => {
-  const wide = compact ? 'hidden xl:inline-flex' : 'inline-flex';
+  const wide = compact ? 'hidden xl:flex' : 'flex';
 
   return (
     <div className="flex shrink-0 items-center gap-2.5">
@@ -24,15 +24,15 @@ export const Logo = ({ compact = false }: { compact?: boolean }) => {
           height={30}
           className="size-[30px]"
         />
-        <span
-          className={`${wide} font-display text-[17px] font-extrabold tracking-[-0.02em]`}
-        >
-          {siteIdentity.productName}
+        <span className={`${wide} flex-col leading-none`}>
+          <span className="font-display text-[17px] font-extrabold tracking-[-0.02em]">
+            {siteIdentity.productName}
+          </span>
+          <span className="mt-0.5 text-[11px] font-bold text-mv-subtle">
+            Editor
+          </span>
         </span>
       </a>
-      <span className="inline-flex h-[22px] items-center rounded-md bg-mv-fill px-2 font-code text-[11px] font-bold uppercase tracking-[0.08em] text-mv-ink">
-        Editor
-      </span>
       {/* The releases page rather than this version's own, which is missing
           while its release is still a draft. */}
       <a
@@ -41,7 +41,7 @@ export const Logo = ({ compact = false }: { compact?: boolean }) => {
         rel="noopener"
         aria-label={`Version ${__APP_VERSION__}, what's new`}
         title={`Version ${__APP_VERSION__}: see what's new`}
-        className={`${wide} whitespace-nowrap font-code text-xs font-medium text-mv-subtle no-underline hover:text-mv-ink`}
+        className={`${compact ? 'hidden xl:inline-flex' : 'inline-flex'} items-center whitespace-nowrap rounded-full bg-mv-fill px-2 py-0.5 font-code text-xs font-medium text-mv-muted no-underline hover:bg-mv-fill-strong hover:text-mv-ink`}
       >
         v{__APP_VERSION__}
       </a>
