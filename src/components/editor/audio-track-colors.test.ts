@@ -11,15 +11,15 @@ describe('AUDIO_TRACK_COLORS', () => {
   });
 
   it.each(AUDIO_TRACK_COLORS.map((color, index) => [index, color] as const))(
-    'uses one hue for the row and the dots of slot %s',
+    'uses one hue for the icon and the dot of slot %s',
     (_, color) => {
       const hues = Object.values(color).map(
         (className) => className.match(/-([a-z]+)-500/)?.[1],
       );
       expect(hues[0]).toBeTruthy();
       expect(new Set(hues).size).toBe(1);
+      expect(color.text.startsWith('text-')).toBe(true);
       expect(color.dot.startsWith('bg-')).toBe(true);
-      expect(color.fill.startsWith('fill-')).toBe(true);
     },
   );
 

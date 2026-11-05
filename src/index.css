@@ -6,17 +6,12 @@
    setting, like the mv-* colours */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-@plugin "daisyui" {
-  /* biome-ignore lint/correctness/noUnknownProperty: DaisyUI plugin option, not a CSS property */
-  themes:
-    light --default,
-    dark --prefersdark;
-}
-
 /* mechvibes.com's colours, one value for the light page and one for the dark
    page (data-theme). Tailwind reads them through @theme below as bg-mv-*,
    text-mv-*, and so on. Kept in step with the site's globals.css. */
 :root {
+  /* Native controls (scrollbars, sliders, pickers) follow the page */
+  color-scheme: light;
   --mv-page: #ffffff;
   --mv-raised: #fafafa;
   --mv-fill: #f4f4f5;
@@ -51,6 +46,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --mv-page: #0b0b0d;
   --mv-raised: #121215;
   --mv-fill: #1c1c20;
@@ -137,25 +133,9 @@
    720px laptop. */
 @custom-variant short (@media (max-height: 50rem));
 
-/* Error text on a plain background. The theme's error colour is a light pink
-   that reads at about 2.9:1 on white, so it is pulled toward the text colour:
-   darker on light, lighter on dark. */
-@utility text-error-strong {
-  color: color-mix(in oklab, var(--color-error) 60%, var(--color-base-content));
-}
-
-/* A mark on a plain background, such as a check. The theme's success colour
-   reads at about 2:1 on white, short of the 3:1 a mark needs, so it is pulled
-   toward the text colour the same way. */
-@utility text-success-strong {
-  color: color-mix(
-    in oklab,
-    var(--color-success) 60%,
-    var(--color-base-content)
-  );
-}
-
 body {
+  background-color: var(--mv-page);
+  color: var(--mv-text);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
