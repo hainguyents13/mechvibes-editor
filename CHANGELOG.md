@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-05
+
 ### Changed
 
 - **A new look, the same as mechvibes.com.** The editor takes the site's colours, fonts, buttons and header, in light and dark. The light/dark switch moves to the top bar, and the footer shows only before a pack is open, so the keyboard gets the room.
