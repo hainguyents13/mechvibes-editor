@@ -84,17 +84,17 @@ export function NavbarMenu({
           id={menuId}
           popover="auto"
           onBeforeToggle={placeMenu}
-          className="fixed inset-auto m-0 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+          // The look of the site's menus (ui/dropdown-menu). A popover rather
+          // than a Radix menu: shortcuts stay off while one is open.
+          className="fixed inset-auto m-0 rounded-[10px] bg-mv-page p-1.5 font-body text-mv-ink shadow-[0_0_0_1px_var(--mv-line),0_14px_32px_-14px_var(--mv-shadow)]"
         >
-          <ul className="menu menu-sm w-52 p-0">
+          <ul className="flex min-w-[200px] flex-col gap-0.5">
             {items.map((item) => (
-              <li
-                key={item.label}
-                className={item.disabled ? 'menu-disabled' : undefined}
-              >
+              <li key={item.label}>
                 <button
                   type="button"
                   disabled={item.disabled}
+                  className="flex w-full cursor-pointer select-none items-center gap-2.5 whitespace-nowrap rounded-md px-2.5 py-2 text-left text-sm text-mv-text outline-none transition-colors hover:bg-mv-fill hover:text-mv-ink focus-visible:bg-mv-fill focus-visible:text-mv-ink disabled:pointer-events-none disabled:opacity-50"
                   onClick={() => {
                     menuRef.current?.hidePopover();
                     buttonRef.current?.focus();
