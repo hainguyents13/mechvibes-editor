@@ -1,10 +1,8 @@
 import React from 'react';
 import { KEY_GROUPS } from '@/components/editor/key-groups';
 import type { LayoutKey } from '@/components/editor/keyboardLayouts';
+import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-
-/** The Quick select block, which a panel too short for it leaves below its fold. */
-export const QUICK_SELECT_SELECTOR = '[data-quick-select]';
 
 /** Chips that select a group of keys, such as the letters; none without `keys`. */
 export function QuickSelect({
@@ -43,26 +41,32 @@ export function QuickSelect({
 
   if (groupMatches.length === 0) return null;
   return (
-    <fieldset data-quick-select className="fieldset py-0 px-4 shrink-0 min-w-0">
-      <legend className="fieldset-legend">
-        <h2 className="text-xs font-medium text-base-content">Quick select</h2>
-      </legend>
-      <div className="flex flex-wrap items-center gap-2">
-        {groupMatches.map(({ group, ids }) => (
+    // biome-ignore lint/a11y/useSemanticElements: a row of toggle buttons, not a form group
+    <div
+      role="group"
+      aria-label="Quick select"
+      className="flex min-w-0 items-center gap-1"
+    >
+      <span className="mr-1 shrink-0 text-xs text-mv-subtle">Select</span>
+      {groupMatches.map(({ group, ids }) => {
+        const selected = isGroupSelected(ids);
+        return (
           <button
             type="button"
             key={group.id}
+            aria-pressed={selected}
             className={cn(
-              'btn btn-sm rounded-box',
-              isGroupSelected(ids) ? 'btn-active' : '',
+              buttonVariants({ variant: 'ghost', size: 'sm' }),
+              'h-[26px] px-2.5 text-xs',
+              selected && 'bg-mv-fill-strong text-mv-ink',
             )}
             onClick={() => selectGroup(ids)}
-            title={`Select all ${ids.size} ${group.label}`}
+            title={`Select all ${ids.size} ${group.label} (${group.hint})`}
           >
-            {group.label} ({group.hint})
+            {group.label}
           </button>
-        ))}
-      </div>
-    </fieldset>
+        );
+      })}
+    </div>
   );
 }

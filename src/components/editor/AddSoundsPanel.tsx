@@ -1,15 +1,20 @@
+import { useRef } from 'react';
 import {
   AudioLines,
   ChevronRight,
   CircleAlert,
   Files,
-  type LucideIcon,
+  type IconComponent,
   Video,
-} from 'lucide-react';
-import { useRef } from 'react';
-import { STRETCHED_ACTION } from '@/components/start/StartPage';
+} from '@/components/icons';
+import {
+  STRETCHED_ACTION,
+  TEXT_LINK_CLASS,
+} from '@/components/start/StartPage';
+import { buttonVariants } from '@/components/ui/button';
 import { sortChosenFolder } from '@/lib/dropRouting';
 import type { AddTile as TileKind } from '@/lib/fileKinds';
+import { cn } from '@/lib/utils';
 import {
   AUDIO_FILE_ACCEPT,
   isMediaFile,
@@ -22,7 +27,7 @@ export type AddOptions = { tile?: TileKind; skipped?: string[] };
 
 interface Tile {
   kind: TileKind;
-  Icon: LucideIcon;
+  Icon: IconComponent;
   title: string;
   hint: string;
   action: string;
@@ -102,11 +107,13 @@ function AddTile({
   // The tile of files for each key also takes a whole folder of them.
   const takesFolder = tile.kind === 'per-key';
   return (
-    <section className="relative flex flex-col rounded-box border border-base-300 bg-base-100 p-4 shadow-sm transition hover:border-primary/60 hover:shadow-md">
-      <Icon className="h-6 w-6 shrink-0 text-primary" aria-hidden="true" />
-      <h3 className="mt-2 text-sm font-semibold">{tile.title}</h3>
-      <p className="mt-0.5 text-xs text-base-content/70">{tile.hint}</p>
-      <div className="mt-auto pt-3 flex flex-wrap gap-2">
+    // A cell of the ruled grid: lines on its right and bottom meet the
+    // grid's own outline.
+    <section className="relative flex flex-col gap-1.5 p-[22px] shadow-[1px_0_0_var(--mv-line),0_1px_0_var(--mv-line)] transition-colors hover:bg-mv-raised">
+      <Icon className="size-[22px] shrink-0 text-mv-chart" aria-hidden="true" />
+      <h3 className="m-0 mt-2 text-base font-bold text-mv-ink">{tile.title}</h3>
+      <p className="m-0 text-[13px] text-mv-muted">{tile.hint}</p>
+      <div className="mt-auto pt-3.5 flex flex-wrap gap-1.5">
         <button
           type="button"
           // Named with its tile, so the three tell apart in a list of
@@ -118,7 +125,15 @@ function AddTile({
             if (event.detail > 1) return;
             inputRef.current?.click();
           }}
-          className={`btn btn-sm btn-neutral rounded-box ${STRETCHED_ACTION}`}
+          className={cn(
+            buttonVariants({
+              // The one way most packs start is the filled one.
+              variant: tile.kind === 'recording' ? 'primary' : 'secondary',
+              size: 'sm',
+            }),
+            'h-9 px-3.5',
+            STRETCHED_ACTION,
+          )}
         >
           {tile.action}
         </button>
@@ -131,7 +146,10 @@ function AddTile({
               folderInputRef.current?.click();
             }}
             // Above the overlay that makes the whole tile choose files.
-            className="relative z-10 btn btn-sm btn-ghost rounded-box"
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 'sm' }),
+              'relative z-10 h-9 px-3.5',
+            )}
           >
             Choose folder
           </button>
@@ -198,17 +216,20 @@ export function AddSoundsPanel({
   return (
     <div
       data-tour="add-sounds"
-      className="shrink-0 max-h-[60dvh] overflow-y-auto editor-panel-surface border-t-2 border-base-content/20"
+      className="shrink-0 max-h-[60dvh] overflow-y-auto editor-panel-surface border-t border-mv-line"
     >
-      <div className="mx-auto w-full max-w-4xl px-4 py-4">
+      <div className="mx-auto w-full max-w-[960px] px-5 pt-6 pb-7">
         <h2
           id={ADD_SOUNDS_HEADING_ID}
           tabIndex={-1}
-          className="text-center text-sm font-semibold focus:outline-none"
+          className="m-0 text-center font-display text-[22px] font-bold tracking-[-0.015em] text-mv-ink focus:outline-none"
         >
           What sounds do you have?
         </h2>
-        <div data-tour="add-tiles" className="mt-3 grid gap-3 md:grid-cols-3">
+        <div
+          data-tour="add-tiles"
+          className="mt-4 grid overflow-hidden rounded-[14px] shadow-[inset_0_0_0_1px_var(--mv-line)] md:grid-cols-3"
+        >
           {tilesFor(packType).map((tile) => (
             <AddTile
               key={tile.title}
@@ -224,19 +245,22 @@ export function AddSoundsPanel({
           (status.tone === 'error' ? (
             <p
               role="alert"
-              className="mt-3 flex items-start justify-center gap-1.5 text-sm text-error-strong"
+              className="m-0 mt-3 flex items-start justify-center gap-1.5 text-sm text-mv-danger"
             >
-              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
               <span>{status.text}</span>
             </p>
           ) : (
-            <output className="mt-3 block text-center text-sm text-base-content/70">
+            <output className="mt-3 block text-center text-sm text-mv-muted">
               {status.text}
             </output>
           ))}
-        <div className="mt-3 flex flex-col items-center gap-1 text-center text-xs text-base-content/70">
+        <div className="mt-4 flex flex-col items-center gap-1 text-center text-[13px] text-mv-muted [&_p]:m-0">
           <p data-tour="drop">
-            Or drop files anywhere. MP3, WAV, OGG, FLAC, M4A, MP4, WEBM, MOV
+            Or drop files anywhere.{' '}
+            <span className="font-code text-xs text-mv-subtle">
+              MP3 WAV OGG FLAC M4A MP4 WEBM MOV
+            </span>
           </p>
           {packType === 'Mouse' && (
             <p>Wheel sounds play on Linux only for now.</p>
@@ -246,15 +270,13 @@ export function AddSoundsPanel({
           <details className="group">
             <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               No recording yet?{' '}
-              <span className="link font-medium text-base-content/80">
-                {tips.title}
-              </span>
+              <span className={TEXT_LINK_CLASS}>{tips.title}</span>
               <ChevronRight
-                className="ml-0.5 inline h-3 w-3 transition-transform group-open:rotate-90"
+                className="ml-0.5 inline size-3.5 align-[-0.2em] transition-transform group-open:rotate-90"
                 aria-hidden="true"
               />
             </summary>
-            <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-left text-base-content/70">
+            <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-left text-mv-muted">
               {tips.steps.map((step) => (
                 <li key={step}>{step}</li>
               ))}

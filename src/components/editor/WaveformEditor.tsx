@@ -1,23 +1,32 @@
-import { RotateCcw, Zap } from 'lucide-react';
 import React from 'react';
 import {
   CombinedWaveform,
   type CombinedWaveformRef,
 } from '@/components/editor/CombinedWaveform';
+import { PANEL_LABEL_CLASS } from '@/components/editor/TimeSegmentControls';
 import {
   getUsageBadges,
   USAGE_BADGE_MIN_WIDTH_PX,
   type UsageBadge,
 } from '@/components/editor/waveform-selection';
+import { RotateCcw, Zap } from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button';
+import { Tip } from '@/components/ui/tooltip';
 import { useWaveformEditor } from '@/hooks/useWaveformEditor';
+import { cn } from '@/lib/utils';
 import type { KeySounds } from '@/utils/soundPack';
 
-// A badge that stands for press and release segments together takes neither colour.
+// The keys' press and release colours; a badge that stands for press and
+// release segments together takes neither.
 const BADGE_STYLES: Record<UsageBadge['phase'], string> = {
-  press: 'badge-neutral',
-  release: 'badge-secondary',
-  mixed: 'badge-outline',
+  press: 'bg-mv-press text-white',
+  release: 'bg-mv-release text-white',
+  mixed:
+    'bg-mv-page text-mv-ink shadow-[inset_0_0_0_1px_var(--mv-line-strong)]',
 };
+
+/** A thin slider in the ink colour. */
+const RANGE_CLASS = 'h-1 cursor-pointer accent-[var(--mv-ink)]';
 
 /** The box `waveformHeight` sizes, for telling it from the controls around it. */
 export const WAVEFORM_BOX_SELECTOR = '[data-waveform-box]';
@@ -60,6 +69,7 @@ export function WaveformEditor({
   waveformHeight = 200,
   showThreshold = false,
 }: WaveformEditorProps) {
+  const headingId = React.useId();
   const {
     soundRegionsMode,
     toggleSoundRegionsMode,
@@ -142,37 +152,49 @@ export function WaveformEditor({
   }
 
   return (
-    <fieldset className="fieldset py-0 shrink-0 min-h-0 min-w-0 w-full flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2 shrink-0 min-w-0 flex-wrap px-4">
-        <h2 className="text-xs font-medium text-base-content">Waveform</h2>
+    <section
+      aria-labelledby={headingId}
+      className="shrink-0 min-h-0 min-w-0 w-full flex flex-col gap-2.5"
+    >
+      <div className="flex items-center justify-between gap-2 shrink-0 min-w-0 flex-wrap px-5">
+        <h2 id={headingId} className={cn(PANEL_LABEL_CLASS, 'm-0')}>
+          Waveform
+        </h2>
         {/* Zoom Controls: wrap on narrow screens rather than push Auto detect off the edge */}
         <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className="text-xs">Zoom</span>
-          <input
-            type="range"
-            min="10"
-            max="300"
-            step="10"
-            value={zoomLevel}
-            onChange={(e) => handleZoom(Number(e.target.value))}
-            className="range range-xs w-32 sm:w-60"
-            title={`${Math.round(zoomLevel)}% zoom`}
-          />
-          <span className="text-xs w-10 text-center">
+          <label className="flex items-center gap-2 text-xs text-mv-subtle">
+            Zoom
+            <input
+              type="range"
+              min="10"
+              max="300"
+              step="10"
+              value={zoomLevel}
+              onChange={(e) => handleZoom(Number(e.target.value))}
+              className={cn(RANGE_CLASS, 'w-32 sm:w-60')}
+              title={`${Math.round(zoomLevel)}% zoom`}
+            />
+          </label>
+          <span className="w-10 text-center font-code text-xs text-mv-muted">
             {Math.round(zoomLevel)}%
           </span>
           <button
             type="button"
-            className="btn btn-xs btn-ghost btn-square rounded-box"
+            className={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
             onClick={handleResetZoom}
             title="Reset Zoom"
+            aria-label="Reset zoom"
           >
-            <RotateCcw className="h-3 w-3" />
+            <RotateCcw className="size-3.5" />
           </button>
-          <div className="w-px h-4 bg-base-content/20 mx-1"></div>
+          <span aria-hidden="true" className="mx-1 h-4 w-px bg-mv-line" />
           <button
             type="button"
-            className={`btn btn-xs rounded-box ${soundRegionsMode ? 'btn-active' : 'btn-ghost'}`}
+            aria-pressed={soundRegionsMode}
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'sm' }),
+              soundRegionsMode && 'bg-mv-fill text-mv-ink',
+            )}
             onClick={toggleSoundRegionsMode}
             title={
               soundRegionsMode
@@ -180,23 +202,25 @@ export function WaveformEditor({
                 : 'Auto-detect sound regions'
             }
           >
-            <Zap className="h-3 w-3" />
+            <Zap className="size-3.5" />
             Auto detect
           </button>
           {soundRegionsMode && showThreshold && (
             <>
-              <span className="text-xs">Threshold</span>
-              <input
-                type="range"
-                min="0.001"
-                max="0.02"
-                step="0.001"
-                value={silenceThreshold}
-                onChange={(e) => setSilenceThreshold(Number(e.target.value))}
-                className="range range-xs w-32"
-                title={`Silence threshold: ${silenceThreshold.toFixed(3)}`}
-              />
-              <span className="text-xs w-12 text-center">
+              <label className="flex items-center gap-2 text-xs text-mv-subtle">
+                Threshold
+                <input
+                  type="range"
+                  min="0.001"
+                  max="0.02"
+                  step="0.001"
+                  value={silenceThreshold}
+                  onChange={(e) => setSilenceThreshold(Number(e.target.value))}
+                  className={cn(RANGE_CLASS, 'w-32')}
+                  title={`Silence threshold: ${silenceThreshold.toFixed(3)}`}
+                />
+              </label>
+              <span className="w-12 text-center font-code text-xs text-mv-muted">
                 {silenceThreshold.toFixed(3)}
               </span>
             </>
@@ -206,7 +230,7 @@ export function WaveformEditor({
       {/* Video preview lives in the Audio source panel — this side only shows the waveform */}
       <div
         ref={waveformScrollRef}
-        className="shrink-0 min-w-0 w-full border-y border-base-content/20 bg-base-100 overflow-x-auto overflow-y-hidden"
+        className="mx-5 shrink-0 min-w-0 rounded-[12px] bg-mv-raised shadow-[inset_0_0_0_1px_var(--mv-line)] overflow-x-auto overflow-y-hidden"
       >
         <div style={{ minWidth: '100%', width: 'max-content' }}>
           {/* Waveform */}
@@ -231,9 +255,9 @@ export function WaveformEditor({
           the badges stay over the waveform but under the panel's pinned
           Sound row. */}
           <div
-            className="relative z-[1] bg-base-200 border-t border-base-content/10"
+            className="relative z-[1] shadow-[inset_0_1px_0_var(--mv-line)]"
             style={{
-              height: '20px',
+              height: '22px',
               width: '100%',
             }}
           >
@@ -243,30 +267,31 @@ export function WaveformEditor({
               // Placed at the zoom value the waveform is drawn at.
               getUsageBadges(keySounds, sourceId, zoomLevel).map(
                 ({ id, phase, count, tooltip, centerPx }) => (
-                  <div
-                    key={id}
-                    className="absolute top-[8px] transform -translate-y-1/2 -translate-x-1/2 tooltip z-50"
-                    style={{ left: `${centerPx}px` }}
-                    data-tip={tooltip}
-                  >
-                    <div
-                      className={`badge badge-xs rounded-none ${BADGE_STYLES[phase]}`}
-                      style={{ minWidth: `${USAGE_BADGE_MIN_WIDTH_PX}px` }}
+                  <Tip key={id} label={tooltip}>
+                    <span
+                      className={cn(
+                        'absolute top-[11px] z-50 flex h-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded px-1 font-code text-[10px] font-bold leading-none',
+                        BADGE_STYLES[phase],
+                      )}
+                      style={{
+                        left: `${centerPx}px`,
+                        minWidth: `${USAGE_BADGE_MIN_WIDTH_PX}px`,
+                      }}
                     >
                       {count}
-                    </div>
-                  </div>
+                    </span>
+                  </Tip>
                 ),
               )}
           </div>
         </div>
       </div>
 
-      <div className="shrink-0 px-4 text-xs text-base-content/70">
+      <p className="m-0 shrink-0 px-5 text-xs text-mv-subtle">
         {soundRegionsMode
-          ? 'Auto detect: click a highlighted region to pick that sound • Drag edges to resize • Space to play'
-          : 'Drag on the waveform to pick a sound • Drag edges to resize • Space to play • Scroll to pan'}
-      </div>
-    </fieldset>
+          ? 'Auto detect: click a highlighted region to pick that sound · Drag edges to resize · Space to play'
+          : 'Drag on the waveform to pick a sound · Drag edges to resize · Space to play · Scroll to pan'}
+      </p>
+    </section>
   );
 }

@@ -1,7 +1,6 @@
 import type React from 'react';
 import { cn } from '@/lib/utils';
 import type { AudioSource, KeySounds } from '@/utils/soundPack';
-import { getAudioTrackColor } from './audio-track-colors';
 import type { SelectModifiers } from './key-selection';
 import { keyboardLayouts, parseKeyboardLayout } from './keyboardLayouts';
 
@@ -11,9 +10,12 @@ export const MOUSE_DISPLAY_SIZE = { width: 420, height: 340 };
 type Region = {
   /** Outline of the clickable area. */
   shape: React.ReactNode;
-  /** Where the press-sound dot sits. */
+  /** Where the centre of the sound mark sits: a bar halved into press and release. */
   dot: [number, number];
-  /** Where the release-sound dot sits; 12px right of the press dot by default. */
+  /**
+   * In the narrow wheel the mark is split around the icon: the press half
+   * sits here on the left and the release half at `dot` on the right.
+   */
   releaseDot?: [number, number];
   /** Text or icon drawn on or beside the area. */
   label: React.ReactNode;
@@ -252,7 +254,7 @@ export function MouseDisplay({
         <title>Mouse buttons</title>
         <path
           d={BODY}
-          className="fill-base-200 stroke-base-content/25"
+          className="fill-mv-raised stroke-mv-line-strong"
           strokeWidth={1.5}
         />
         {ordered.map(({ label, code, id: keyId }, index) => {
@@ -269,18 +271,13 @@ export function MouseDisplay({
           const isInert = isPreview && !sound;
           const isDropTarget = dropCodes?.has(code) ?? false;
           // Opaque fills only: the wheel sits on top of the main buttons.
-          let fill = '[&>:first-child]:fill-base-100';
+          let fill = '[&>:first-child]:fill-mv-page';
           if (isDropTarget)
             fill =
-              '[&>:first-child]:fill-[color-mix(in_oklab,var(--color-primary)_30%,var(--color-base-100))] [&>:first-child]:stroke-primary [&>:first-child]:stroke-[3]';
-          else if (isSelected) fill = '[&>:first-child]:fill-neutral';
+              '[&>:first-child]:fill-mv-fill [&>:first-child]:stroke-mv-ink [&>:first-child]:stroke-[3]';
+          else if (isSelected) fill = '[&>:first-child]:fill-mv-primary';
           else if (isPressed && !isInert)
-            fill =
-              '[&>:first-child]:fill-[color-mix(in_oklab,var(--color-primary)_70%,var(--color-base-100))]';
-          else if (isPreview && sound) fill = '[&>:first-child]:fill-primary';
-          else if (sound)
-            fill =
-              '[&>:first-child]:fill-[color-mix(in_oklab,var(--color-primary)_12%,var(--color-base-100))]';
+            fill = '[&>:first-child]:fill-mv-fill-strong';
           return (
             // biome-ignore lint/a11y/useSemanticElements: an SVG region cannot be a <button>; it takes focus and answers the mouse like one
             <g
@@ -295,15 +292,15 @@ export function MouseDisplay({
                 'cursor-pointer outline-none [&>:first-child]:transition-colors',
                 fill,
                 isSelected && !isDropTarget
-                  ? 'text-neutral-content'
-                  : isPreview && sound
-                    ? 'text-primary-content'
-                    : 'text-base-content',
+                  ? 'text-mv-on-primary'
+                  : sound
+                    ? 'text-mv-ink'
+                    : 'text-mv-subtle',
                 !isSelected && !isPreview
-                  ? 'hover:[&>:first-child]:fill-base-300'
+                  ? 'hover:[&>:first-child]:fill-mv-fill'
                   : '',
                 isInert ? 'opacity-30 pointer-events-none' : '',
-                'focus-visible:[&>:first-child]:stroke-primary',
+                'focus-visible:[&>:first-child]:stroke-mv-ink focus-visible:[&>:first-child]:stroke-2',
               )}
               onFocus={() => onFocusKey(keyId)}
               // The real mouse plays wherever it clicks; a finger plays the
@@ -362,40 +359,45 @@ export function MouseDisplay({
                 }
               }}
             >
-              <g className="stroke-base-content/30" strokeWidth={1.5}>
+              <g className="stroke-mv-line-strong" strokeWidth={1.5}>
                 {region.shape}
               </g>
               <title>{title}</title>
               {/* Side labels sit outside the body, in the page's text colour */}
-              <g
-                className={
-                  label.startsWith('Button') ? 'text-base-content/80' : ''
-                }
-              >
+              <g className={label.startsWith('Button') ? 'text-mv-muted' : ''}>
                 {region.label}
               </g>
-              {!isPreview && sound && (
-                <circle
-                  cx={region.dot[0]}
-                  cy={region.dot[1]}
-                  r={5}
-                  className={cn(
-                    source
-                      ? getAudioTrackColor(source.colorIndex).fill
-                      : 'fill-primary',
-                    'stroke-white',
-                  )}
-                  strokeWidth={2}
-                />
-              )}
-              {!isPreview && sound?.release && (
-                <circle
-                  cx={region.releaseDot?.[0] ?? region.dot[0] + 12}
-                  cy={region.releaseDot?.[1] ?? region.dot[1]}
-                  r={5}
-                  className="fill-secondary stroke-white"
-                  strokeWidth={2}
-                />
+              {/* The keys' edge, as a bar: press on the left, release on the right */}
+              {sound && (
+                <g className="pointer-events-none">
+                  {(region.releaseDot
+                    ? [
+                        // Upright pills either side of the wheel's icon
+                        { at: region.releaseDot, x: -3, y: -5, w: 6, h: 10 },
+                        { at: region.dot, x: -3, y: -5, w: 6, h: 10 },
+                      ]
+                    : [
+                        { at: region.dot, x: -11, y: -3, w: 10, h: 6 },
+                        { at: region.dot, x: 1, y: -3, w: 10, h: 6 },
+                      ]
+                  ).map((half, side) => (
+                    <rect
+                      key={side === 0 ? 'press' : 'release'}
+                      x={half.at[0] + half.x}
+                      y={half.at[1] + half.y}
+                      width={half.w}
+                      height={half.h}
+                      rx={3}
+                      className={
+                        side === 0
+                          ? 'fill-mv-press'
+                          : sound.release
+                            ? 'fill-mv-release'
+                            : 'fill-mv-fill-strong'
+                      }
+                    />
+                  ))}
+                </g>
               )}
             </g>
           );
@@ -403,7 +405,7 @@ export function MouseDisplay({
         {/* Seam between the buttons and the palm rest */}
         <path
           d={`M${CX - 100},${SEAM_Y} H${CX + 100}`}
-          className="stroke-base-content/25 pointer-events-none"
+          className="stroke-mv-line-strong pointer-events-none"
           strokeWidth={1.5}
         />
       </svg>

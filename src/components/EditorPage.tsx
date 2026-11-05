@@ -57,9 +57,10 @@ import {
 } from '@/components/editor/MouseDisplay';
 import { NextStep } from '@/components/editor/NextStep';
 import { OneSoundPane } from '@/components/editor/OneSoundPane';
-import { ProgressLine } from '@/components/editor/ProgressLine';
-import { QUICK_SELECT_SELECTOR } from '@/components/editor/QuickSelect';
+import { StepsBand } from '@/components/editor/ProgressLine';
+import { QuickSelect } from '@/components/editor/QuickSelect';
 import {
+  PANEL_LABEL_CLASS,
   type SoundSlot,
   TimeSegmentControls,
 } from '@/components/editor/TimeSegmentControls';
@@ -69,13 +70,19 @@ import {
 } from '@/components/editor/WaveformEditor';
 import { dropCodeAt, FileDropOverlay } from '@/components/FileDropOverlay';
 import { Footer } from '@/components/Footer';
-import { X } from '@/components/icons';
+import { Loader, X } from '@/components/icons';
 import { MyPacksModal } from '@/components/MyPacksModal';
 import { MyPacksScreen } from '@/components/start/MyPacksScreen';
 import { PackTypeScreen } from '@/components/start/PackTypeScreen';
 import { PhoneScreen } from '@/components/start/PhoneScreen';
-import { SCREEN_HEADING_ID, ScreenHeading } from '@/components/start/StartPage';
+import {
+  SCREEN_HEADING_ID,
+  ScreenHeading,
+  TEXT_LINK_CLASS,
+} from '@/components/start/StartPage';
 import { StartScreen } from '@/components/start/StartScreen';
+import { buttonVariants } from '@/components/ui/button';
+import { pillList, pillTab } from '@/components/ui/tabs';
 import { websiteUrl } from '@/config/siteIdentity';
 import { useKeyboardSelection } from '@/hooks/useKeyboardSelection';
 import { useLibrarySession } from '@/hooks/useLibrarySession';
@@ -250,8 +257,8 @@ const KEYBOARD_MIN_SCALE = KEY_LABEL_MIN_PX / KEY_LABEL_MAX_PX;
  * controls still fit, a narrower layout (TKL, Compact) is kept this wide.
  */
 const ROWS_READABLE_WIDTH = 560;
-/** Keyboard width (40rem) from which the Next line reads at the larger size. */
-const NEXT_STEP_LARGE_WIDTH = 640;
+/** The row over the keyboard: the layout switch and Quick select, one line high. */
+const SETTINGS_ROW_HEIGHT = 32;
 const PANEL_RESIZE_STEP = 16;
 /** The panels' collapse takes ~320ms (index.css); the tour waits it out. */
 const AUTO_TOUR_DELAY_MS = 400;
@@ -359,10 +366,10 @@ type Notice = {
 };
 
 const NOTICE_TONE_CLASSES: Record<Notice['tone'], string> = {
-  error: 'border-error/30 bg-error/10',
-  warning: 'border-warning/30 bg-warning/10',
-  success: 'border-success/30 bg-success/10',
-  info: 'border-info/30 bg-info/10',
+  error: 'bg-mv-danger-fill',
+  warning: 'bg-amber-100 dark:bg-amber-300/15',
+  success: 'bg-emerald-50 dark:bg-emerald-400/10',
+  info: 'bg-mv-raised',
 };
 
 /** The library pack open in the editor; Update publishes to it. */
@@ -972,16 +979,16 @@ export function EditorPage() {
   }, [visibility.stage, setSelectedKeys]);
 
   // Height the rows around the keyboard take, each with the column's 12px gap:
-  // the settings row above, then the hidden-keys tray and the legend with the
-  // progress line below, when shown. Fixed rather than measured: those rows derive
-  // their width from keyboardScale, so measuring them would make the scale
-  // depend on its own output. Each row stays on one line, its text cut short
+  // the settings row above, then the hidden-keys tray and the legend below,
+  // when shown. Fixed rather than measured: those rows derive their width
+  // from keyboardScale, so measuring them would make the scale depend on its
+  // own output. Each row stays on one line, its content cut short or scrolled
   // rather than wrapped, so these heights hold. Preview collapses them all,
   // so the keyboard gets that space back.
   const rowsHeight = isPreview
     ? 0
     : [
-        24,
+        SETTINGS_ROW_HEIGHT,
         hasHiddenKeys ? 24 : 0,
         visibility.legend ? KEY_LEGEND_ROWS_HEIGHT : 0,
       ]
@@ -1048,8 +1055,6 @@ export function EditorPage() {
   );
   // What the pane of a file of one sound needs, which has no waveform.
   const [oneSoundHeight, setOneSoundHeight] = useState<number | null>(null);
-  // The same, up to where Quick select starts; null without Quick select.
-  const [quickSelectStart, setQuickSelectStart] = useState<number | null>(null);
   // Stacked, what that pane's panel holds besides the file list.
   const [stackedListRest, setStackedListRest] = useState<number | null>(null);
 
@@ -1094,26 +1099,11 @@ export function EditorPage() {
     if (!row || !controls || !column) return;
     // The summary sits over both columns and takes its height off the rest.
     const summary = summaryRef.current?.offsetHeight ?? 0;
-    const quickSelect = controls.querySelector<HTMLElement>(
-      QUICK_SELECT_SELECTOR,
-    );
-    // Within the controls, which scroll as one, so their scroll is no matter.
-    const toQuickSelect = quickSelect
-      ? quickSelect.getBoundingClientRect().top -
-        controls.getBoundingClientRect().top
-      : null;
     // Stacked, the whole row grows with its content and scrolls in the
     // panel. Side by side, the panel has a fixed height and only the right
     // column's content counts, with the column's padding and the row's
     // bottom border, which stays below the column's fold.
     let needed = summary + row.offsetHeight;
-    let start =
-      toQuickSelect === null
-        ? null
-        : summary +
-          controls.getBoundingClientRect().top -
-          row.getBoundingClientRect().top +
-          toQuickSelect;
     if (!isStacked) {
       const columnStyle = getComputedStyle(column);
       const paddingTop = parseFloat(columnStyle.paddingTop);
@@ -1124,10 +1114,6 @@ export function EditorPage() {
         paddingTop +
         parseFloat(columnStyle.paddingBottom) +
         border;
-      start =
-        toQuickSelect === null
-          ? null
-          : summary + paddingTop + toQuickSelect + border;
     }
     // Without a waveform the pane is measured whole, apart from the
     // waveform's numbers, which the next file with one picks up again.
@@ -1138,9 +1124,6 @@ export function EditorPage() {
       return;
     }
     setPanelControlsHeight(needed - waveform.offsetHeight);
-    setQuickSelectStart(
-      start === null ? null : Math.round(start - waveform.offsetHeight),
-    );
   }, [isStacked]);
 
   // Measured after every commit, so a row or a notice this page adds is
@@ -1179,9 +1162,7 @@ export function EditorPage() {
 
   // The waveform takes what the panel has besides its controls: the fixed
   // height side by side, about half the screen stacked, within the most the
-  // panel shows before its controls scroll. A panel too short for them all
-  // ends where Quick select starts and the waveform takes the rest, so the
-  // chips wait below the fold whole rather than show a slice.
+  // panel shows before its controls scroll.
   const panelView = panelHeight ?? stackedPanelMax;
   // Stacked, the pane of a file of one sound has no waveform to give way, so
   // the file list does: the summary, the key card and the pane's chips stay
@@ -1195,11 +1176,8 @@ export function EditorPage() {
         : undefined;
   const panelControls = panelControlsHeight ?? PANEL_CONTROLS_HEIGHT;
   const waveformHeight = clamp(
-    quickSelectStart !== null &&
-      panelControls + WAVEFORM_SQUEEZED_HEIGHT > panelView
-      ? panelView - quickSelectStart
-      : Math.min(panelHeight ?? Math.round(viewport.height / 2), panelView) -
-          panelControls,
+    Math.min(panelHeight ?? Math.round(viewport.height / 2), panelView) -
+      panelControls,
     WAVEFORM_SQUEEZED_HEIGHT,
     WAVEFORM_MAX_HEIGHT,
   );
@@ -2766,8 +2744,8 @@ export function EditorPage() {
     <>
       <div className="flex flex-col h-full min-h-0">
         {isPreview ? (
-          <div className="shrink-0 flex items-center justify-center gap-4 px-4 py-3 motion-safe:animate-[preview-bar-in_260ms_ease-out]">
-            <span className="text-sm text-base-content/60">
+          <div className="shrink-0 flex min-h-16 items-center justify-center gap-4 px-4 py-3 shadow-[inset_0_-1px_0_var(--mv-line)] motion-safe:animate-[preview-bar-in_260ms_ease-out]">
+            <span className="text-sm text-mv-muted">
               {isPreviewLoading
                 ? 'Loading sounds…'
                 : previewError
@@ -2780,10 +2758,10 @@ export function EditorPage() {
             </span>
             <button
               type="button"
-              className="btn btn-sm btn-neutral rounded-box"
+              className={buttonVariants({ variant: 'primary', size: 'sm' })}
               onClick={exitPreview}
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
               Back to editing
             </button>
           </div>
@@ -2953,10 +2931,10 @@ export function EditorPage() {
           isOpeningFile ||
           (openingPackId &&
             (screen === 'start' || (isWorkspace && !showMyPacks)))) && (
-          <div className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center">
-            <div className="bg-base-100 rounded-lg shadow-xl p-8 flex flex-col items-center gap-4">
-              <span className="loading loading-spinner loading-lg text-primary"></span>
-              <p className="text-sm font-medium">
+          <div className="fixed inset-0 z-[110] bg-[rgb(24_24_27/0.45)] flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4 rounded-[14px] bg-mv-page p-8 text-mv-ink shadow-[0_24px_60px_-20px_rgb(24_24_27/0.45)] dark:shadow-[0_0_0_1px_var(--mv-line),0_24px_60px_-20px_rgb(0_0_0/0.8)]">
+              <Loader className="size-8 animate-spin" aria-hidden="true" />
+              <p className="m-0 text-sm font-bold">
                 {isExporting
                   ? 'Making the .zip…'
                   : isUpdating
@@ -2964,7 +2942,7 @@ export function EditorPage() {
                     : 'Opening the pack…'}
               </p>
               {(isExporting || isUpdating) && (
-                <p className="text-xs text-base-content/60">
+                <p className="m-0 text-xs text-mv-subtle">
                   Compressing audio — this can take a while for long files.
                 </p>
               )}
@@ -3056,16 +3034,36 @@ export function EditorPage() {
                 Editing {packInfo.name}
               </ScreenHeading>
             )}
+            {/* Outside the keyboard column like the notices, so its height,
+            one line or two, is taken from the column as it is measured. */}
+            <div
+              className="editor-chrome-vertical editor-chrome-top shrink-0"
+              data-hidden={isPreview}
+            >
+              <StepsBand
+                items={progressItems}
+                next={
+                  <NextStep
+                    stage={visibility.stage}
+                    packType={packInfo.packType}
+                    isTouch={isCoarsePointer}
+                    activeFileKind={activeFileKind}
+                    selectedCount={selectedCodes.length}
+                    selectedKeyFile={selectedKeyFile}
+                  />
+                }
+              />
+            </div>
             {/* Notices sit outside the keyboard column, whose fit-to-height
             scale only accounts for its own rows; the panel's default height
             makes room for them. Short screens get a compact notice, and a
             long list scrolls rather than squeeze the keyboard. */}
             {notice && (
               <div
-                className={`shrink-0 flex items-start justify-center gap-3 border-b px-4 py-2 text-sm short:py-1 short:text-xs ${NOTICE_TONE_CLASSES[notice.tone]}`}
+                className={`shrink-0 flex items-start justify-center gap-3 px-5 py-2.5 text-sm text-mv-text shadow-[inset_0_-1px_0_var(--mv-line)] short:py-1 short:text-xs ${NOTICE_TONE_CLASSES[notice.tone]}`}
               >
                 <div className="min-w-0 short:max-h-20 short:overflow-y-auto">
-                  <p>
+                  <p className="m-0">
                     {notice.message}
                     {notice.link && (
                       <>
@@ -3074,7 +3072,7 @@ export function EditorPage() {
                           href={notice.link.href}
                           target="_blank"
                           rel="noopener"
-                          className="link font-medium"
+                          className={TEXT_LINK_CLASS}
                         >
                           {notice.link.label}
                         </a>
@@ -3091,7 +3089,7 @@ export function EditorPage() {
                 </div>
                 <button
                   type="button"
-                  className="btn btn-xs btn-ghost shrink-0"
+                  className={`${buttonVariants({ variant: 'ghost', size: 'sm' })} -my-1 shrink-0`}
                   onClick={() => setNotice(null)}
                 >
                   Dismiss
@@ -3144,42 +3142,49 @@ export function EditorPage() {
                 style={settingsRowStyle}
               >
                 <h2 className="sr-only">Keyboard settings</h2>
-                <div className="flex h-6 items-center justify-between gap-4">
-                  <NextStep
-                    stage={visibility.stage}
-                    packType={packInfo.packType}
-                    isTouch={isCoarsePointer}
-                    activeFileKind={activeFileKind}
-                    selectedCount={selectedCodes.length}
-                    selectedKeyFile={selectedKeyFile}
-                    isLarge={keyboardWidth >= NEXT_STEP_LARGE_WIDTH}
-                  />
-                  {visibility.keyboardSize && (
-                    <div className="flex shrink-0 items-center gap-4">
-                      <div className="join">
-                        <button
-                          type="button"
-                          className={`btn btn-xs join-item ${keyboardSize === 'fullsize' ? 'btn-active' : ''}`}
-                          onClick={() => setKeyboardSize('fullsize')}
-                        >
-                          Full size
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn btn-xs join-item ${keyboardSize === 'tkl' ? 'btn-active' : ''}`}
-                          onClick={() => setKeyboardSize('tkl')}
-                        >
-                          TKL
-                        </button>
-                        <button
-                          type="button"
-                          className={`btn btn-xs join-item ${keyboardSize === 'compact' ? 'btn-active' : ''}`}
-                          onClick={() => setKeyboardSize('compact')}
-                        >
-                          Compact
-                        </button>
+                {/* One line: a row too narrow for the chips scrolls sideways */}
+                <div
+                  className="flex items-center justify-between gap-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  style={{ height: SETTINGS_ROW_HEIGHT }}
+                >
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span className={PANEL_LABEL_CLASS}>
+                      {isMousePack ? 'Mouse' : 'Keyboard'}
+                    </span>
+                    {visibility.keyboardSize && (
+                      // biome-ignore lint/a11y/useSemanticElements: three toggle buttons, not a form group
+                      <div
+                        role="group"
+                        aria-label="Layout"
+                        className={pillList}
+                      >
+                        {(
+                          [
+                            ['fullsize', 'Full size'],
+                            ['tkl', 'TKL'],
+                            ['compact', 'Compact'],
+                          ] as const
+                        ).map(([size, label]) => (
+                          <button
+                            key={size}
+                            type="button"
+                            aria-pressed={keyboardSize === size}
+                            className={`${pillTab} ${keyboardSize === size ? 'bg-mv-fill font-bold text-mv-ink' : ''}`}
+                            onClick={() => setKeyboardSize(size)}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
-                    </div>
+                    )}
+                  </div>
+                  {visibility.keyGroups && (
+                    <QuickSelect
+                      keys={keys}
+                      getKeyId={getKeyId}
+                      selectedKeys={selectedKeys}
+                      setSelectedKeys={setSelectedKeys}
+                    />
                   )}
                 </div>
               </div>
@@ -3195,7 +3200,7 @@ export function EditorPage() {
                 the same values on top of that lags behind the layout. Only
                 the fade of an empty pack's keyboard is animated. */}
                 <div
-                  className={`shrink-0 rounded transition-opacity duration-300 ${visibility.fadedKeyboard ? 'opacity-30' : ''} ${draggedSourceId ? 'outline-2 outline-dashed outline-primary -outline-offset-2' : ''}`}
+                  className={`shrink-0 rounded-[10px] transition-opacity duration-300 ${visibility.fadedKeyboard ? 'opacity-30' : ''} ${draggedSourceId ? 'outline-2 outline-dashed outline-mv-ink/50 -outline-offset-2' : ''}`}
                   // Faded, it shows where the sounds will go, and takes no clicks or focus.
                   inert={visibility.fadedKeyboard}
                   // Inert, the tour leaves it out.
@@ -3282,7 +3287,7 @@ export function EditorPage() {
 
               {visibility.legend && (
                 <div
-                  className="editor-chrome-vertical w-full mx-auto shrink-0 flex flex-col gap-1 text-xs"
+                  className="editor-chrome-vertical w-full mx-auto shrink-0 text-xs"
                   data-hidden={isPreview}
                   style={rowsStyle}
                 >
@@ -3294,7 +3299,6 @@ export function EditorPage() {
                     }
                     isMousePack={isMousePack}
                   />
-                  <ProgressLine items={progressItems} />
                 </div>
               )}
             </div>
@@ -3357,7 +3361,7 @@ export function EditorPage() {
                   }
                 }}
               >
-                <div className="mt-1 h-1 w-12 rounded-full bg-base-content/25 transition-colors group-hover:bg-primary group-focus-visible:bg-primary" />
+                <div className="mt-1 h-[5px] w-10 rounded-full bg-mv-line-strong transition-colors group-hover:bg-mv-ink group-focus-visible:bg-mv-ink" />
               </div>
             )}
 
@@ -3365,7 +3369,7 @@ export function EditorPage() {
             {/* Collapsed rather than taken off the page before the first file,
             so the keyboard glides into the space it leaves. */}
             <div
-              className="editor-chrome-vertical shrink-0 editor-panel-surface border-t-2 border-base-content/20"
+              className="editor-chrome-vertical shrink-0 editor-panel-surface border-t border-mv-line"
               data-hidden={isPreview || !visibility.soundPanel}
               inert={!visibility.soundPanel}
             >
@@ -3399,7 +3403,7 @@ export function EditorPage() {
                 {/* Dividers run edge to edge: padding lives inside each column, not on the row */}
                 <div
                   ref={panelRowRef}
-                  className="flex flex-col lg:flex-row items-stretch max-lg:shrink-0 lg:flex-1 min-h-0 border-b-2 border-base-content/20"
+                  className="flex flex-col lg:flex-row items-stretch max-lg:shrink-0 lg:flex-1 min-h-0 border-b border-mv-line"
                 >
                   {/* Left: audio/video import. Stacked, it is a short dropzone,
                   sizes to the file list once audio is loaded (the waveform
@@ -3411,7 +3415,7 @@ export function EditorPage() {
                   <div
                     // The tour points only at what is on show.
                     data-tour={visibility.soundPanel ? 'sources' : undefined}
-                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : visibility.waveform && audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-base-content/20 px-4 py-3 ${showKeyCard ? 'max-lg:flex-row max-lg:gap-4 lg:overflow-y-auto' : ''}`}
+                    className={`w-full flex flex-col ${!audioFile ? 'h-[180px]' : visibility.waveform && audioFile.type.startsWith('video/') ? 'h-[320px]' : 'h-auto'} lg:h-full lg:w-[360px] shrink-0 min-w-0 lg:border-r border-mv-line px-4 py-3 ${showKeyCard ? 'max-lg:flex-row max-lg:gap-4 lg:overflow-y-auto' : ''}`}
                   >
                     <AudioFileSelector
                       sources={sources}
@@ -3515,8 +3519,6 @@ export function EditorPage() {
                           setWaveformSelection={setWaveformSelection}
                           isPlaying={isPlaying}
                           playSelectedSegment={playSelectedSegment}
-                          selectedKeys={selectedKeys}
-                          setSelectedKeys={setSelectedKeys}
                           selectedCodes={selectedCodes}
                           keySounds={keySounds}
                           commitKeySounds={commitKeySounds}
@@ -3532,15 +3534,12 @@ export function EditorPage() {
                           showSlotSwitch={visibility.pressReleaseToggle}
                           showExactTimes={showExactTimes}
                           setShowExactTimes={setShowExactTimes}
-                          // A mouse pack has no groups of keys to pick.
-                          keys={visibility.keyGroups ? keys : undefined}
-                          getKeyId={getKeyId}
                           noun={noun}
                         />
                       </div>
                     )}
                     {activeSource?.missing && (
-                      <div ref={panelControlsRef} className="min-w-0 px-4">
+                      <div ref={panelControlsRef} className="min-w-0 px-5">
                         <MissingAudioPane
                           name={activeSource.file.name}
                           count={
@@ -3580,15 +3579,11 @@ export function EditorPage() {
                                 keySounds,
                               ) === keySounds
                             }
-                            selectedKeys={selectedKeys}
-                            setSelectedKeys={setSelectedKeys}
                             selectedCodes={selectedCodes}
                             keySounds={keySounds}
                             commitKeySounds={commitKeySounds}
                             onClearSelected={clearSelectedKeySounds}
                             hiddenCount={hiddenKeys.length}
-                            keys={visibility.keyGroups ? keys : undefined}
-                            getKeyId={getKeyId}
                           />
                         </div>
                       )}{' '}
