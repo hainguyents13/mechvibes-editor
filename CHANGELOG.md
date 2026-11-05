@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A new look, the same as mechvibes.com.** The editor takes the site's colours, fonts, buttons and header, in light and dark. The light/dark switch moves to the top bar, and the footer shows only before a pack is open, so the keyboard gets the room.
+- **Keys you can read at a glance.** Keys are drawn as raised keycaps. The edge under a key shows its sounds: the left half for the press sound, the right half for the release sound. This replaces the dots, on the keyboard, the mouse and the key card.
+- **What is done, and what comes next, in one place.** A band under the top bar shows the steps so far and the **Next** line. **Quick select** (letters, numbers, F keys, modifiers) sits right above the keyboard, and **Press** and **Release** sit beside **Apply**.
+
 ## [1.1.0] - 2026-11-02
 
 ### Added

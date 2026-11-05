@@ -66,20 +66,14 @@ export function nextStepText({
 }
 
 /** What to do next, kept to one line. */
-export function NextStep({
-  isLarge,
-  ...props
-}: Parameters<typeof nextStepText>[0] & {
-  /** Over a wide keyboard, the line reads at the larger size. */
-  isLarge: boolean;
-}) {
+export function NextStep(props: Parameters<typeof nextStepText>[0]) {
   const next = nextStepText(props);
   return (
     <p
-      className={`min-w-0 truncate ${isLarge ? 'text-sm' : 'text-xs'} text-base-content/70`}
+      className="m-0 min-w-0 truncate text-[13px] text-mv-muted"
       title={`Next: ${next}`}
     >
-      <span className="font-medium text-base-content">Next:</span> {next}
+      <strong className="font-bold text-mv-ink">Next:</strong> {next}
     </p>
   );
 }

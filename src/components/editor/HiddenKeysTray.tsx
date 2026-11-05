@@ -1,6 +1,6 @@
-import { EyeOff, Play, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { HiddenKey } from '@/components/editor/hidden-keys';
+import { EyeOff, Play, X } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { playFileSegment } from '@/utils/audioUtils';
 import {
@@ -151,10 +151,7 @@ export function HiddenKeysTray({
         ref={chipsRef}
         className="flex h-full w-max items-center gap-3 whitespace-nowrap"
       >
-        <EyeOff
-          className="h-3.5 w-3.5 shrink-0 text-base-content/60"
-          aria-hidden
-        />
+        <EyeOff className="size-3.5 shrink-0 text-mv-subtle" aria-hidden />
         {GROUPS.map(({ label, reasons }) => {
           const chips = hiddenKeys.filter((hidden) =>
             reasons.includes(hidden.reason),
@@ -162,7 +159,7 @@ export function HiddenKeysTray({
           if (chips.length === 0) return null;
           return (
             <div key={label} className="flex items-center gap-1.5">
-              <span className="text-base-content/60">
+              <span className="text-mv-subtle">
                 {label} ({chips.length}):
               </span>
               {chips.map((hidden) => {
@@ -176,14 +173,14 @@ export function HiddenKeysTray({
                     // A file dropped on the chip goes to its key, which is not drawn.
                     data-drop-code={hidden.code}
                     className={cn(
-                      'inline-flex h-5 items-center gap-0.5 rounded-box border border-base-content/20 bg-base-100 px-0.5 font-mono',
+                      'inline-flex h-5 items-center gap-0.5 rounded-md bg-mv-page px-0.5 font-code text-mv-ink shadow-[inset_0_0_0_1px_var(--mv-line-strong)]',
                       dropCodes?.has(hidden.code) &&
-                        'border-primary bg-primary/25 ring-2 ring-primary',
+                        'bg-mv-fill outline-2 outline-offset-1 outline-mv-ink',
                     )}
                   >
                     <button
                       type="button"
-                      className="rounded p-0.5 hover:bg-base-300 disabled:opacity-40"
+                      className="cursor-pointer rounded p-0.5 hover:bg-mv-fill disabled:opacity-40"
                       aria-label={`Play ${hidden.code}`}
                       title={
                         canPlay
@@ -193,17 +190,17 @@ export function HiddenKeysTray({
                       disabled={!canPlay}
                       onClick={() => play(hidden.code)}
                     >
-                      <Play className="h-3 w-3" />
+                      <Play className="size-3" />
                     </button>
                     {hidden.code}
                     <button
                       type="button"
-                      className="rounded p-0.5 hover:bg-base-300"
+                      className="cursor-pointer rounded p-0.5 hover:bg-mv-fill"
                       aria-label={`Clear the sound on ${hidden.code}`}
                       data-clear
                       onClick={(e) => clear(hidden.code, e.currentTarget)}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="size-3" />
                     </button>
                   </span>
                 );

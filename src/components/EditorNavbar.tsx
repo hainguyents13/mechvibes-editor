@@ -1,42 +1,76 @@
+import { useState } from 'react';
 import {
   BookOpen,
   ChevronDown,
   CircleHelp,
   CloudUpload,
+  Discord,
   Download,
   FolderOpen,
+  GitHub,
   House,
   Keyboard,
-  Library,
+  Loader,
   LogIn,
   Menu,
   MonitorDown,
   Mouse,
+  Package,
   Pencil,
   Play,
   Redo2,
   RotateCcw,
   Undo2,
-} from 'lucide-react';
-import { useState } from 'react';
-import { siteIdentity, websiteUrl } from '@/config/siteIdentity';
+} from '@/components/icons';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { buttonVariants } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Tip } from '@/components/ui/tooltip';
+import {
+  discordUrl,
+  editorGuideUrl,
+  editorRepoUrl,
+  websiteUrl,
+} from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
-import { IS_MAC } from '@/lib/utils';
+import { cn, IS_MAC } from '@/lib/utils';
 import type { LibraryUser } from '@/lib/websiteApi';
 import type { PackType } from '@/utils/soundPack';
 import { Logo } from './Logo';
-import { NavbarMenu } from './NavbarMenu';
 
 // Website pages, opened in a new tab so the pack being edited stays open.
 const WEBSITE_LINKS = [
   { label: 'Home', href: websiteUrl, Icon: House },
-  { label: 'Sound packs', href: `${websiteUrl}/sound-packs`, Icon: Library },
+  { label: 'Sound packs', href: `${websiteUrl}/sound-packs`, Icon: Package },
   { label: 'Download app', href: `${websiteUrl}/download`, Icon: MonitorDown },
-  { label: 'Guide', href: `${websiteUrl}/guides/editor`, Icon: BookOpen },
+  { label: 'Editor guide', href: editorGuideUrl, Icon: BookOpen },
+];
+const COMMUNITY_LINKS = [
+  { label: 'Discord', href: discordUrl, Icon: Discord },
+  { label: 'GitHub', href: editorRepoUrl, Icon: GitHub },
 ];
 
 const UNDO_SHORTCUT = IS_MAC ? '⌘Z' : 'Ctrl+Z';
 const REDO_SHORTCUT = IS_MAC ? '⇧⌘Z' : 'Ctrl+Y';
+
+/** A labelled button of the bar: 36px, as tall as its icon buttons. */
+const barButton = (
+  variant: 'primary' | 'secondary' | 'outline' | 'ghost',
+  className?: string,
+) =>
+  cn(
+    buttonVariants({ variant, size: 'sm' }),
+    'h-9 px-2.5 lg:px-3.5',
+    className,
+  );
+const barIcon = (variant: 'outline' | 'ghost') =>
+  buttonVariants({ variant, size: 'icon' });
 
 /** The controls for the open pack. */
 interface WorkspaceControls {
@@ -88,15 +122,29 @@ function Avatar({ user }: { user: LibraryUser }) {
         alt=""
         referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
-        className="h-6 w-6 shrink-0 rounded-full object-cover"
+        className="size-7 shrink-0 rounded-full object-cover"
       />
     );
   }
   return (
-    <span className="h-6 w-6 shrink-0 rounded-full bg-neutral text-neutral-content text-xs font-medium flex items-center justify-center">
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-mv-fill-strong text-xs font-bold text-mv-ink">
       {user.name.trim().charAt(0).toUpperCase() || '?'}
     </span>
   );
+}
+
+/** A thin upright line between groups of the bar. */
+function BarDivider() {
+  return (
+    <span
+      aria-hidden="true"
+      className="mx-1 hidden h-5 w-px shrink-0 bg-mv-line sm:block"
+    />
+  );
+}
+
+function Spinner() {
+  return <Loader aria-hidden="true" className="size-4 animate-spin" />;
 }
 
 function PackControls({
@@ -119,120 +167,131 @@ function PackControls({
   const isMouse = packType === 'Mouse';
   return (
     <>
-      {/* Icon-only; left out on phones, which cannot edit, so the account button keeps its room. The wrapper keeps the tooltip on a disabled button */}
-      <div className="hidden sm:flex items-center">
-        <div
-          className="tooltip tooltip-bottom"
-          data-tip={
+      {/* Icon-only; left out on phones, which cannot edit, so the account
+      button keeps its room. The span keeps the tooltip on a disabled button. */}
+      <div className="hidden items-center sm:flex">
+        <Tip
+          label={
             undoLabel
               ? `Undo ${undoLabel} (${UNDO_SHORTCUT})`
               : 'Nothing to undo'
           }
         >
-          <button
-            type="button"
-            onClick={onUndo}
-            disabled={!undoLabel}
-            aria-label={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
-            className="btn btn-sm btn-ghost btn-square rounded-box"
-          >
-            <Undo2 className="h-4 w-4" />
-          </button>
-        </div>
-        <div
-          className="tooltip tooltip-bottom"
-          data-tip={
+          <span>
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!undoLabel}
+              aria-label={undoLabel ? `Undo ${undoLabel}` : 'Undo'}
+              className={barIcon('ghost')}
+            >
+              <Undo2 className="size-4" />
+            </button>
+          </span>
+        </Tip>
+        <Tip
+          label={
             redoLabel
               ? `Redo ${redoLabel} (${REDO_SHORTCUT})`
               : 'Nothing to redo'
           }
         >
-          <button
-            type="button"
-            onClick={onRedo}
-            disabled={!redoLabel}
-            aria-label={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
-            className="btn btn-sm btn-ghost btn-square rounded-box"
-          >
-            <Redo2 className="h-4 w-4" />
-          </button>
-        </div>
+          <span>
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!redoLabel}
+              aria-label={redoLabel ? `Redo ${redoLabel}` : 'Redo'}
+              className={barIcon('ghost')}
+            >
+              <Redo2 className="size-4" />
+            </button>
+          </span>
+        </Tip>
       </div>
-      <NavbarMenu
-        align="end"
-        buttonLabel="Help"
-        tour="help"
-        buttonClassName="btn btn-sm btn-ghost rounded-box flex items-center gap-1 px-2 lg:px-3"
-        items={[
-          { label: 'Take the tour', onSelect: onStartTour },
-          { label: 'Keyboard shortcuts', onSelect: onShowShortcuts },
-        ]}
-      >
-        <CircleHelp className="h-4 w-4" />
-        <span className="hidden xl:inline">Help</span>
-      </NavbarMenu>
-      <div
-        className="tooltip tooltip-bottom"
-        data-tip="Open another pack or make a new one"
-        data-tour="start-over"
-      >
+      <BarDivider />
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger
+          aria-label="Help"
+          data-tour="help"
+          className={barButton('ghost')}
+        >
+          <CircleHelp className="size-4" />
+          <span className="hidden xl:inline">Help</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onSelect={onStartTour}>
+            Take the tour
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onShowShortcuts}>
+            Keyboard shortcuts
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <a href={editorGuideUrl} target="_blank" rel="noopener">
+              Editor guide
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Tip label="Open another pack or make a new one">
         <button
           type="button"
           onClick={onStartOver}
           aria-label="Start over"
-          className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
+          data-tour="start-over"
+          className={barButton('ghost')}
         >
-          <RotateCcw className="h-4 w-4 xl:mr-2" />
+          <RotateCcw className="size-4" />
           {/* Labelled from xl, so the pack name keeps room at lg */}
           <span className="hidden xl:inline">Start over</span>
         </button>
-      </div>
+      </Tip>
       {onTryIt && (
-        <div
-          className="tooltip tooltip-bottom"
-          data-tour="try-it"
-          data-tip={
+        <Tip
+          label={
             canTryIt
               ? `Hear the pack as you ${isMouse ? 'click' : 'type'}`
               : `This browser cannot play the sounds of these ${isMouse ? 'buttons' : 'keys'}`
           }
         >
-          <button
-            type="button"
-            onClick={onTryIt}
-            aria-label="Try it"
-            disabled={!canTryIt}
-            // A pulse that plays out once, or with reduced motion just the outline.
-            className={`btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3 ${emphasizeTryIt && canTryIt ? 'outline-2 outline-offset-2 outline-primary/60 motion-safe:animate-[try-it-cue_1.4s_ease-out_3]' : ''}`}
-          >
-            <Play className="h-4 w-4 lg:mr-2" />
-            <span className="hidden lg:inline">Try it</span>
-          </button>
-        </div>
+          <span data-tour="try-it">
+            <button
+              type="button"
+              onClick={onTryIt}
+              aria-label="Try it"
+              disabled={!canTryIt}
+              // A pulse that plays out once, or with reduced motion just the outline.
+              className={barButton(
+                'outline',
+                emphasizeTryIt && canTryIt
+                  ? 'outline-2 outline-offset-2 outline-mv-ink/40 motion-safe:animate-[try-it-cue_1.4s_ease-out_3]'
+                  : undefined,
+              )}
+            >
+              <Play className="size-4" />
+              <span className="hidden lg:inline">Try it</span>
+            </button>
+          </span>
+        </Tip>
       )}
       {onUpdate && (
-        <div
-          className="tooltip tooltip-bottom"
-          data-tour="update"
-          data-tip="Publish these changes as the pack's next revision"
-        >
-          <button
-            type="button"
-            onClick={onUpdate}
-            aria-label="Update"
-            disabled={isUpdating || isDownloading}
-            className="btn btn-sm btn-primary rounded-box flex items-center space-x-1 px-2 lg:px-3"
-          >
-            {isUpdating ? (
-              <span className="loading loading-spinner loading-xs"></span>
-            ) : (
-              <CloudUpload className="h-4 w-4 lg:mr-2" />
-            )}
-            <span className="hidden lg:inline">
-              {isUpdating ? 'Updating…' : 'Update'}
-            </span>
-          </button>
-        </div>
+        <Tip label="Publish these changes as the pack's next revision">
+          <span data-tour="update">
+            <button
+              type="button"
+              onClick={onUpdate}
+              aria-label="Update"
+              disabled={isUpdating || isDownloading}
+              className={barButton('secondary')}
+            >
+              {isUpdating ? <Spinner /> : <CloudUpload className="size-4" />}
+              <span className="hidden lg:inline">
+                {isUpdating ? 'Updating…' : 'Update'}
+              </span>
+            </button>
+          </span>
+        </Tip>
       )}
       {onDownload && (
         <button
@@ -241,18 +300,16 @@ function PackControls({
           aria-label="Download .zip"
           data-tour="download"
           disabled={isDownloading || isUpdating}
-          className="btn btn-sm btn-neutral rounded-box flex items-center space-x-1 px-2 lg:px-3"
+          // Update is the library pack's way out, so Download steps back.
+          className={barButton(onUpdate ? 'outline' : 'secondary')}
         >
-          {isDownloading ? (
-            <span className="loading loading-spinner loading-xs"></span>
-          ) : (
-            <Download className="h-4 w-4 lg:mr-2" />
-          )}
+          {isDownloading ? <Spinner /> : <Download className="size-4" />}
           <span className="hidden lg:inline">
             {isDownloading ? 'Making .zip…' : 'Download .zip'}
           </span>
         </button>
       )}
+      <BarDivider />
     </>
   );
 }
@@ -265,26 +322,64 @@ function PackTypeChip({
   const other: PackType = packType === 'Keyboard' ? 'Mouse' : 'Keyboard';
   const Icon = packType === 'Keyboard' ? Keyboard : Mouse;
   return (
-    <NavbarMenu
-      tour="pack-type"
-      buttonLabel={`${packType} pack`}
-      buttonClassName="btn btn-xs btn-outline rounded-full shrink-0 gap-1 border-base-content/20 font-medium"
-      items={[
-        {
-          label: `Switch to ${other.toLowerCase()} pack`,
-          onSelect: () => onSwitchPackType(other),
-        },
-      ]}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {/* Named at every width: an icon alone does not say this sets the
-      pack's type. The pack name beside it gives up room first. */}
-      <span>{packType} pack</span>
-      <ChevronDown className="h-3 w-3" />
-    </NavbarMenu>
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        data-tour="pack-type"
+        className="inline-flex h-[30px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-mv-page px-2.5 text-xs font-bold text-mv-text shadow-[inset_0_0_0_1px_var(--mv-line)] outline-none hover:text-mv-ink hover:shadow-[inset_0_0_0_1px_var(--mv-line-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-line-strong"
+      >
+        <Icon className="size-3.5" />
+        {/* Named at every width: an icon alone does not say this sets the
+        pack's type. The pack name beside it gives up room first. */}
+        <span>{packType} pack</span>
+        <ChevronDown className="size-3" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="center">
+        <DropdownMenuItem onSelect={() => onSwitchPackType(other)}>
+          Switch to {other.toLowerCase()} pack
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
+/** The links to mechvibes.com and its community, in a menu. */
+function WebsiteMenu() {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        aria-label="Mechvibes website"
+        className={barIcon('outline')}
+      >
+        <Menu className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {WEBSITE_LINKS.map(({ label, href, Icon }) => (
+          <DropdownMenuItem key={label} asChild>
+            <a href={href} target="_blank" rel="noopener">
+              <Icon aria-hidden="true" />
+              {label}
+            </a>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        {COMMUNITY_LINKS.map(({ label, href, Icon }) => (
+          <DropdownMenuItem key={label} asChild>
+            <a href={href} target="_blank" rel="noopener">
+              <Icon aria-hidden="true" />
+              {label}
+            </a>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * The bar over every screen, in mechvibes.com's header style: the website
+ * menu and the brand, the open pack's name and type, its actions, the
+ * light/dark switch and the account.
+ */
 export function EditorNavbar({
   session,
   signInHref,
@@ -293,55 +388,15 @@ export function EditorNavbar({
   workspace,
 }: EditorNavbarProps) {
   return (
-    <div className="sticky top-0 z-50 w-full bg-base-200 border-b border-base-300">
-      <div className="flex px-2 sm:px-4 py-2 items-center justify-between gap-2">
-        {/* Left Section  */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* Website links: a menu on narrower screens, inline from 1800px up */}
-          <div className="dropdown min-[1800px]:hidden">
-            <button
-              type="button"
-              aria-label="Mechvibes website"
-              className="btn btn-sm btn-ghost btn-circle"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-            <ul className="dropdown-content menu menu-sm z-50 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg">
-              {WEBSITE_LINKS.map(({ label, href, Icon }) => (
-                <li key={label}>
-                  <a href={href} target="_blank" rel="noopener">
-                    <Icon className="h-4 w-4" />
-                    {label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <Logo
-            text={`${siteIdentity.productName} Editor`}
-            compact={workspace !== undefined}
-          />
-          <nav
-            aria-label="Mechvibes website"
-            className="hidden min-[1800px]:flex items-center gap-1 ml-2"
-          >
-            {WEBSITE_LINKS.map(({ label, href, Icon }) => (
-              <a
-                key={label}
-                href={href}
-                target="_blank"
-                rel="noopener"
-                className="btn btn-sm btn-ghost rounded-box px-3 font-normal"
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </a>
-            ))}
-          </nav>
+    <header className="sticky top-0 z-50 w-full shrink-0 bg-mv-page font-body text-mv-ink shadow-[inset_0_-1px_0_var(--mv-line)]">
+      <div className="flex min-h-16 items-center justify-between gap-2 px-3 py-2.5 sm:px-5">
+        <div className="flex shrink-0 items-center gap-2.5">
+          <WebsiteMenu />
+          <Logo compact={workspace !== undefined} />
         </div>
 
-        {/* Middle Section - Pack Name & Edit */}
-        <div className="flex flex-1 items-center justify-center gap-1 min-w-0">
+        {/* The pack's name and type, centred in the space left */}
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
           {workspace && (
             <>
               <button
@@ -349,12 +404,13 @@ export function EditorNavbar({
                 onClick={workspace.onEditPack}
                 data-tour="pack-details"
                 // Shrinks before the chip beside it, so a long name is cut short.
-                className="btn btn-sm btn-ghost rounded-box flex flex-nowrap items-center gap-2 min-w-0 shrink px-2 sm:px-3"
+                className={cn(
+                  buttonVariants({ variant: 'ghost', size: 'sm' }),
+                  'h-9 min-w-0 shrink px-2.5 text-[15px] text-mv-ink sm:px-3',
+                )}
               >
-                <span className="font-medium truncate">
-                  {workspace.packName}
-                </span>
-                <Pencil className="h-3 w-3 shrink-0" />
+                <span className="truncate">{workspace.packName}</span>
+                <Pencil className="size-3.5 shrink-0 text-mv-subtle" />
               </button>
               <PackTypeChip
                 packType={workspace.packType}
@@ -364,9 +420,10 @@ export function EditorNavbar({
           )}
         </div>
 
-        {/* Right Section */}
-        <div className="flex items-center gap-1 lg:gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-1 lg:gap-1.5">
           {workspace && <PackControls {...workspace} />}
+
+          <ThemeToggle className={barIcon('outline')} />
 
           {/* Library account: signing in and out happens on the website */}
           {session.status === 'signed-out' && (
@@ -376,9 +433,9 @@ export function EditorNavbar({
               rel={signInInNewTab ? 'noopener' : undefined}
               aria-label="Sign in"
               data-tour="account"
-              className="btn btn-sm btn-ghost rounded-box flex items-center space-x-1 px-2 lg:px-3"
+              className={barButton('secondary')}
             >
-              <LogIn className="h-4 w-4 lg:mr-2" />
+              <LogIn className="size-[15px]" />
               <span className="hidden lg:inline">Sign in</span>
             </a>
           )}
@@ -389,19 +446,15 @@ export function EditorNavbar({
               data-tour="account"
               aria-label={`My packs (signed in as ${session.user.name})`}
               title={`Signed in as ${session.user.name}`}
-              className="btn btn-sm btn-ghost rounded-box flex items-center gap-2 px-2 lg:px-3"
+              className={barButton('outline', 'pl-1 lg:pl-1')}
             >
               <Avatar user={session.user} />
-              {/* Inline only on the widest screens, so the pack name keeps its room; the title and the My packs dialog name the user too */}
-              <span className="hidden min-[1800px]:inline max-w-[8rem] truncate font-normal">
-                {session.user.name}
-              </span>
-              <FolderOpen className="h-4 w-4 hidden lg:inline xl:hidden" />
+              <FolderOpen className="hidden size-4 lg:inline xl:hidden" />
               <span className="hidden xl:inline">My packs</span>
             </button>
           )}
         </div>
       </div>
-    </div>
+    </header>
   );
 }

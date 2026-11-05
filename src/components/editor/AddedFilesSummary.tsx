@@ -1,8 +1,10 @@
-import { ChevronDown, CircleAlert, X } from 'lucide-react';
 import type React from 'react';
+import { ChevronDown, CircleAlert, X } from '@/components/icons';
 import { NavbarMenu } from '@/components/NavbarMenu';
+import { buttonVariants } from '@/components/ui/button';
 import type { AddSummary, AddSummaryLine } from '@/lib/addSummary';
 import type { FileKind } from '@/lib/fileKinds';
+import { cn } from '@/lib/utils';
 
 /** A line of the summary that carries a button. */
 export type SummaryActionLine = Extract<
@@ -18,6 +20,9 @@ export function readingText({ read, total }: ReadingProgress) {
     ? 'Reading the file…'
     : `Reading ${read} of ${total} files…`;
 }
+
+/** A small button of the strip, as tall as its 24px lines. */
+const STRIP_BUTTON = 'h-6 shrink-0 rounded-md px-2 text-xs';
 
 /**
  * The strip across the top of the sound panel about the last add: what kind
@@ -48,11 +53,11 @@ export function AddedFilesSummary({
     <section
       ref={ref}
       aria-label="Added files"
-      className="shrink-0 flex items-start gap-2 border-b-2 border-base-content/20 px-4 py-1.5 text-xs"
+      className="shrink-0 flex items-start gap-2 bg-mv-raised px-5 py-2 text-xs shadow-[inset_0_-1px_0_var(--mv-line)] [&_p]:m-0"
     >
       <div className="min-w-0 flex-1 flex flex-col gap-0.5">
         {reading ? (
-          <output className="block leading-6 text-base-content/70">
+          <output className="block leading-6 text-mv-muted">
             {readingText(reading)}
           </output>
         ) : (
@@ -60,10 +65,10 @@ export function AddedFilesSummary({
             {error && (
               <p
                 role="alert"
-                className="flex min-w-0 items-center gap-1.5 leading-6 text-error-strong"
+                className="flex min-w-0 items-center gap-1.5 leading-6 text-mv-danger"
                 title={error}
               >
-                <CircleAlert className="h-3.5 w-3.5 shrink-0" />
+                <CircleAlert className="size-3.5 shrink-0" />
                 <span className="truncate">{error}</span>
               </p>
             )}
@@ -71,21 +76,24 @@ export function AddedFilesSummary({
               <>
                 <div className="flex min-w-0 items-center gap-2">
                   <p
-                    className="min-w-0 truncate font-medium text-base-content"
+                    className="min-w-0 truncate text-[13px] font-bold text-mv-ink"
                     title={summary.heading}
                   >
                     {summary.heading}
                   </p>
                   <NavbarMenu
                     align="end"
-                    buttonClassName="shrink-0 btn btn-xs btn-ghost rounded-box"
+                    buttonClassName={cn(
+                      buttonVariants({ variant: 'ghost', size: 'sm' }),
+                      STRIP_BUTTON,
+                    )}
                     items={(['one', 'many'] as const).map((kind) => ({
                       label: summary.changeLabels[kind],
                       onSelect: () => onChangeKind(kind),
                     }))}
                   >
                     Change
-                    <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                    <ChevronDown className="size-3" aria-hidden="true" />
                   </NavbarMenu>
                 </div>
                 {summary.lines.map((line) => (
@@ -94,7 +102,7 @@ export function AddedFilesSummary({
                     className="flex min-w-0 items-center gap-2 leading-6"
                   >
                     <p
-                      className="min-w-0 truncate text-base-content/80"
+                      className="min-w-0 truncate text-mv-text"
                       title={line.text}
                     >
                       {line.text}
@@ -105,7 +113,10 @@ export function AddedFilesSummary({
                       line.action && (
                         <button
                           type="button"
-                          className="shrink-0 btn btn-xs btn-primary rounded-box"
+                          className={cn(
+                            buttonVariants({ variant: 'primary', size: 'sm' }),
+                            STRIP_BUTTON,
+                          )}
                           onClick={() => onAction(line)}
                         >
                           {line.action}
@@ -121,12 +132,12 @@ export function AddedFilesSummary({
       {!reading && (
         <button
           type="button"
-          className="shrink-0 btn btn-xs btn-ghost btn-square rounded-box"
+          className={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
           onClick={onDismiss}
           aria-label="Close the summary of added files"
           title="Close"
         >
-          <X className="h-3 w-3" />
+          <X className="size-3.5" />
         </button>
       )}
     </section>

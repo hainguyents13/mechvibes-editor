@@ -1,36 +1,142 @@
 @import "tailwindcss";
+/* The enter and leave animations of the menus, dialogs and tooltips */
+@import "tw-animate-css";
 
-@plugin "daisyui" {
-  /* biome-ignore lint/correctness/noUnknownProperty: DaisyUI plugin option, not a CSS property */
-  themes:
-    light --default,
-    dark --prefersdark;
+/* dark: follows the editor's own switch (data-theme on <html>), not the system
+   setting, like the mv-* colours */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* mechvibes.com's colours, one value for the light page and one for the dark
+   page (data-theme). Tailwind reads them through @theme below as bg-mv-*,
+   text-mv-*, and so on. Kept in step with the site's globals.css. */
+:root {
+  /* Native controls (scrollbars, sliders, pickers) follow the page */
+  color-scheme: light;
+  --mv-page: #ffffff;
+  --mv-raised: #fafafa;
+  --mv-fill: #f4f4f5;
+  --mv-fill-strong: #e4e4e7;
+  --mv-line: #e4e4e7;
+  --mv-line-strong: #d4d4d8;
+  --mv-ink: #18181b;
+  --mv-text: #3f3f46;
+  --mv-muted: #52525b;
+  --mv-subtle: #71717a;
+  --mv-faint: #a1a1aa;
+  /* Small uppercase headings, a step lighter than subtle */
+  --mv-label: #8e8e96;
+  --mv-up: #059669;
+  --mv-primary: #18181b;
+  --mv-on-primary: #ffffff;
+  --mv-danger: #b91c1c;
+  --mv-danger-solid: #dc2626;
+  --mv-danger-fill: #fef2f2;
+  /* The one accent: the waveform */
+  --mv-chart: hsl(245 70% 60%);
+  --mv-shadow: rgb(24 24 27 / 0.28);
+  /* The editor's own: a key's press sound and release sound, the two halves
+     of its edge. The values of daisyUI's primary and secondary, which the
+     key dots used. */
+  --mv-press: oklch(45% 0.24 277.023);
+  --mv-release: oklch(65% 0.241 354.308);
+
+  --font-lato: "Lato";
+  --font-bricolage: "Bricolage Grotesque";
+  --font-jetbrains: "JetBrains Mono";
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --mv-page: #0b0b0d;
+  --mv-raised: #121215;
+  --mv-fill: #1c1c20;
+  --mv-fill-strong: #2a2a2f;
+  --mv-line: #27272a;
+  --mv-line-strong: #3f3f46;
+  --mv-ink: #fafafa;
+  --mv-text: #d4d4d8;
+  --mv-muted: #a1a1aa;
+  --mv-subtle: #a1a1aa;
+  --mv-faint: #71717a;
+  --mv-label: #85858d;
+  --mv-up: #34d399;
+  --mv-primary: #fafafa;
+  --mv-on-primary: #18181b;
+  --mv-danger: #f87171;
+  --mv-danger-solid: #dc2626;
+  --mv-danger-fill: #2b1314;
+  --mv-chart: hsl(245 85% 72%);
+  --mv-shadow: rgb(0 0 0 / 0.6);
+  --mv-press: oklch(58% 0.233 277.117);
+  --mv-release: oklch(65% 0.241 354.308);
+}
+
+@theme inline {
+  --color-mv-page: var(--mv-page);
+  --color-mv-raised: var(--mv-raised);
+  --color-mv-fill: var(--mv-fill);
+  --color-mv-fill-strong: var(--mv-fill-strong);
+  --color-mv-line: var(--mv-line);
+  --color-mv-line-strong: var(--mv-line-strong);
+  --color-mv-ink: var(--mv-ink);
+  --color-mv-text: var(--mv-text);
+  --color-mv-muted: var(--mv-muted);
+  --color-mv-subtle: var(--mv-subtle);
+  --color-mv-faint: var(--mv-faint);
+  --color-mv-label: var(--mv-label);
+  --color-mv-up: var(--mv-up);
+  --color-mv-primary: var(--mv-primary);
+  --color-mv-on-primary: var(--mv-on-primary);
+  --color-mv-danger: var(--mv-danger);
+  --color-mv-danger-solid: var(--mv-danger-solid);
+  --color-mv-danger-fill: var(--mv-danger-fill);
+  --color-mv-chart: var(--mv-chart);
+  --color-mv-press: var(--mv-press);
+  --color-mv-release: var(--mv-release);
+  --font-display:
+    var(--font-bricolage), var(--font-lato), system-ui, sans-serif;
+  --font-body: var(--font-lato), system-ui, sans-serif;
+  --font-code: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+@layer components {
+  /* A text field, 36px like a default button */
+  .mv-field {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--mv-line-strong);
+    border-radius: 8px;
+    background: var(--mv-page);
+    color: var(--mv-ink);
+    font-size: 14px;
+    outline: none;
+  }
+  .mv-field::placeholder {
+    color: var(--mv-faint);
+  }
+  .mv-field:focus-visible,
+  .mv-field:focus-within {
+    border-color: var(--mv-ink);
+  }
+  textarea.mv-field {
+    height: auto;
+    min-height: 96px;
+    padding: 8px 12px;
+    line-height: 1.5;
+  }
 }
 
 /* A window too short for the editor's rows at their full size: a 768px or
    720px laptop. */
 @custom-variant short (@media (max-height: 50rem));
 
-/* Error text on a plain background. The theme's error colour is a light pink
-   that reads at about 2.9:1 on white, so it is pulled toward the text colour:
-   darker on light, lighter on dark. */
-@utility text-error-strong {
-  color: color-mix(in oklab, var(--color-error) 60%, var(--color-base-content));
-}
-
-/* A mark on a plain background, such as a check. The theme's success colour
-   reads at about 2:1 on white, short of the 3:1 a mark needs, so it is pulled
-   toward the text colour the same way. */
-@utility text-success-strong {
-  color: color-mix(
-    in oklab,
-    var(--color-success) 60%,
-    var(--color-base-content)
-  );
-}
-
 body {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  background-color: var(--mv-page);
+  color: var(--mv-text);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -94,24 +200,17 @@ body[data-editor-preview="true"] footer {
 /* Try it, just after a pack opens: a ring that spreads out and fades. */
 @keyframes try-it-cue {
   from {
-    box-shadow: 0 0 0 0
-      color-mix(in oklab, var(--color-primary) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--mv-ink) 35%, transparent);
   }
   to {
     box-shadow: 0 0 0 10px transparent;
   }
 }
 
-/* Editor timeline container: sits a step away from the page surface in both
-   themes — darker on light, lighter on dark — so the panel reads as its own
-   layer. base-300 only works for light (it goes darker on dark too), so the
-   shade is mixed from base-content instead. */
+/* The sound panel and what pins over it: the page's own colour, set apart
+   from the keyboard above by a line rather than a shade. */
 .editor-panel-surface {
-  background-color: color-mix(
-    in oklab,
-    var(--color-base-200) 94%,
-    var(--color-base-content) 6%
-  );
+  background-color: var(--mv-page);
 }
 
 /* The waveform panel's Sound row, pinned to the bottom of a panel too short
@@ -125,86 +224,143 @@ body[data-editor-preview="true"] footer {
 @container scroll-state(stuck: bottom) {
   .panel-pinned-row > * {
     box-shadow:
-      0 -1px 0 color-mix(in oklab, var(--color-base-content) 15%, transparent),
-      0 -8px 12px -8px
-      color-mix(in oklab, var(--color-base-content) 25%, transparent);
+      0 -1px 0 var(--mv-line),
+      0 -8px 12px -8px var(--mv-shadow);
   }
 }
 
-/* Guided tour (driver.js): its popover follows the site theme. driver.css is
-   unlayered, so these rules repeat its specificity plus the tour class. */
+/* Guided tour (driver.js): its popover in the site's menu and dialog look.
+   driver.css is unlayered, so these rules repeat its specificity plus the
+   tour class. */
 .editor-tour.driver-popover {
-  background-color: var(--color-base-100);
-  color: var(--color-base-content);
-  border: 1px solid var(--color-base-300);
-  border-radius: var(--radius-box);
-  font-family: inherit;
+  background-color: var(--mv-page);
+  color: var(--mv-text);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px var(--mv-line),
+    0 16px 32px -12px var(--mv-shadow);
+  font-family: var(--font-lato), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
   max-width: 340px;
-  padding: 16px;
+  padding: 18px;
 }
 
 .editor-tour .driver-popover-title {
-  font-size: 16px;
-  font-weight: 600;
+  /* Clear of the close button in the corner */
+  padding-right: 32px;
+  color: var(--mv-ink);
+  font-family: var(--font-bricolage), var(--font-lato), system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .editor-tour .driver-popover-description {
-  color: color-mix(in oklab, var(--color-base-content) 80%, transparent);
+  color: var(--mv-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.editor-tour
+  .driver-popover-title[style*="block"]
+  + .driver-popover-description {
+  margin-top: 8px;
+}
+
+.editor-tour .driver-popover-footer {
+  gap: 6px;
+  margin-top: 16px;
 }
 
 .editor-tour .driver-popover-progress-text {
-  color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
-  font-size: 12px;
+  color: var(--mv-subtle);
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-size: 11px;
 }
 
 .editor-tour .driver-popover-close-btn {
-  color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--mv-text);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* driver.js focuses this button on every step, so only a keyboard focus
+   marks it. */
+.editor-tour .driver-popover-close-btn:focus {
+  color: var(--mv-text);
 }
 
 .editor-tour .driver-popover-close-btn:hover,
-.editor-tour .driver-popover-close-btn:focus {
-  color: var(--color-base-content);
+.editor-tour .driver-popover-close-btn:focus-visible {
+  background-color: var(--mv-fill);
+  color: var(--mv-ink);
 }
 
 .editor-tour .driver-popover-footer-btn {
-  background-color: var(--color-base-200);
-  color: var(--color-base-content);
-  border: 1px solid var(--color-base-300);
-  border-radius: var(--radius-field);
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  color: var(--mv-text);
+  font-family: var(--font-lato), system-ui, sans-serif;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
+  line-height: 1.2;
   text-shadow: none;
+  transition: background-color 150ms;
 }
 
 .editor-tour .driver-popover-footer-btn:hover,
 .editor-tour .driver-popover-footer-btn:focus-visible {
-  background-color: var(--color-base-300);
+  background-color: var(--mv-fill);
+  color: var(--mv-ink);
+}
+
+.editor-tour .driver-popover-footer-btn:focus-visible {
+  outline: 2px solid var(--mv-line-strong);
+  outline-offset: 2px;
+}
+
+.editor-tour .driver-popover-navigation-btns button + button {
+  margin-left: 6px;
 }
 
 .editor-tour .driver-popover-next-btn {
-  background-color: var(--color-primary);
-  border-color: var(--color-primary);
-  color: var(--color-primary-content);
+  background-color: var(--mv-primary);
+  color: var(--mv-on-primary);
 }
 
 .editor-tour .driver-popover-next-btn:hover,
 .editor-tour .driver-popover-next-btn:focus-visible {
-  background-color: color-mix(in oklab, var(--color-primary) 85%, black);
+  background-color: var(--mv-primary);
+  color: var(--mv-on-primary);
+  opacity: 0.9;
 }
 
 .editor-tour .driver-popover-arrow-side-left {
-  border-left-color: var(--color-base-100);
+  border-left-color: var(--mv-page);
 }
 
 .editor-tour .driver-popover-arrow-side-right {
-  border-right-color: var(--color-base-100);
+  border-right-color: var(--mv-page);
 }
 
 .editor-tour .driver-popover-arrow-side-top {
-  border-top-color: var(--color-base-100);
+  border-top-color: var(--mv-page);
 }
 
 .editor-tour .driver-popover-arrow-side-bottom {
-  border-bottom-color: var(--color-base-100);
+  border-bottom-color: var(--mv-page);
 }

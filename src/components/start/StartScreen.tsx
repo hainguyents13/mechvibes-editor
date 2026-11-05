@@ -1,38 +1,44 @@
+import { type ReactNode, useId, useState } from 'react';
 import {
   ArrowRight,
-  AudioWaveform,
   FolderOpen,
   Globe,
-  History,
-  type LucideIcon,
+  type IconComponent,
+  Loader,
   Plus,
-} from 'lucide-react';
-import { type ReactNode, useId, useState } from 'react';
+  RotateCcw,
+} from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button';
 import { siteIdentity, websiteHost } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
+import { cn } from '@/lib/utils';
 import {
   BackButton,
-  CARD_CLASS,
   ErrorLine,
+  SCREEN_LABEL_CLASS,
+  SCREEN_TITLE_CLASS,
   ScreenHeading,
   STRETCHED_ACTION,
   StartPage,
   signInTarget,
+  TEXT_LINK_CLASS,
 } from './StartPage';
 
-const ACTION_CLASS = `${STRETCHED_ACTION} cursor-pointer text-left text-sm font-semibold focus-visible:outline-none disabled:cursor-default disabled:text-base-content/60`;
-const CROSS_LINK_CLASS = 'link relative z-10 font-medium whitespace-nowrap';
+const CROSS_LINK_CLASS = `${TEXT_LINK_CLASS} relative z-10 whitespace-nowrap`;
 
-// The card lifts while its action is hovered or keyboard-focused. Keyed on the
-// action rather than the card, so hovering a cross link leaves it at rest.
+// The card takes the raised colour while its action is hovered or
+// keyboard-focused. Keyed on the action rather than the card, so hovering a
+// cross link leaves it at rest.
 const LIFT_WITH_ACTION_CLASS =
-  'has-[[data-card-action]:not(:disabled):hover]:border-primary/60 has-[[data-card-action]:not(:disabled):hover]:shadow-lg has-[[data-card-action]:focus-visible]:border-primary/60 has-[[data-card-action]:focus-visible]:shadow-lg has-[[data-card-action]:focus-visible]:outline-2 outline-offset-2 outline-primary';
+  'has-[[data-card-action]:not(:disabled):hover]:bg-mv-raised has-[[data-card-action]:focus-visible]:bg-mv-raised';
 
-/** What clicking a card does, named in a line at its foot. */
+/** What clicking a card does, named on a button at its foot. */
 type CardAction = {
   label: string;
   /** Working on it: the card shows a spinner and cannot be clicked again. */
   busy?: boolean;
+  /** The one card whose button is filled: making a new pack. */
+  filled?: boolean;
 } & ({ href: string; newTab?: boolean } | { onClick: () => void });
 
 interface StartScreenProps {
@@ -70,9 +76,9 @@ interface StartScreenProps {
 }
 
 /**
- * One way in. With an action the whole card is the button; without one (while
- * the account loads) it is plain text. The card keeps a fixed height whatever
- * its content, so the row does not jump as the account loads.
+ * One way in, a cell of the ruled grid. With an action the whole card is the
+ * button; without one (while the account loads) it is plain text. The cells
+ * of a row share one height, so the row does not jump as the account loads.
  */
 function StartCard({
   Icon,
@@ -80,13 +86,16 @@ function StartCard({
   children,
   action,
   crossLink,
+  error,
 }: {
-  Icon: LucideIcon;
+  Icon: IconComponent;
   title: string;
   children: ReactNode;
   action?: CardAction;
   /** A link to the neighbouring card. */
   crossLink?: ReactNode;
+  /** Why the card's action did not work. */
+  error?: string | null;
 }) {
   const id = useId();
   const titleId = `${id}-title`;
@@ -98,17 +107,13 @@ function StartCard({
     const content = (
       <>
         {action.busy && (
-          <span
-            className="loading loading-spinner loading-xs mr-1.5 align-middle"
-            aria-hidden="true"
-          />
+          <Loader className="size-4 animate-spin" aria-hidden="true" />
         )}
-        <span id={labelId}>{action.label}</span>
+        <span id={labelId} className="whitespace-normal text-left">
+          {action.label}
+        </span>
         {!action.busy && (
-          <ArrowRight
-            className="ml-1 inline h-4 w-4 align-[-0.2em] text-primary"
-            aria-hidden="true"
-          />
+          <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
         )}
       </>
     );
@@ -117,7 +122,14 @@ function StartCard({
       'data-card-action': '',
       'aria-labelledby': `${titleId} ${labelId}`,
       'aria-describedby': bodyId,
-      className: ACTION_CLASS,
+      className: cn(
+        buttonVariants({
+          variant: action.filled ? 'secondary' : 'outline',
+          size: 'sm',
+        }),
+        'h-auto min-h-9 max-w-full px-3.5 py-2',
+        STRETCHED_ACTION,
+      ),
     };
     actionControl =
       'href' in action ? (
@@ -148,17 +160,26 @@ function StartCard({
 
   return (
     <section
-      className={`relative flex md:h-[17rem] flex-col p-5 ${CARD_CLASS} ${action ? LIFT_WITH_ACTION_CLASS : ''}`}
+      className={cn(
+        'relative flex min-h-[17rem] flex-col gap-2 p-6 shadow-[1px_0_0_var(--mv-line),0_1px_0_var(--mv-line)] transition-colors',
+        action && LIFT_WITH_ACTION_CLASS,
+      )}
     >
-      <Icon className="h-7 w-7 shrink-0 text-primary" aria-hidden="true" />
-      <h2 id={titleId} className="mt-3 text-lg font-semibold">
+      <Icon className="size-[22px] shrink-0 text-mv-ink" aria-hidden="true" />
+      <h2
+        id={titleId}
+        className="m-0 mt-2.5 font-display text-[21px] font-bold tracking-[-0.015em] text-mv-ink"
+      >
         {title}
       </h2>
-      <div id={bodyId} className="mt-1 text-sm text-base-content/70">
+      <div id={bodyId} className="text-sm text-mv-muted">
         {children}
       </div>
-      <div className="mt-auto pt-4">{actionControl}</div>
-      <p className="mt-3 min-h-8 text-xs text-base-content/60">{crossLink}</p>
+      <div className="mt-auto flex flex-col items-start gap-2.5 pt-4">
+        {actionControl}
+        <p className="m-0 min-h-4 text-xs text-mv-subtle">{crossLink}</p>
+        {error && <ErrorLine message={error} />}
+      </div>
     </section>
   );
 }
@@ -223,18 +244,15 @@ export function StartScreen({
       case 'loading':
         return {
           body: (
-            <>
-              <p>Checking your account...</p>
-              <progress
-                className="progress mt-3 w-full"
-                aria-label="Checking your account"
-              />
-            </>
+            <p className="m-0 flex items-center gap-2">
+              <Loader className="size-4 animate-spin" aria-hidden="true" />
+              Checking your account...
+            </p>
           ),
         };
       case 'signed-out':
         return {
-          body: <p>A pack you shared on {websiteHost}</p>,
+          body: <p className="m-0">A pack you shared on {websiteHost}</p>,
           action: {
             label: signInLabel ?? 'Sign in to see them',
             href: signInHref,
@@ -243,7 +261,7 @@ export function StartScreen({
         };
       case 'unavailable':
         return {
-          body: <p>A pack you shared on {websiteHost}</p>,
+          body: <p className="m-0">A pack you shared on {websiteHost}</p>,
           action: isRetrying
             ? { label: 'Trying again…', busy: true, onClick: retry }
             : {
@@ -255,15 +273,19 @@ export function StartScreen({
         const count = session.packs.length;
         if (count === 0) {
           return {
-            body: <p>You have no packs on {websiteHost} yet.</p>,
+            body: (
+              <p className="m-0">You have no packs on {websiteHost} yet.</p>
+            ),
             action: { label: 'Make a new pack', onClick: onMakeNewPack },
           };
         }
         return {
           body: (
             <>
-              <p>A pack you shared on {websiteHost}</p>
-              <p className="mt-2 truncate">Signed in as {session.user.name}</p>
+              <p className="m-0">A pack you shared on {websiteHost}</p>
+              <p className="m-0 mt-2 truncate">
+                Signed in as {session.user.name}
+              </p>
             </>
           ),
           action: {
@@ -277,17 +299,12 @@ export function StartScreen({
 
   return (
     <StartPage centered>
-      <div className="text-center">
-        <div
-          data-start-icon
-          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"
-        >
-          <AudioWaveform className="h-8 w-8" aria-hidden="true" />
-        </div>
-        <ScreenHeading className="text-2xl md:text-3xl font-bold">
+      <div className="flex flex-col gap-3">
+        <span className={SCREEN_LABEL_CLASS}>Sound pack editor</span>
+        <ScreenHeading className={SCREEN_TITLE_CLASS}>
           Make a sound pack for {siteIdentity.productName}
         </ScreenHeading>
-        <p className="mt-2 text-base-content/70">
+        <p className="m-0 max-w-[620px] text-[17px] text-mv-muted">
           Pick where to start, or drop a file anywhere on this page.
         </p>
       </div>
@@ -295,7 +312,7 @@ export function StartScreen({
       {/* After the heading, which takes the focus, so Tab and a screen reader
       reach the way back first. */}
       {keptWork && (
-        <div className="mt-8">
+        <div className="mt-7">
           <BackButton
             label={`Back to "${keptWork.packName}"`}
             onClick={keptWork.onReturn}
@@ -305,25 +322,30 @@ export function StartScreen({
       {savedWork && (
         <section
           aria-labelledby="saved-work-title"
-          className="mt-8 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-box border border-primary/40 bg-primary/5 p-4"
+          className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3.5 rounded-[14px] bg-mv-raised px-5 py-[18px] shadow-[inset_0_0_0_1px_var(--mv-line)]"
         >
-          <History
-            className="h-6 w-6 shrink-0 text-primary"
+          <span
             aria-hidden="true"
-          />
-          <div className="min-w-0 flex-1">
-            <h2 id="saved-work-title" className="font-semibold">
+            className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-mv-page text-mv-chart shadow-[inset_0_0_0_1px_var(--mv-line)]"
+          >
+            <RotateCcw className="size-[18px]" />
+          </span>
+          <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-0.5">
+            <h2
+              id="saved-work-title"
+              className="m-0 text-base font-bold text-mv-ink"
+            >
               Continue where you left off
             </h2>
-            <p className="truncate text-sm text-base-content/70">
-              "{savedWork.packName}", kept {savedWork.savedAgo}
+            <p className="m-0 truncate font-code text-xs text-mv-subtle">
+              {savedWork.packName} · kept {savedWork.savedAgo}
               {savedWork.keyCount > 0 &&
-                `, ${savedWork.keyCount} ${savedWork.noun}${savedWork.keyCount === 1 ? ' has' : 's have'} a sound`}
+                ` · ${savedWork.keyCount} ${savedWork.noun}${savedWork.keyCount === 1 ? ' has' : 's have'} a sound`}
             </p>
           </div>
           <button
             type="button"
-            className="btn btn-primary btn-sm rounded-box"
+            className={buttonVariants({ variant: 'primary' })}
             onClick={savedWork.onContinue}
           >
             Continue
@@ -331,59 +353,51 @@ export function StartScreen({
         </section>
       )}
       <div
-        className={`${keptWork || savedWork ? 'mt-3' : 'mt-10'} grid gap-4 md:grid-cols-3 md:items-start`}
+        className={cn(
+          keptWork || savedWork ? 'mt-3' : 'mt-7',
+          'grid overflow-hidden rounded-[14px] shadow-[inset_0_0_0_1px_var(--mv-line)] md:grid-cols-3',
+        )}
       >
-        {' '}
-        <div>
-          <StartCard
-            Icon={Globe}
-            title="Edit my pack"
-            action={editMyPack.action}
-            crossLink={<>Only on your computer? {openPackFileLink}</>}
-          >
-            {editMyPack.body}
-          </StartCard>
-          {libraryOpenError && (
-            <div className="mt-2">
-              <ErrorLine message={libraryOpenError} />
-            </div>
-          )}
-        </div>
-        <div>
-          <StartCard
-            Icon={FolderOpen}
-            title="Open a pack file"
-            action={
-              isOpeningFile
-                ? { label: 'Opening…', busy: true, onClick: onChoosePackFile }
-                : { label: 'Choose a .zip', onClick: onChoosePackFile }
-            }
-            crossLink={
-              editMyPackLink && (
-                <>
-                  Shared it on {websiteHost}? {editMyPackLink}
-                </>
-              )
-            }
-          >
-            <p>A .zip on this computer, like one you saved before</p>
-          </StartCard>
-          {openFileError && (
-            <div className="mt-2">
-              <ErrorLine message={openFileError} />
-            </div>
-          )}
-        </div>
+        <StartCard
+          Icon={Globe}
+          title="Edit my pack"
+          action={editMyPack.action}
+          crossLink={<>Only on your computer? {openPackFileLink}</>}
+          error={libraryOpenError}
+        >
+          {editMyPack.body}
+        </StartCard>
+        <StartCard
+          Icon={FolderOpen}
+          title="Open a pack file"
+          action={
+            isOpeningFile
+              ? { label: 'Opening…', busy: true, onClick: onChoosePackFile }
+              : { label: 'Choose a .zip', onClick: onChoosePackFile }
+          }
+          crossLink={
+            editMyPackLink && (
+              <>
+                Shared it on {websiteHost}? {editMyPackLink}
+              </>
+            )
+          }
+          error={openFileError}
+        >
+          <p className="m-0">
+            A .zip on this computer, like one you saved before
+          </p>
+        </StartCard>
         <StartCard
           Icon={Plus}
           title="Make a new pack"
-          action={{ label: 'Start', onClick: onMakeNewPack }}
+          action={{ label: 'Start', onClick: onMakeNewPack, filled: true }}
         >
-          <p>Start from your own recordings or sound files</p>
+          <p className="m-0">Start from your own recordings or sound files</p>
         </StartCard>
       </div>
 
-      <p className="mt-10 text-center text-sm text-base-content/60">
+      <p className="m-0 mt-7 text-[13px] text-mv-subtle">
         Your work is kept in this browser as you go. Download a .zip to share it
         or keep it elsewhere.
       </p>

@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
 import { MOD_LABEL } from '@/lib/utils';
 
 // Every selection shortcut of the keyboard and the mouse drawing.
@@ -18,8 +25,10 @@ const ALL_SHORTCUTS: [string[], string][] = [
 function Keys({ keys }: { keys: string[] }) {
   return keys.map((key, index) => (
     <span key={key} className="contents">
-      {index > 0 && <span>+</span>}
-      <kbd className="kbd kbd-xs">{key}</kbd>
+      {index > 0 && <span className="text-mv-faint">+</span>}
+      <kbd className="inline-flex h-5 items-center rounded-[4px] bg-mv-fill px-1.5 font-code text-[11px] font-medium text-mv-muted">
+        {key}
+      </kbd>
     </span>
   ));
 }
@@ -39,16 +48,7 @@ export function KeyboardShortcutsDialog({
   /** A mouse pack has buttons rather than keys. */
   isMousePack: boolean;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (isOpen && !dialog.open) dialog.showModal();
-    else if (!isOpen && dialog.open) dialog.close();
-  }, [isOpen]);
-
+  const returnFocus = useReturnFocus();
   // The mouse drawing has buttons, and no box to drag.
   const shortcuts = isMousePack
     ? ALL_SHORTCUTS.filter(([keys]) => !keys.includes('Drag')).map(
@@ -60,45 +60,29 @@ export function KeyboardShortcutsDialog({
     : ALL_SHORTCUTS;
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="modal"
-      aria-labelledby={titleId}
-      onCancel={onClose}
-      onClose={onClose}
-    >
-      {isOpen && (
-        <div className="modal-box max-w-md">
-          <h2 id={titleId} className="text-lg font-semibold">
-            Keyboard shortcuts
-          </h2>
-          <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            {shortcuts.map(([keys, text]) => (
-              <div key={text} className="contents">
-                <dt className="flex items-center gap-1 whitespace-nowrap text-xs">
-                  <Keys keys={keys} />
-                </dt>
-                <dd className="text-base-content/80">{text}</dd>
-              </div>
-            ))}
-          </dl>
-          <div className="modal-action">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn btn-sm rounded-box"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-      <button
-        type="button"
-        className="modal-backdrop"
-        aria-label="Close"
-        onClick={onClose}
-      />
-    </dialog>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        {...returnFocus}
+        aria-describedby={undefined}
+        className="p-[22px]"
+      >
+        <DialogTitle>Keyboard shortcuts</DialogTitle>
+        <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2.5 text-sm">
+          {shortcuts.map(([keys, text]) => (
+            <div key={text} className="contents">
+              <dt className="flex items-center gap-1 whitespace-nowrap text-xs">
+                <Keys keys={keys} />
+              </dt>
+              <dd className="m-0 text-mv-text">{text}</dd>
+            </div>
+          ))}
+        </dl>
+        <DialogFooter>
+          <Button variant="primary" onClick={onClose}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

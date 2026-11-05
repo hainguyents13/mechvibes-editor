@@ -1,6 +1,17 @@
-import { RotateCcw } from 'lucide-react';
 import React from 'react';
-import { plural } from '@/lib/utils';
+import { RotateCcw } from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
+import { cn, plural } from '@/lib/utils';
 import type { KeySounds } from '@/utils/soundPack';
 
 // Clear and Reset all, shared by the waveform's controls and the pane of a
@@ -21,17 +32,15 @@ export function ClearSelectedButton({
 }) {
   const withSound = selectedCodes.filter((code) => keySounds.has(code)).length;
   return (
-    <div>
-      <button
-        type="button"
-        className="btn btn-sm rounded-box"
-        onClick={onClearSelected}
-        disabled={withSound === 0}
-        title={`Remove the press and release sounds of the selected ${noun}s (Delete)`}
-      >
-        Clear {plural(withSound, noun)}
-      </button>
-    </div>
+    <button
+      type="button"
+      className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-9')}
+      onClick={onClearSelected}
+      disabled={withSound === 0}
+      title={`Remove the press and release sounds of the selected ${noun}s (Delete)`}
+    >
+      Clear {plural(withSound, noun)}
+    </button>
   );
 }
 
@@ -54,67 +63,56 @@ export function ResetAllButton({
   noun?: string;
 }) {
   const [showConfirm, setShowConfirm] = React.useState(false);
+  const returnFocus = useReturnFocus();
   return (
-    <div className="ml-auto">
+    <>
       <button
         type="button"
-        className="btn btn-sm btn-error rounded-box"
+        className={cn(
+          buttonVariants({ variant: 'ghost', size: 'sm' }),
+          'ml-auto h-9 text-mv-muted',
+        )}
         onClick={() => setShowConfirm(true)}
         disabled={keySounds.size === 0}
         title={`Clear the sound on all ${plural(keySounds.size, `mapped ${noun}`)}`}
       >
-        <RotateCcw className="h-3 w-3" />
+        <RotateCcw className="size-3.5" />
         Reset all ({keySounds.size})
       </button>
 
-      {showConfirm && (
-        <dialog
-          className="modal modal-open"
-          onClose={() => setShowConfirm(false)}
-        >
-          <div className="modal-box">
-            <h3 className="text-base font-semibold">
-              Reset all {noun} mappings?
-            </h3>
-            <p className="py-3 text-sm text-base-content/70">
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent {...returnFocus}>
+          <DialogHeader>
+            <DialogTitle>Reset all {noun} mappings?</DialogTitle>
+            <DialogDescription>
               This clears the sound on all{' '}
               {plural(keySounds.size, `mapped ${noun}`)}
               {hiddenCount > 0 &&
                 `, including ${hiddenCount} not shown on this layout`}
               . The audio files themselves are kept. You can undo this.
-            </p>
-            <div className="modal-action">
-              <button
-                type="button"
-                className="btn btn-sm rounded-box"
-                onClick={() => setShowConfirm(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-error rounded-box"
-                onClick={() => {
-                  // An empty pack has nothing to reset, so no step.
-                  commitKeySounds(
-                    `Reset all ${plural(keySounds.size, noun)}`,
-                    (current) => (current.size === 0 ? current : new Map()),
-                  );
-                  setShowConfirm(false);
-                }}
-              >
-                Reset all
-              </button>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="modal-backdrop"
-            aria-label="Close"
-            onClick={() => setShowConfirm(false)}
-          />
-        </dialog>
-      )}
-    </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose className={buttonVariants({ variant: 'outline' })}>
+              Cancel
+            </DialogClose>
+            <button
+              type="button"
+              className={buttonVariants({ variant: 'danger' })}
+              onClick={() => {
+                // An empty pack has nothing to reset, so no step.
+                commitKeySounds(
+                  `Reset all ${plural(keySounds.size, noun)}`,
+                  (current) => (current.size === 0 ? current : new Map()),
+                );
+                setShowConfirm(false);
+              }}
+            >
+              Reset all
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

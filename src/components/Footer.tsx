@@ -1,52 +1,35 @@
-import { Moon, Sun } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { editorRepoUrl, siteIdentity } from '@/config/siteIdentity';
+import {
+  discordUrl,
+  editorGuideUrl,
+  editorRepoUrl,
+  siteIdentity,
+} from '@/config/siteIdentity';
 
+const LINKS = [
+  { label: 'Editor guide', href: editorGuideUrl },
+  { label: 'Discord', href: discordUrl },
+  { label: 'GitHub', href: editorRepoUrl },
+];
+
+/** Under the screens before a pack is open; the edit screen gives its room to the keyboard. */
 export function Footer() {
-  const [theme, setTheme] = useState('light');
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    setTheme(savedTheme);
-    document.documentElement.setAttribute('data-theme', savedTheme);
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
-  };
-
   return (
-    <footer className="bg-base-200">
-      <div className="max-w-4xl p-4 short:py-1 text-xs mx-auto flex flex-col md:flex-row justify-between items-center text-base-content/60">
-        <div className=" mb-4 md:mb-0">
-          &copy; {new Date().getFullYear()} {siteIdentity.productName}. All
-          rights reserved.
-        </div>
-        <div className="flex items-center space-x-6 ">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="btn btn-circle btn-sm btn-ghost"
-            aria-label="Toggle theme"
-          >
-            {theme === 'light' ? (
-              <Moon className="h-4 w-4" />
-            ) : (
-              <Sun className="h-4 w-4" />
-            )}
-          </button>
+    <footer className="shrink-0 bg-mv-page font-body shadow-[inset_0_1px_0_var(--mv-line)]">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-4 short:py-2 text-[13px] text-mv-subtle">
+        <span>
+          &copy; {new Date().getFullYear()} {siteIdentity.productName}
+        </span>
+        {LINKS.map(({ label, href }) => (
           <a
-            href={editorRepoUrl}
+            key={label}
+            href={href}
             target="_blank"
-            rel="noreferrer"
-            className="hover:text-base-content transition-colors"
+            rel="noopener"
+            className="text-mv-muted no-underline hover:text-mv-ink"
           >
-            GitHub
+            {label}
           </a>
-        </div>
+        ))}
       </div>
     </footer>
   );

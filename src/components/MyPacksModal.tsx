@@ -1,5 +1,16 @@
-import { X } from 'lucide-react';
+import { X } from '@/components/icons';
 import { MyPacksList } from '@/components/MyPacksList';
+import { TEXT_LINK_CLASS } from '@/components/start/StartPage';
+import { buttonVariants } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
+import { cn } from '@/lib/utils';
 import type { LibraryPackSummary, LibraryUser } from '@/lib/websiteApi';
 
 interface MyPacksModalProps {
@@ -22,40 +33,50 @@ export function MyPacksModal({
   onOpen,
   newPackUrl,
 }: MyPacksModalProps) {
-  if (!isOpen) return null;
-
+  const returnFocus = useReturnFocus();
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-      <div className="bg-base-100 rounded-lg shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between p-4 border-b border-base-300">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold">My packs</h2>
-            <p className="text-xs text-base-content/60 truncate">
-              Signed in as {user.name}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="btn btn-sm btn-ghost btn-circle"
-          >
-            <X className="h-4 w-4" />
-          </button>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        {...returnFocus}
+        className="flex max-h-[85vh] w-[min(512px,calc(100vw-32px))] flex-col overflow-hidden p-0"
+      >
+        <div className="shrink-0 border-b border-mv-line pt-[18px] pr-14 pb-3.5 pl-5">
+          <DialogTitle className="mb-0 text-xl tracking-[-0.015em]">
+            My packs
+          </DialogTitle>
+          <DialogDescription className="truncate text-xs">
+            Signed in as {user.name}
+          </DialogDescription>
         </div>
 
-        <div className="overflow-y-auto px-4">
+        <div className="min-h-0 overflow-y-auto px-5">
           <MyPacksList packs={packs} openingId={openingId} onOpen={onOpen} />
         </div>
 
-        <p className="p-4 border-t border-base-300 text-xs text-base-content/60">
+        <p className="m-0 shrink-0 border-t border-mv-line bg-mv-raised px-5 py-3.5 text-[13px] text-mv-muted">
           A new pack starts here: export its zip, then{' '}
-          <a href={newPackUrl} target="_blank" rel="noopener" className="link">
+          <a
+            href={newPackUrl}
+            target="_blank"
+            rel="noopener"
+            className={TEXT_LINK_CLASS}
+          >
             create it on the website
           </a>
           .
         </p>
-      </div>
-    </div>
+
+        {/* Last, so the focus starts on the first pack rather than here. */}
+        <DialogClose
+          aria-label="Close"
+          className={cn(
+            buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+            'absolute top-4 right-4',
+          )}
+        >
+          <X className="size-4" />
+        </DialogClose>
+      </DialogContent>
+    </Dialog>
   );
 }

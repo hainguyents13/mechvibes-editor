@@ -1,5 +1,7 @@
-import { ChevronLeft, CircleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { ChevronLeft, CircleAlert } from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 /**
  * The scrolling frame the screens before the workspace share. A centred screen
@@ -17,7 +19,7 @@ export function StartPage({
   return (
     <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
       <div
-        className={`mx-auto w-full max-w-5xl shrink-0 px-4 ${centered ? 'my-auto py-8' : 'py-10 md:py-14'}`}
+        className={`mx-auto w-full max-w-[1040px] shrink-0 px-5 ${centered ? 'my-auto py-10' : 'py-12 md:py-14'}`}
       >
         {children}
       </div>
@@ -25,12 +27,20 @@ export function StartPage({
   );
 }
 
-/** The resting look of a choice card: a border and no shadow. */
-export const CARD_CLASS =
-  'rounded-box border border-base-300 bg-base-100 transition-[border-color,box-shadow]';
+/** The small mono label over a screen's heading. */
+export const SCREEN_LABEL_CLASS =
+  'font-code text-[11px] font-bold uppercase tracking-[0.12em] text-mv-subtle';
 
-/** A card that is a button: it lifts under the pointer and under keyboard focus. */
-export const BUTTON_CARD_CLASS = `${CARD_CLASS} cursor-pointer hover:border-primary/60 hover:shadow-lg focus-visible:border-primary/60 focus-visible:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`;
+/** A screen's big heading, in the site's display face. */
+export const SCREEN_TITLE_CLASS =
+  'font-display text-[clamp(34px,4.4vw,52px)] font-extrabold leading-[1.05] tracking-[-0.03em] text-mv-ink';
+
+/** A plain box on the page: the page colour inside a light line. */
+export const CARD_CLASS =
+  'rounded-[14px] bg-mv-page shadow-[inset_0_0_0_1px_var(--mv-line)]';
+
+/** A card that is a button: its line darkens and it takes the raised colour under the pointer and under keyboard focus. */
+export const BUTTON_CARD_CLASS = `${CARD_CLASS} cursor-pointer transition-[background-color,box-shadow] hover:bg-mv-raised hover:shadow-[inset_0_0_0_1px_var(--mv-line-strong)] focus-visible:bg-mv-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mv-line-strong`;
 
 export const SCREEN_HEADING_ID = 'screen-heading';
 
@@ -49,7 +59,7 @@ export function ScreenHeading({
     <h1
       id={SCREEN_HEADING_ID}
       tabIndex={-1}
-      className={`${className} focus:outline-none`}
+      className={`${className} m-0 focus:outline-none`}
     >
       {children}
     </h1>
@@ -68,9 +78,12 @@ export function BackButton({
     <button
       type="button"
       onClick={onClick}
-      className="btn btn-sm btn-ghost rounded-box -ml-2 max-w-full px-2"
+      className={cn(
+        buttonVariants({ variant: 'ghost', size: 'sm' }),
+        '-ml-3 max-w-full',
+      )}
     >
-      <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <ChevronLeft className="size-4 shrink-0" aria-hidden="true" />
       <span className="min-w-0 truncate">{label}</span>
     </button>
   );
@@ -89,13 +102,17 @@ export function ErrorLine({ message }: { message: string }) {
   return (
     <p
       role="alert"
-      className="flex items-start gap-2 text-sm text-error-strong"
+      className="m-0 flex items-start gap-2 text-sm text-mv-danger"
     >
-      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+      <CircleAlert className="mt-0.5 size-4 shrink-0" />
       <span>{message}</span>
     </p>
   );
 }
+
+/** A link in running text: ink, underlined in a light line. */
+export const TEXT_LINK_CLASS =
+  'cursor-pointer font-bold text-mv-ink underline decoration-mv-line-strong underline-offset-[3px] hover:decoration-mv-ink disabled:cursor-default disabled:text-mv-subtle';
 
 /**
  * Stretches a card's action over the whole card, so the card is clickable
@@ -104,4 +121,4 @@ export function ErrorLine({ message }: { message: string }) {
  * the overlay with `relative z-10`.
  */
 export const STRETCHED_ACTION =
-  "static after:absolute after:inset-0 after:rounded-box after:content-['']";
+  "static after:absolute after:inset-0 after:rounded-[14px] after:content-['']";

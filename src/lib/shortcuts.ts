@@ -52,12 +52,16 @@ function isPopoverOpen() {
   }
 }
 
+/**
+ * A dialog, a menu or the guided tour, while open. Radix marks its open
+ * dialogs and menus with data-state.
+ */
+const OVERLAY_OPEN =
+  'dialog[open], [role="dialog"][data-state="open"], [role="menu"][data-state="open"], .driver-popover';
+
 /** Whether a dialog, a popover or the guided tour is open; it owns the keyboard. */
 function isOverlayOpen() {
-  return (
-    document.querySelector('.modal-open, dialog[open], .driver-popover') !==
-      null || isPopoverOpen()
-  );
+  return document.querySelector(OVERLAY_OPEN) !== null || isPopoverOpen();
 }
 
 /** Whether a page-wide shortcut should leave this key press alone. */

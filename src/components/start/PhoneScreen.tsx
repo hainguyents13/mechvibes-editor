@@ -1,7 +1,10 @@
-import { ArrowRight, Check, Laptop, Link } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { siteIdentity, websiteHost, websiteUrl } from '@/config/siteIdentity';
+import { ArrowRight, Check, Laptop, Link } from '@/components/icons';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { buttonVariants } from '@/components/ui/button';
+import { websiteHost, websiteUrl } from '@/config/siteIdentity';
 import { Logo } from '../Logo';
+import { SCREEN_LABEL_CLASS } from './StartPage';
 
 /** Shown instead of the editor on a phone, which has no room to make a pack. */
 export function PhoneScreen() {
@@ -29,36 +32,41 @@ export function PhoneScreen() {
 
   return (
     <>
-      <div className="sticky top-0 z-50 w-full bg-base-200 border-b border-base-300">
-        <div className="flex px-4 py-2 items-center">
-          <Logo text={`${siteIdentity.productName} Editor`} showOnPhones />
+      <header className="sticky top-0 z-50 w-full shrink-0 bg-mv-page shadow-[inset_0_-1px_0_var(--mv-line)]">
+        <div className="flex min-h-[60px] items-center gap-2.5 px-4">
+          <Logo />
+          <ThemeToggle
+            className={`${buttonVariants({ variant: 'outline', size: 'icon' })} ml-auto size-10`}
+          />
         </div>
-      </div>
+      </header>
 
       {/* A phone held sideways is short: the picture goes and the gaps shrink, so it all fits above the footer */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto flex max-w-md flex-col items-center px-4 py-10 text-center [@media(max-height:499px)]:py-5">
-          <Laptop
-            className="h-12 w-12 text-primary [@media(max-height:499px)]:hidden"
-            strokeWidth={1.5}
+        <div className="mx-auto flex max-w-md flex-col gap-3.5 px-6 py-10 [@media(max-height:499px)]:py-5">
+          <span
             aria-hidden="true"
-          />
-          <h1 className="mt-4 text-xl font-bold [@media(max-height:499px)]:mt-0">
-            Making a sound pack needs a bigger screen.
+            className="flex size-[52px] items-center justify-center rounded-[14px] bg-mv-raised text-mv-chart shadow-[inset_0_0_0_1px_var(--mv-line)] [@media(max-height:499px)]:hidden"
+          >
+            <Laptop className="size-[26px]" strokeWidth={1.5} />
+          </span>
+          <span className={SCREEN_LABEL_CLASS}>Sound pack editor</span>
+          <h1 className="m-0 font-display text-[30px] font-extrabold leading-[1.1] tracking-[-0.025em] text-mv-ink">
+            Making a sound pack needs a bigger screen
           </h1>
-          <p className="mt-2 text-base-content/70">
+          <p className="m-0 text-base text-mv-muted">
             Open this page on a computer or tablet.
           </p>
 
           <button
             type="button"
             onClick={copyLink}
-            className="btn btn-primary rounded-box mt-8 [@media(max-height:499px)]:mt-5"
+            className={`${buttonVariants({ variant: 'primary' })} mt-3 h-11`}
           >
             {copy === 'copied' ? (
-              <Check className="h-4 w-4" />
+              <Check className="size-4" />
             ) : (
-              <Link className="h-4 w-4" />
+              <Link className="size-4" />
             )}
             {copy === 'copied' ? 'Link copied' : 'Copy link'}
           </button>
@@ -67,7 +75,7 @@ export function PhoneScreen() {
           </output>
 
           {copy === 'refused' && (
-            <div className="mt-4 w-full text-left">
+            <div className="w-full text-left">
               <label htmlFor="phone-screen-link" className="text-sm">
                 Your browser did not allow copying. Copy the link from here:
               </label>
@@ -78,17 +86,17 @@ export function PhoneScreen() {
                 readOnly
                 value={link}
                 onFocus={(event) => event.currentTarget.select()}
-                className="input input-sm mt-2 w-full"
+                className="mv-field mt-2"
               />
             </div>
           )}
 
           <a
             href={`${websiteUrl}/sound-packs`}
-            className="link link-hover mt-8 [@media(max-height:499px)]:mt-5 inline-flex items-center gap-1 text-sm"
+            className={`${buttonVariants({ variant: 'outline' })} h-11`}
           >
             Browse sound packs on {websiteHost}
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            <ArrowRight className="size-4" aria-hidden="true" />
           </a>
         </div>
       </div>
