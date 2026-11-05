@@ -1,5 +1,6 @@
-import { FileAudio } from 'lucide-react';
 import React from 'react';
+import { FileAudio } from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button';
 import { plural } from '@/lib/utils';
 import { isMediaFile } from '@/utils/audioUtils';
 
@@ -25,19 +26,19 @@ export function MissingAudioPane({
 }) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   return (
-    <div className="flex flex-col items-start gap-3 rounded-box border border-error/30 bg-error/10 p-4 text-sm">
-      <p className="flex items-center gap-2 font-semibold text-base-content">
-        <FileAudio className="h-4 w-4 shrink-0 text-error" />
+    <div className="flex flex-col items-start gap-3 rounded-[12px] bg-mv-danger-fill p-4 text-sm">
+      <p className="m-0 flex items-center gap-2 font-bold text-mv-ink">
+        <FileAudio className="size-4 shrink-0 text-mv-danger" />
         <span className="min-w-0 break-all">{name} has no audio</span>
       </p>
-      <p className="text-base-content/80">
+      <p className="m-0 text-mv-text">
         {count === 0
           ? `No ${noun} uses it.`
           : `${plural(count, noun)} ${count === 1 ? 'keeps its' : 'keep their'} times and ${count === 1 ? 'plays' : 'play'} nothing until you give the file audio. Any audio or video file works, in any format.`}
       </p>
       <button
         type="button"
-        className="btn btn-sm btn-primary rounded-box"
+        className={buttonVariants({ variant: 'primary', size: 'sm' })}
         disabled={isReading}
         onClick={() => inputRef.current?.click()}
       >

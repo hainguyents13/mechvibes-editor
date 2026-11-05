@@ -90,13 +90,17 @@ describe('shouldIgnoreShortcut', () => {
     ).toBe(true);
   });
 
-  it.each(['.modal-open', 'dialog[open]', '.driver-popover', ':popover-open'])(
-    'ignores every press while %s is on the page',
-    (overlay) => {
-      openOverlay = overlay;
-      expect(shouldIgnoreShortcut(event())).toBe(true);
-    },
-  );
+  it.each([
+    '.modal-open',
+    'dialog[open]',
+    '[role="dialog"][data-state="open"]',
+    '[role="menu"][data-state="open"]',
+    '.driver-popover',
+    ':popover-open',
+  ])('ignores every press while %s is on the page', (overlay) => {
+    openOverlay = overlay;
+    expect(shouldIgnoreShortcut(event())).toBe(true);
+  });
 
   it('lets a press through in a browser that does not know popovers', () => {
     vi.stubGlobal('document', {

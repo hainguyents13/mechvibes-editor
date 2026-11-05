@@ -1,11 +1,11 @@
-import { ChevronDown, Info, Play, Square } from 'lucide-react';
 import React from 'react';
 import {
   ClearSelectedButton,
   ResetAllButton,
 } from '@/components/editor/ClearKeysButtons';
-import type { LayoutKey } from '@/components/editor/keyboardLayouts';
-import { QuickSelect } from '@/components/editor/QuickSelect';
+import { ChevronDown, Info, Play, Square } from '@/components/icons';
+import { buttonVariants } from '@/components/ui/button';
+import { pillList, pillTab } from '@/components/ui/tabs';
 import { cn, plural } from '@/lib/utils';
 import {
   applyPressToKeys,
@@ -19,6 +19,10 @@ import type { KeySounds } from '@/utils/soundPack';
 /** Which half of a key's sound the controls assign. */
 export type SoundSlot = 'press' | 'release';
 
+/** The small mono heading of a block in the sound panel. */
+export const PANEL_LABEL_CLASS =
+  'font-code text-[11px] font-bold uppercase tracking-[0.12em] text-mv-subtle';
+
 interface TimeSegmentControlsProps {
   waveformSelection: { start: number; end: number };
   setWaveformSelection: React.Dispatch<
@@ -26,8 +30,6 @@ interface TimeSegmentControlsProps {
   >;
   isPlaying: boolean;
   playSelectedSegment: () => void;
-  selectedKeys: Set<string>;
-  setSelectedKeys: React.Dispatch<React.SetStateAction<Set<string>>>;
   /** Key codes of the selected keys. */
   selectedCodes: string[];
   keySounds: KeySounds;
@@ -51,12 +53,37 @@ interface TimeSegmentControlsProps {
   /** The Start, End and Duration fields are open under More. */
   showExactTimes: boolean;
   setShowExactTimes: (open: boolean) => void;
-  /** Keys of the current layout, used to resolve the group-select buttons. */
-  keys?: LayoutKey[];
-  /** Same id builder the keyboard uses, so group ids match selection ids. */
-  getKeyId?: (key: LayoutKey, index: number) => string;
   /** What the pack's keys are called: 'key' or 'button'. */
   noun?: string;
+}
+
+/** A field of the exact times: its label above a mono number input. */
+function TimeField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="flex w-24 flex-col gap-0.5">
+      <label className="text-[11px] text-mv-subtle" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        type="number"
+        className="mv-field font-code text-[13px]"
+        placeholder="0"
+        value={Math.round(value) || ''}
+        onChange={(e) => onChange(Number.parseInt(e.target.value, 10) || 0)}
+      />
+    </div>
+  );
 }
 
 export function TimeSegmentControls({
@@ -64,8 +91,6 @@ export function TimeSegmentControls({
   setWaveformSelection,
   isPlaying,
   playSelectedSegment,
-  selectedKeys,
-  setSelectedKeys,
   selectedCodes,
   keySounds,
   commitKeySounds,
@@ -78,8 +103,6 @@ export function TimeSegmentControls({
   showSlotSwitch,
   showExactTimes,
   setShowExactTimes,
-  keys,
-  getKeyId,
   noun = 'key',
 }: TimeSegmentControlsProps) {
   const exactTimesId = React.useId();
@@ -125,251 +148,202 @@ export function TimeSegmentControls({
     hint = `The sound ends after the file does. This file is ${fileLengthMs} ms long.`;
   }
 
-  return (
-    <>
-      {/* Right under the waveform, with Quick select below, so a short panel
-      leaves the chips below its fold rather than Apply. A panel too short
-      even for this row pins it to its bottom while what is above it
-      scrolls. The bottom padding is the panel's own, lent to the pinned row
-      and handed back below it; side by side, the row pins over that padding
-      too. A wrapper carries the background, which a fieldset leaves off
-      above its legend's middle. */}
-      <div className="panel-pinned-row sticky bottom-0 lg:-bottom-3 z-10 -mb-3 shrink-0 min-w-0">
-        <div className="editor-panel-surface pb-3">
-          <fieldset className="fieldset py-0 px-4 min-w-0">
-            <legend className="fieldset-legend">
-              <h2 className="text-xs font-medium text-base-content">Sound</h2>
-            </legend>
-            {/* Labels sit beside the controls, not above, so a wrapped row stays short. */}
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Release needs a press first, so the switch waits for a selected key that has one. */}
-              {showSlotSwitch && (
-                <div className="flex items-center gap-2">
-                  <span className="label text-xs text-base-content/70">
-                    Plays on
-                  </span>
-                  <div className="join">
-                    <button
-                      type="button"
-                      className={cn(
-                        'btn btn-sm join-item',
-                        slot === 'press' ? 'btn-active' : '',
-                      )}
-                      aria-pressed={slot === 'press'}
-                      onClick={() => setSlot('press')}
-                      title="Assign the sound a key plays when it goes down"
-                    >
-                      Press
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        'btn btn-sm join-item',
-                        slot === 'release' ? 'btn-active' : '',
-                      )}
-                      aria-pressed={slot === 'release'}
-                      onClick={() => setSlot('release')}
-                      title="Assign the sound a key plays when it comes up"
-                    >
-                      Release
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div>
-                <button
-                  type="button"
-                  className={cn(
-                    'btn btn-sm rounded-box',
-                    isPlaying ? 'btn-active' : '',
-                  )}
-                  onClick={playSelectedSegment}
-                  disabled={
-                    !waveformSelection.end ||
-                    waveformSelection.end <= waveformSelection.start
-                  }
-                  title={isPlaying ? 'Stop (Space)' : 'Test selection (Space)'}
-                >
-                  {isPlaying ? (
-                    <div className="flex items-center gap-1">
-                      <Square className="h-3 w-3" />
-                      Stop
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1">
-                      <Play className="h-3 w-3" />
-                      Test
-                    </div>
-                  )}
-                </button>
-              </div>
-              <div>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-primary rounded-box"
-                  onClick={applySelection}
-                  disabled={!canApply}
-                  title={`Assign this ${slot} sound to ${plural(targetCodes.length, noun)}`}
-                >
-                  {slot === 'press' ? 'Apply' : 'Apply release'} to{' '}
-                  {plural(targetCodes.length, noun)}
-                </button>
-              </div>
-              {slot === 'release' && (
-                <div>
-                  <button
-                    type="button"
-                    className="btn btn-sm rounded-box"
-                    onClick={() =>
-                      commitKeySounds(
-                        `Remove release from ${plural(codesWithRelease.length, noun)}`,
-                        (current) =>
-                          removeReleaseFromKeys(codesWithRelease, current),
-                      )
-                    }
-                    disabled={codesWithRelease.length === 0}
-                    title={`Make the selected ${noun}s silent when they come up`}
-                  >
-                    Remove release ({codesWithRelease.length})
-                  </button>
-                </div>
-              )}
-              <ClearSelectedButton
-                selectedCodes={selectedCodes}
-                keySounds={keySounds}
-                onClearSelected={onClearSelected}
-                noun={noun}
-              />
-              <div>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost rounded-box"
-                  aria-expanded={showExactTimes}
-                  aria-controls={exactTimesId}
-                  onClick={() => {
-                    setShowExactTimes(!showExactTimes);
-                    // A short panel opens them below its fold; scroll them into view.
-                    if (!showExactTimes) {
-                      requestAnimationFrame(() =>
-                        exactTimesRef.current?.scrollIntoView({
-                          block: 'nearest',
-                        }),
-                      );
-                    }
-                  }}
-                  title="Exact times in milliseconds, and the Auto detect threshold"
-                >
-                  More
-                  <ChevronDown
-                    className={cn(
-                      'h-3 w-3 transition-transform',
-                      showExactTimes ? 'rotate-180' : '',
-                    )}
-                  />
-                </button>
-              </div>
-              <ResetAllButton
-                keySounds={keySounds}
-                hiddenCount={hiddenCount}
-                commitKeySounds={commitKeySounds}
-                noun={noun}
-              />
-            </div>
-
-            <div
-              ref={exactTimesRef}
-              id={exactTimesId}
-              hidden={!showExactTimes}
-              className="mt-2 flex flex-wrap items-end gap-3"
-            >
-              <div className="w-24">
-                <label
-                  className="label text-xs text-base-content/70"
-                  htmlFor="start-time"
-                >
-                  Start (ms)
-                </label>
-                <input
-                  id="start-time"
-                  type="number"
-                  className="input input-sm input-bordered w-full"
-                  placeholder="0"
-                  value={Math.round(waveformSelection.start) || ''}
-                  onChange={(e) => {
-                    const startTime = parseInt(e.target.value) || 0;
-                    setWaveformSelection((prev) => ({
-                      ...prev,
-                      start: startTime,
-                    }));
-                  }}
-                />
-              </div>
-              <div className="w-24">
-                <label
-                  className="label text-xs text-base-content/70"
-                  htmlFor="end-time"
-                >
-                  End (ms)
-                </label>
-                <input
-                  id="end-time"
-                  type="number"
-                  className="input input-sm input-bordered w-full"
-                  placeholder="0"
-                  value={Math.round(waveformSelection.end) || ''}
-                  onChange={(e) => {
-                    const endTime = parseInt(e.target.value) || 0;
-                    setWaveformSelection((prev) => ({ ...prev, end: endTime }));
-                  }}
-                />
-              </div>
-              <div className="w-24">
-                <label
-                  className="label text-xs text-base-content/70"
-                  htmlFor="duration-time"
-                >
-                  Duration (ms)
-                </label>
-                <input
-                  id="duration-time"
-                  type="number"
-                  className="input input-sm input-bordered w-full"
-                  placeholder="0"
-                  value={
-                    Math.round(
-                      waveformSelection.end - waveformSelection.start,
-                    ) || ''
-                  }
-                  onChange={(e) => {
-                    const duration = parseInt(e.target.value) || 0;
-                    if (waveformSelection.start >= 0) {
-                      setWaveformSelection((prev) => ({
-                        ...prev,
-                        end: prev.start + duration,
-                      }));
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Explain why the apply button is disabled */}
-            {hint && (
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-base-content/70">
-                <Info className="h-3.5 w-3.5 shrink-0" />
-                {hint}
-              </p>
-            )}
-          </fieldset>
-        </div>
-      </div>
-
-      <QuickSelect
-        keys={keys}
-        getKeyId={getKeyId}
-        selectedKeys={selectedKeys}
-        setSelectedKeys={setSelectedKeys}
+  const slotButton = (value: SoundSlot, label: string, title: string) => (
+    <button
+      type="button"
+      className={cn(
+        pillTab,
+        'inline-flex items-center gap-1.5',
+        slot === value && 'bg-mv-fill font-bold text-mv-ink',
+      )}
+      aria-pressed={slot === value}
+      onClick={() => setSlot(value)}
+      title={title}
+    >
+      {/* The half of the keys' edge this sound shows on */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          'h-1 w-3 rounded-full',
+          value === 'press' ? 'bg-mv-press' : 'bg-mv-release',
+        )}
       />
-    </>
+      {label}
+    </button>
+  );
+
+  return (
+    // Right under the waveform. A panel too short even for this row pins it
+    // to its bottom while what is above it scrolls. The bottom padding is the
+    // panel's own, lent to the pinned row and handed back below it; side by
+    // side, the row pins over that padding too.
+    <div className="panel-pinned-row sticky bottom-0 lg:-bottom-3 z-10 -mb-3 shrink-0 min-w-0">
+      <section
+        aria-labelledby={`${exactTimesId}-title`}
+        className="editor-panel-surface px-5 pt-3.5 pb-3 shadow-[inset_0_1px_0_var(--mv-line)]"
+      >
+        {/* Labels sit beside the controls, not above, so a wrapped row stays short. */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h2
+            id={`${exactTimesId}-title`}
+            className={cn(PANEL_LABEL_CLASS, 'm-0 mr-1.5')}
+          >
+            Sound
+          </h2>
+          {/* Release needs a press first, so the switch waits for a selected key that has one. */}
+          {showSlotSwitch && (
+            // biome-ignore lint/a11y/useSemanticElements: two toggle buttons, not a form group
+            <div role="group" aria-label="Plays on" className={pillList}>
+              {slotButton(
+                'press',
+                'Press',
+                'Assign the sound a key plays when it goes down',
+              )}
+              {slotButton(
+                'release',
+                'Release',
+                'Assign the sound a key plays when it comes up',
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'sm' }),
+              'h-9 px-3.5',
+              isPlaying && 'bg-mv-fill text-mv-ink',
+            )}
+            onClick={playSelectedSegment}
+            disabled={
+              !waveformSelection.end ||
+              waveformSelection.end <= waveformSelection.start
+            }
+            title={isPlaying ? 'Stop (Space)' : 'Test selection (Space)'}
+          >
+            {isPlaying ? (
+              <Square className="size-3.5" />
+            ) : (
+              <Play className="size-3.5" />
+            )}
+            {isPlaying ? 'Stop' : 'Test'}
+          </button>
+          <button
+            type="button"
+            className={buttonVariants({ variant: 'primary' })}
+            onClick={applySelection}
+            disabled={!canApply}
+            title={`Assign this ${slot} sound to ${plural(targetCodes.length, noun)}`}
+          >
+            {slot === 'press' ? 'Apply' : 'Apply release'} to{' '}
+            {plural(targetCodes.length, noun)}
+          </button>
+          {slot === 'release' && (
+            <button
+              type="button"
+              className={cn(
+                buttonVariants({ variant: 'ghost', size: 'sm' }),
+                'h-9',
+              )}
+              onClick={() =>
+                commitKeySounds(
+                  `Remove release from ${plural(codesWithRelease.length, noun)}`,
+                  (current) => removeReleaseFromKeys(codesWithRelease, current),
+                )
+              }
+              disabled={codesWithRelease.length === 0}
+              title={`Make the selected ${noun}s silent when they come up`}
+            >
+              Remove release ({codesWithRelease.length})
+            </button>
+          )}
+          <ClearSelectedButton
+            selectedCodes={selectedCodes}
+            keySounds={keySounds}
+            onClearSelected={onClearSelected}
+            noun={noun}
+          />
+          <button
+            type="button"
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 'sm' }),
+              'h-9',
+            )}
+            aria-expanded={showExactTimes}
+            aria-controls={exactTimesId}
+            onClick={() => {
+              setShowExactTimes(!showExactTimes);
+              // A short panel opens them below its fold; scroll them into view.
+              if (!showExactTimes) {
+                requestAnimationFrame(() =>
+                  exactTimesRef.current?.scrollIntoView({
+                    block: 'nearest',
+                  }),
+                );
+              }
+            }}
+            title="Exact times in milliseconds, and the Auto detect threshold"
+          >
+            More
+            <ChevronDown
+              className={cn(
+                'size-3 transition-transform',
+                showExactTimes ? 'rotate-180' : '',
+              )}
+            />
+          </button>
+          <ResetAllButton
+            keySounds={keySounds}
+            hiddenCount={hiddenCount}
+            commitKeySounds={commitKeySounds}
+            noun={noun}
+          />
+        </div>
+
+        <div
+          ref={exactTimesRef}
+          id={exactTimesId}
+          hidden={!showExactTimes}
+          className="mt-3 flex flex-wrap items-end gap-2"
+        >
+          <TimeField
+            id="start-time"
+            label="Start (ms)"
+            value={waveformSelection.start}
+            onChange={(start) =>
+              setWaveformSelection((prev) => ({ ...prev, start }))
+            }
+          />
+          <TimeField
+            id="end-time"
+            label="End (ms)"
+            value={waveformSelection.end}
+            onChange={(end) =>
+              setWaveformSelection((prev) => ({ ...prev, end }))
+            }
+          />
+          <TimeField
+            id="duration-time"
+            label="Duration (ms)"
+            value={waveformSelection.end - waveformSelection.start}
+            onChange={(duration) => {
+              if (waveformSelection.start >= 0) {
+                setWaveformSelection((prev) => ({
+                  ...prev,
+                  end: prev.start + duration,
+                }));
+              }
+            }}
+          />
+        </div>
+
+        {/* Explain why the apply button is disabled */}
+        {hint && (
+          <p className="m-0 mt-2.5 flex items-center gap-1.5 text-xs text-mv-subtle">
+            <Info className="size-3.5 shrink-0" />
+            {hint}
+          </p>
+        )}
+      </section>
+    </div>
   );
 }

@@ -1,20 +1,48 @@
+import { cn } from '@/lib/utils';
+import {
+  KEYCAP_FACE_OFF,
+  KEYCAP_FACE_ON,
+  KEYCAP_FACE_SELECTED,
+  keycapEdge,
+} from './keycap';
+
 /**
- * The legend row and the progress line under it, so the keyboard's
- * fit-to-height scale can count on them: both show from the first file on.
+ * The legend row's height, so the keyboard's fit-to-height scale can count on
+ * it: it shows from the first file on.
  */
-export const KEY_LEGEND_ROWS_HEIGHT = 44;
+export const KEY_LEGEND_ROWS_HEIGHT = 24;
 /**
- * Width both read in full on one line: the legend with all four marks (about
- * 480px), and the progress line with every check. A keyboard drawn narrower,
- * Compact on a short screen, has its rows reach past it.
+ * Width the legend reads in full on one line with all four marks. A keyboard
+ * drawn narrower, Compact on a short screen, has its rows reach past it.
  */
 export const KEY_LEGEND_ROWS_MIN_WIDTH = 496;
 
+/** A small keycap: a face on an edge, as the keys are drawn. */
+function Swatch({
+  face,
+  press = false,
+  release = false,
+}: {
+  face: string;
+  press?: boolean;
+  release?: boolean;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className="block h-[20px] w-[22px] shrink-0 rounded-[6px] pb-[3px]"
+      style={{ background: keycapEdge(press, release) }}
+    >
+      <span className={cn('block h-full rounded-[5px]', face)} />
+    </span>
+  );
+}
+
 /**
- * What the marks on the keys mean. Release sound is named only when some key
- * has one, and a plain key only while the pack has sounds and some drawn keys
- * stay silent, to say that is fine, even when every sound is on a key the
- * layout leaves out.
+ * What the keys' faces and edges mean. Release sound is named only when some
+ * key has one, and a plain key only while the pack has sounds and some drawn
+ * keys stay silent, to say that is fine, even when every sound is on a key
+ * the layout leaves out.
  */
 export function KeyLegend({
   showRelease,
@@ -26,38 +54,35 @@ export function KeyLegend({
   isMousePack: boolean;
 }) {
   return (
-    <div className="flex h-6 items-center gap-4 whitespace-nowrap">
-      <div className="flex items-center gap-2">
-        <div className="btn btn-xs btn-neutral pointer-events-none">A</div>
-        <span className="text-base-content/70">Selected</span>
-      </div>
-      <div
+    <div className="flex h-6 items-center gap-5 whitespace-nowrap text-mv-muted">
+      <span className="flex items-center gap-2">
+        <Swatch face={KEYCAP_FACE_SELECTED} />
+        Selected
+      </span>
+      <span
         className="flex items-center gap-2"
-        title="The dot takes the colour of the file the sound comes from"
+        title="The left half of the edge shows the sound played on press"
       >
-        <div className="btn btn-xs relative pointer-events-none">
-          Q
-          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-base-content/50 rounded-full border-2 border-white shadow-lg ring-2 ring-base-content/20"></div>
-        </div>
-        <span className="text-base-content/70">Has a sound</span>
-      </div>
+        <Swatch face={KEYCAP_FACE_ON} press />
+        Has a sound
+      </span>
       {showRelease && (
-        <div className="flex items-center gap-2">
-          <div className="btn btn-xs relative pointer-events-none">
-            Z
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>
-          </div>
-          <span className="text-base-content/70">Release sound</span>
-        </div>
+        <span
+          className="flex items-center gap-2"
+          title="The right half of the edge shows the sound played on release"
+        >
+          <Swatch face={KEYCAP_FACE_ON} press release />
+          Release sound
+        </span>
       )}
       {showSilent && (
-        <div
+        <span
           className="flex items-center gap-2"
           title={`${isMousePack ? 'Buttons' : 'Keys'} without a sound stay silent. That's fine.`}
         >
-          <div className="btn btn-xs pointer-events-none">X</div>
-          <span className="text-base-content/70">Silent, that's fine</span>
-        </div>
+          <Swatch face={KEYCAP_FACE_OFF} />
+          Silent, that's fine
+        </span>
       )}
     </div>
   );

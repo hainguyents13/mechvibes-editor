@@ -1,6 +1,13 @@
 import type React from 'react';
 import { cn } from '@/lib/utils';
 import { keyRect } from './key-selection';
+import {
+  KEYCAP_EDGE_PX,
+  KEYCAP_FACE_OFF,
+  KEYCAP_FACE_ON,
+  KEYCAP_FACE_SELECTED,
+  keycapEdge,
+} from './keycap';
 
 interface KeyButtonProps {
   label: string;
@@ -14,8 +21,6 @@ interface KeyButtonProps {
   isModified: boolean;
   /** The key also plays a sound when it comes up. */
   hasRelease?: boolean;
-  /** Background class of the has-a-sound dot: the colour of the key's source file. */
-  dotColor?: string;
   /** Name of the file the key's sound comes from, shown on hover. */
   sourceName?: string;
   keyId: string;
@@ -43,7 +48,6 @@ export function KeyButton({
   isSelected,
   isModified,
   hasRelease = false,
-  dotColor,
   sourceName,
   keyId,
   tabIndex,
@@ -56,16 +60,12 @@ export function KeyButton({
   onPreviewPointerUp,
 }: KeyButtonProps) {
   const box = keyRect({ x, y, width, height });
-  const style = {
-    position: 'absolute' as const,
-    left: box.left,
-    top: box.top,
-    width: box.right - box.left,
-    height: box.bottom - box.top,
-  };
 
   // In preview mode a key is only interactive when a sound is mapped to it.
   const isInert = isPreview && !isModified;
+  // A key held down sinks onto its edge, which then shows half as tall.
+  const isDown = isPressed && !isInert;
+  const edge = isDown ? KEYCAP_EDGE_PX / 2 : KEYCAP_EDGE_PX;
 
   // Clicks and drags in edit mode are handled by the keyboard around the keys.
   return (
@@ -76,20 +76,20 @@ export function KeyButton({
       tabIndex={isPreview ? -1 : tabIndex}
       aria-pressed={isPreview ? undefined : isSelected}
       aria-label={label.trim() ? label.replace(/\n/g, ' ') : 'Space'}
-      // The file's name as well as its colour, for those who cannot tell colours apart.
       title={!isPreview && sourceName ? `Sound from ${sourceName}` : undefined}
       className={cn(
-        'btn text-[length:var(--key-label-size,0.75rem)] flex font-normal items-center justify-center rounded select-none relative whitespace-pre-line text-center leading-tight border border-base-content/20 transition-transform',
-        !isPreview && isSelected ? 'btn-neutral' : '',
-        isInert ? 'opacity-30 pointer-events-none' : '',
-        isPreview && isModified ? 'btn-primary' : '',
-        // An unmapped key plays nothing in preview, so it does not look pressed either.
-        isPressed && !isInert ? 'btn-active scale-95' : '',
-        isDropTarget
-          ? 'bg-primary/25 text-base-content ring-2 ring-primary z-10'
-          : '',
+        'absolute block cursor-pointer select-none rounded-[7px] border-0 p-0 outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-mv-ink',
+        isInert && 'pointer-events-none opacity-30',
+        isDropTarget && 'z-10 outline-2 outline-offset-1 outline-mv-ink',
       )}
-      style={style}
+      style={{
+        left: box.left,
+        top: box.top + (KEYCAP_EDGE_PX - edge),
+        width: box.right - box.left,
+        height: box.bottom - box.top - (KEYCAP_EDGE_PX - edge),
+        paddingBottom: edge,
+        background: keycapEdge(isModified, hasRelease),
+      }}
       disabled={isInert}
       onKeyDown={isPreview ? undefined : (e) => onKeyDown(keyId, e)}
       onFocus={() => onFocus(keyId)}
@@ -107,18 +107,20 @@ export function KeyButton({
       onPointerUp={isPreview ? onPreviewPointerUp : undefined}
       onPointerCancel={isPreview ? onPreviewPointerUp : undefined}
     >
-      {!isPreview && isModified && (
-        <div
-          className={cn(
-            'absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white shadow-lg ring-2 ring-base-content/20',
-            dotColor ?? 'bg-primary',
-          )}
-        />
-      )}
-      {!isPreview && hasRelease && (
-        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-secondary rounded-full border-2 border-white shadow-lg ring-2 ring-secondary/30"></div>
-      )}
-      {label.replace(/ /g, '\n')}
+      <span
+        className={cn(
+          'flex h-full items-center justify-center whitespace-pre-line rounded-[6px] px-0.5 text-center text-[length:var(--key-label-size,0.75rem)] font-bold leading-tight',
+          !isPreview && isSelected
+            ? KEYCAP_FACE_SELECTED
+            : isModified
+              ? KEYCAP_FACE_ON
+              : KEYCAP_FACE_OFF,
+          isDropTarget && 'bg-mv-fill',
+          isDown && 'bg-mv-fill',
+        )}
+      >
+        {label.replace(/ /g, '\n')}
+      </span>
     </button>
   );
 }
