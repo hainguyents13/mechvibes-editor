@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.2.0] - 2026-11-05
 
+### Added
+
+- **Know where to start.** A new pack's keyboard waits for sounds, and now says so: add your sounds below, then pick keys and give each one a sound, with an arrow to the ways to add them.
+
 ### Changed
 
 - **A new look, the same as mechvibes.com.** The editor takes the site's colours, fonts, buttons and header, in light and dark. The light/dark switch moves to the top bar, and the footer shows only before a pack is open, so the keyboard gets the room.
