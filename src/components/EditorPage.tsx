@@ -28,6 +28,7 @@ import {
   SOURCES_HEADING_ID,
 } from '@/components/editor/AudioFileSelector';
 import { ChangeFileDialog } from '@/components/editor/ChangeFileDialog';
+import { EmptyKeyboardHint } from '@/components/editor/EmptyKeyboardHint';
 import { HiddenKeysTray } from '@/components/editor/HiddenKeysTray';
 import {
   codesOfOtherKind,
@@ -3194,7 +3195,7 @@ export function EditorPage() {
               <h2 className="sr-only">Keyboard</h2>
               <div
                 ref={keyboardAreaRef}
-                className="w-full min-h-0 shrink overflow-hidden flex items-center justify-center"
+                className="relative w-full min-h-0 shrink overflow-hidden flex items-center justify-center"
               >
                 {/* No CSS transition here: ResizeObserver already re-scales the
                 keyboard every frame while the panels collapse, and animating
@@ -3261,6 +3262,7 @@ export function EditorPage() {
                     )}
                   </div>
                 </div>
+                {visibility.fadedKeyboard && <EmptyKeyboardHint noun={noun} />}
               </div>
 
               {/* Keys with a sound that the drawn layout leaves out */}
