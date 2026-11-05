@@ -161,7 +161,7 @@ function StartCard({
   return (
     <section
       className={cn(
-        'relative flex min-h-[17rem] flex-col gap-2 p-6 shadow-[inset_-1px_0_0_var(--mv-line),inset_0_-1px_0_var(--mv-line)] transition-colors',
+        'relative flex min-h-[17rem] flex-col gap-2 p-6 max-md:not-last:shadow-[inset_0_-1px_0_var(--mv-line)] md:not-last:shadow-[inset_-1px_0_0_var(--mv-line)] transition-colors',
         action && LIFT_WITH_ACTION_CLASS,
       )}
     >
@@ -355,7 +355,7 @@ export function StartScreen({
       <div
         className={cn(
           keptWork || savedWork ? 'mt-3' : 'mt-7',
-          'grid overflow-hidden rounded-[14px] outline -outline-offset-1 outline-mv-line md:grid-cols-3',
+          'grid overflow-hidden rounded-[14px] border border-mv-line md:grid-cols-3',
         )}
       >
         <StartCard
