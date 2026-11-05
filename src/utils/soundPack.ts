@@ -56,6 +56,12 @@ export type PackInfo = {
   author: string;
   description: string;
   tags: string[];
+  /** config.category: realistic, game, fun or app, or null when not chosen. */
+  category: string | null;
+  /** config.sound_profiles: how it sounds, up to three words. */
+  soundProfiles: string[];
+  /** config.switch_type, for a realistic pack only. */
+  switchType: string | null;
   packType: PackType;
   /** options.recommended_volume, 0 to 2. */
   recommendedVolume: number;
@@ -210,9 +216,10 @@ export function addSources(
 /** Whether two pack details hold the same values. The icon File is compared by reference. */
 export function isSamePackInfo(a: PackInfo, b: PackInfo) {
   return (Object.keys(a) as (keyof PackInfo)[]).every((field) =>
-    // Joining is safe: tags are split on commas when edited.
-    field === 'tags'
-      ? a.tags.join(',') === b.tags.join(',')
+    // Joining is safe: tags are split on commas when edited, and sound words
+    // have none.
+    field === 'tags' || field === 'soundProfiles'
+      ? a[field].join(',') === b[field].join(',')
       : a[field] === b[field],
   );
 }

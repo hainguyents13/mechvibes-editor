@@ -82,6 +82,16 @@ const isStoredSource = (value: unknown): value is StoredSource =>
   typeof value.duration === 'number' &&
   typeof value.colorIndex === 'number';
 
+/** Work kept before packs had a category, sound words and switch type has none. */
+function withPackDetails(info: PackSnapshot['packInfo']) {
+  return {
+    ...info,
+    category: info.category ?? null,
+    soundProfiles: info.soundProfiles ?? [],
+    switchType: info.switchType ?? null,
+  };
+}
+
 /**
  * The work in a stored record, with each source's file from `files`, or null
  * when the record is from another version, does not hold a pack, or a file
@@ -122,7 +132,7 @@ export function fromSavedRecord(
     savedAt: record.savedAt,
     unsaved: record.unsaved === true,
     snapshot: {
-      packInfo: record.packInfo as PackSnapshot['packInfo'],
+      packInfo: withPackDetails(record.packInfo as PackSnapshot['packInfo']),
       sources,
       keySounds,
     },

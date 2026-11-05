@@ -55,6 +55,7 @@ Exported packs follow the `config.json` v2 format documented in the app repo: [s
 - Each key or button has a press sound and, optionally, a release sound (`timing` with one or two segments).
 - Keys cut from one file make a `single` pack. Keys cut from several files make a `multi` pack, where each key names its file.
 - Keyboard and mouse packs (`soundpack_type`), tags, an icon, and the `recommended_volume` and `random_pitch` options.
+- The library's `category`, `sound_profiles` and `switch_type`, which the website's new pack form reads. Their lists come from the website's `/api/sound-packs/vocabulary`, with a copy in `src/lib/packVocabulary.ts` for when it cannot be reached.
 - Files other than OGG and MP3 are encoded to OGG. A video keeps only the parts its keys use.
 
 Opening a pack and exporting it again keeps what the editor does not edit, such as `version`, `created_at`, unknown fields and the license file. A zip whose pack sits inside a folder opens too, and exports flat. Classic (V1) packs cannot be opened.

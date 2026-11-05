@@ -15,6 +15,11 @@ export function createDefaultPackInfo(
     author: '',
     description: `A custom sound pack created with the ${siteIdentity.productName} editor.`,
     tags: [],
+    // Left for the maker to choose: a default is how packs end up filed in
+    // the wrong category.
+    category: null,
+    soundProfiles: [],
+    switchType: null,
     packType,
     recommendedVolume: 1,
     randomPitch: false,
