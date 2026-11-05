@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
 import { cn, plural } from '@/lib/utils';
 import type { KeySounds } from '@/utils/soundPack';
 
@@ -62,6 +63,7 @@ export function ResetAllButton({
   noun?: string;
 }) {
   const [showConfirm, setShowConfirm] = React.useState(false);
+  const returnFocus = useReturnFocus();
   return (
     <>
       <button
@@ -79,7 +81,7 @@ export function ResetAllButton({
       </button>
 
       <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <DialogContent>
+        <DialogContent {...returnFocus}>
           <DialogHeader>
             <DialogTitle>Reset all {noun} mappings?</DialogTitle>
             <DialogDescription>

@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
 import type { FileKind } from '@/lib/fileKinds';
 import { keyLabel } from '@/lib/keyNames';
 import { cn, plural } from '@/lib/utils';
@@ -113,6 +114,7 @@ export function AudioFileSelector({
   const detailsIdBase = React.useId();
   const [pendingRemoval, setPendingRemoval] =
     React.useState<AudioSource | null>(null);
+  const returnFocus = useReturnFocus();
 
   // The open file's row stays in view: an add opens a file at the end of a
   // long list, and a selected key opens the file it plays. Only the list
@@ -431,7 +433,7 @@ export function AudioFileSelector({
         }}
       >
         {pendingRemoval && (
-          <DialogContent>
+          <DialogContent {...returnFocus}>
             <DialogHeader>
               <DialogTitle>Remove {pendingRemoval.file.name}?</DialogTitle>
               <DialogDescription>
