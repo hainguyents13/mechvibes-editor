@@ -1,14 +1,19 @@
 import { useState } from 'react';
+import { Loader } from '@/components/icons';
 import { MyPacksList } from '@/components/MyPacksList';
+import { buttonVariants } from '@/components/ui/button';
 import { websiteHost } from '@/config/siteIdentity';
 import type { LibrarySession } from '@/hooks/useLibrarySession';
 import type { LibraryPackSummary } from '@/lib/websiteApi';
 import {
   BackButton,
+  CARD_CLASS,
   ErrorLine,
+  SCREEN_LABEL_CLASS,
   ScreenHeading,
   StartPage,
   signInTarget,
+  TEXT_LINK_CLASS,
 } from './StartPage';
 
 /** The visitor's library packs, in place of the start cards. */
@@ -54,15 +59,15 @@ export function MyPacksScreen({
   return (
     <StartPage>
       <div className="mx-auto max-w-3xl">
-        {/* Equal side columns keep the heading centred over the list. */}
-        <div className="mb-6 grid grid-cols-[1fr_auto_1fr] items-center gap-x-4">
-          <div>
-            <BackButton onClick={onBack} />
+        <BackButton onClick={onBack} />
+        <div className="mt-6 mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+          <div className="flex flex-col gap-3">
+            <span className={SCREEN_LABEL_CLASS}>My packs</span>
+            <ScreenHeading className="font-display text-[clamp(28px,3.4vw,40px)] font-extrabold leading-[1.1] tracking-[-0.025em] text-mv-ink">
+              Your packs on {websiteHost}
+            </ScreenHeading>
           </div>
-          <ScreenHeading className="text-center text-xl md:text-2xl font-bold">
-            Your packs on {websiteHost}
-          </ScreenHeading>
-          <p className="min-w-0 truncate text-right text-sm text-base-content/60">
+          <p className="m-0 min-w-0 truncate text-sm text-mv-subtle">
             {session.status === 'signed-in' &&
               `Signed in as ${session.user.name}`}
           </p>
@@ -73,7 +78,7 @@ export function MyPacksScreen({
             <ErrorLine message={openError} />
           </div>
         )}
-        <div className="rounded-box border border-base-300 bg-base-100 px-4 shadow-sm">
+        <div className={`${CARD_CLASS} px-5`}>
           {session.status === 'signed-in' ? (
             <MyPacksList
               packs={session.packs}
@@ -81,20 +86,25 @@ export function MyPacksScreen({
               onOpen={onOpen}
             />
           ) : (
-            <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-base-content/70">
+            <div className="flex flex-col items-center gap-3 py-8 text-center text-sm text-mv-muted">
               {session.status === 'loading' && (
                 <>
-                  <p>Checking your account...</p>
-                  <span className="loading loading-spinner loading-sm" />
+                  <p className="m-0">Checking your account...</p>
+                  <Loader className="size-5 animate-spin" aria-hidden="true" />
                 </>
               )}
               {session.status === 'signed-out' && (
                 <>
-                  <p>Sign in to see the packs you shared on {websiteHost}.</p>
+                  <p className="m-0">
+                    Sign in to see the packs you shared on {websiteHost}.
+                  </p>
                   <a
                     href={signInHref}
                     {...signInTarget(signInInNewTab)}
-                    className="btn btn-sm btn-neutral rounded-box"
+                    className={buttonVariants({
+                      variant: 'secondary',
+                      size: 'sm',
+                    })}
                   >
                     Sign in
                   </a>
@@ -102,15 +112,21 @@ export function MyPacksScreen({
               )}
               {session.status === 'unavailable' && (
                 <>
-                  <p>Can't reach {websiteHost} right now.</p>
+                  <p className="m-0">Can't reach {websiteHost} right now.</p>
                   <button
                     type="button"
                     onClick={retry}
                     disabled={isRetrying}
-                    className="btn btn-sm btn-neutral rounded-box"
+                    className={buttonVariants({
+                      variant: 'secondary',
+                      size: 'sm',
+                    })}
                   >
                     {isRetrying && (
-                      <span className="loading loading-spinner loading-xs" />
+                      <Loader
+                        className="size-4 animate-spin"
+                        aria-hidden="true"
+                      />
                     )}
                     Try again
                   </button>
@@ -120,20 +136,20 @@ export function MyPacksScreen({
           )}
         </div>
 
-        <div className="mt-4 space-y-1 text-sm text-base-content/70">
-          <p>
+        <div className="mt-4 space-y-1.5 text-sm text-mv-muted">
+          <p className="m-0">
             Pack is only on your computer?{' '}
             <button
               type="button"
               onClick={onChoosePackFile}
               disabled={isOpeningFile}
-              className="link font-medium"
+              className={TEXT_LINK_CLASS}
             >
               {isOpeningFile ? 'Opening…' : 'Open a pack file'}
             </button>
           </p>
           {openFileError && <ErrorLine message={openFileError} />}
-          <p>
+          <p className="m-0">
             Want to change someone else's pack? Download it on {websiteHost} and
             open the file. It becomes your own new pack.
           </p>

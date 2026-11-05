@@ -13,3 +13,9 @@ export const websiteHost = new URL(websiteUrl).host;
 
 export const editorRepoUrl =
   'https://github.com/hainguyents13/mechvibes-editor';
+
+/** The editor's guide on the website. */
+export const editorGuideUrl = `${websiteUrl}/guides/editor`;
+
+/** The Mechvibes community, as linked from mechvibes.com's header. */
+export const discordUrl = 'https://discord.gg/ydZqwvrvYS';
