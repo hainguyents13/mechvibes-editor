@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { currentVocabulary, readPackDetails } from '@/lib/packVocabulary';
 import { getAudioDuration, getDecodedDuration } from '@/utils/audioUtils';
 import {
   type AudioSource,
@@ -49,6 +50,9 @@ const EDITOR_FIELDS = new Set([
   'm_author',
   'description',
   'tags',
+  'category',
+  'sound_profiles',
+  'switch_type',
   'definition_method',
   'audio_file',
   'icon',
@@ -506,6 +510,14 @@ export async function parseSoundPackZip(
         ? config.m_author
         : '';
 
+  const details = readPackDetails(
+    config,
+    Array.isArray(config.tags)
+      ? config.tags.filter((tag): tag is string => typeof tag === 'string')
+      : [],
+    currentVocabulary(),
+  );
+
   const extraConfig = Object.fromEntries(
     Object.entries(config).filter(([field]) => !EDITOR_FIELDS.has(field)),
   );
@@ -530,9 +542,7 @@ export async function parseSoundPackZip(
       author,
       description:
         typeof config.description === 'string' ? config.description : '',
-      tags: Array.isArray(config.tags)
-        ? config.tags.filter((tag): tag is string => typeof tag === 'string')
-        : [],
+      ...details,
       packType,
       recommendedVolume:
         Number.isFinite(volume) && volume >= 0 && volume <= 2 ? volume : 1,

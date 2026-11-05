@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Say what kind of pack it is.** **Edit Pack Information** asks for the pack's **Category** (Realistic, Game, Fun or App sounds), **How it sounds** in up to 3 words, and, for a realistic pack, its **Switch type**. They are the same lists as on mechvibes.com, and the downloaded pack carries them, so the website's new pack form starts with them filled in. Suggested tags sit under the tag field, one click each.
+
+### Changed
+
+- **Tags no longer repeat the other fields.** A tag that only says the category, a sound word or the switch type is left out of the pack. When you open an older pack, such tags fill in those fields instead.
+
 ## [1.2.0] - 2026-11-05
 
 ### Added

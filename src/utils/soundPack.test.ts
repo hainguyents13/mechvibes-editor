@@ -44,7 +44,10 @@ const info: PackInfo = {
   name: 'Cream',
   author: 'Hai',
   description: 'Lubed linears.',
-  tags: ['linear', 'thocky'],
+  tags: ['lubed', 'stock'],
+  category: 'realistic',
+  soundProfiles: ['thocky', 'creamy'],
+  switchType: 'linear',
   packType: 'Keyboard',
   recommendedVolume: 1,
   randomPitch: false,
@@ -57,7 +60,16 @@ describe('isSamePackInfo', () => {
   });
 
   it('tells tags in another order apart', () => {
-    expect(isSamePackInfo(info, { ...info, tags: ['thocky', 'linear'] })).toBe(
+    expect(isSamePackInfo(info, { ...info, tags: ['stock', 'lubed'] })).toBe(
+      false,
+    );
+  });
+
+  it('compares sound words by value', () => {
+    expect(
+      isSamePackInfo(info, { ...info, soundProfiles: ['thocky', 'creamy'] }),
+    ).toBe(true);
+    expect(isSamePackInfo(info, { ...info, soundProfiles: ['thocky'] })).toBe(
       false,
     );
   });

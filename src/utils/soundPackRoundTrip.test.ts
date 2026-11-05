@@ -720,3 +720,88 @@ describe('a file without audio', () => {
     expect(longer.keySounds.get('KeyX')?.press).toEqual([0, 2000]);
   });
 });
+
+describe('category, sound and switch type', () => {
+  it('keeps them through import and export', async () => {
+    const { pack, out } = await roundTrip({
+      'config.json': packConfig({
+        tags: ['lubed'],
+        category: 'realistic',
+        sound_profiles: ['thocky', 'creamy'],
+        switch_type: 'linear',
+      }),
+      'sound.ogg': fakeAudio('main'),
+    });
+
+    expect(pack.info).toMatchObject({
+      category: 'realistic',
+      soundProfiles: ['thocky', 'creamy'],
+      switchType: 'linear',
+      tags: ['lubed'],
+    });
+    expect(out.config).toEqual(
+      exportedConfig({
+        tags: ['lubed'],
+        category: 'realistic',
+        sound_profiles: ['thocky', 'creamy'],
+        switch_type: 'linear',
+      }),
+    );
+  });
+
+  it('writes none of them when they are empty', async () => {
+    const { out } = await reexport(
+      await makePackZip({
+        'config.json': packConfig({}),
+        'sound.ogg': fakeAudio('main'),
+      }),
+    );
+
+    expect(out.config).not.toHaveProperty('category');
+    expect(out.config).not.toHaveProperty('sound_profiles');
+    expect(out.config).not.toHaveProperty('switch_type');
+  });
+
+  it('moves tags that repeat a field into that field', async () => {
+    const { pack, out } = await reexport(
+      await makePackZip({
+        'config.json': packConfig({
+          tags: ['Thocky', 'tactile', 'clicky', 'cherry'],
+        }),
+        'sound.ogg': fakeAudio('main'),
+      }),
+    );
+
+    // Clicky is both a sound and a switch type; it is taken as the sound.
+    expect(pack.info).toMatchObject({
+      category: 'realistic',
+      soundProfiles: ['thocky', 'clicky'],
+      switchType: 'tactile',
+      tags: ['cherry'],
+    });
+    expect(out.config.tags).toEqual(['cherry']);
+  });
+
+  it('leaves out values that are not on the lists', async () => {
+    const { pack, out } = await reexport(
+      await makePackZip({
+        'config.json': packConfig({
+          category: 'voice',
+          sound_profiles: ['loud', 'muted'],
+          switch_type: 'linear',
+        }),
+        'sound.ogg': fakeAudio('main'),
+      }),
+    );
+
+    // A switch type belongs to a realistic pack only.
+    expect(pack.info).toMatchObject({
+      category: null,
+      soundProfiles: ['muted'],
+      switchType: null,
+    });
+    expect(out.config).not.toHaveProperty('category');
+    expect(out.config.sound_profiles).toEqual(['muted']);
+    expect(out.config).not.toHaveProperty('switch_type');
+  });
+});

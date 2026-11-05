@@ -1,5 +1,10 @@
 import JSZip from 'jszip';
 import {
+  currentVocabulary,
+  REALISTIC,
+  withoutFieldWords,
+} from '@/lib/packVocabulary';
+import {
   type AudioSource,
   getExtension,
   ICON_TYPES,
@@ -416,7 +421,16 @@ export async function buildSoundPackZip({
     name: info.name,
     author: info.author.trim() || 'Mechvibes Editor',
     description: info.description,
-    tags: info.tags,
+    // The website reads these into its new pack form. Words with a field of
+    // their own stay out of the tags, which the website would drop anyway.
+    tags: withoutFieldWords(info.tags, currentVocabulary()),
+    ...(info.category ? { category: info.category } : {}),
+    ...(info.soundProfiles.length > 0
+      ? { sound_profiles: info.soundProfiles }
+      : {}),
+    ...(info.switchType && info.category === REALISTIC
+      ? { switch_type: info.switchType }
+      : {}),
     definition_method: isMulti ? 'multi' : 'single',
     audio_file: packed.get(usedSources[0].id)?.name,
     ...(iconName ? { icon: iconName } : {}),

@@ -109,6 +109,12 @@ export async function listMyPacks(): Promise<{
   return response.json();
 }
 
+/** The lists packs are described with, as packVocabulary.ts reads them. Public, cached for an hour. */
+export async function getPackVocabulary(): Promise<unknown> {
+  const response = await request('/api/sound-packs/vocabulary');
+  return response.json();
+}
+
 /** The current zip of one of the visitor's packs. Does not count as a download. */
 export async function downloadPackZip(id: string): Promise<Blob> {
   const response = await request(

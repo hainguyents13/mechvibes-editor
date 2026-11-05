@@ -10,6 +10,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useReturnFocus } from '@/hooks/useReturnFocus';
+import {
+  REALISTIC,
+  usePackVocabulary,
+  withoutFieldWords,
+} from '@/lib/packVocabulary';
 import { cn } from '@/lib/utils';
 import { ICON_TYPES, MAX_ICON_BYTES, type PackInfo } from '@/utils/soundPack';
 
@@ -28,6 +33,39 @@ const ICON_ACCEPT = Object.keys(ICON_TYPES).join(',');
 
 const FIELD_CLASS = 'flex flex-col gap-1.5';
 const HINT_CLASS = 'm-0 text-xs leading-normal text-mv-subtle';
+const LEGEND_CLASS =
+  'mb-1.5 p-0 text-[13px] font-bold leading-snug text-mv-ink';
+const OPTIONAL = <span className="font-normal text-mv-faint">(optional)</span>;
+
+/** A word to pick, as the website's pack form draws it. */
+function Chip({
+  on,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-[26px] cursor-pointer items-center rounded-full px-2.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-45',
+        on
+          ? 'bg-mv-fill font-bold text-mv-ink shadow-[inset_0_0_0_1.5px_var(--mv-ink)]'
+          : 'text-mv-text shadow-[inset_0_0_0_1px_var(--mv-line)] enabled:hover:text-mv-ink',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
 function parseTags(value: string) {
   return Array.from(
@@ -39,6 +77,9 @@ function parseTags(value: string) {
     ),
   );
 }
+
+const hasTag = (tags: string[], tag: string) =>
+  tags.some((each) => each.toLowerCase() === tag);
 
 export function EditPackModal({
   isOpen,
@@ -52,8 +93,19 @@ export function EditPackModal({
     tags: packInfo.tags.join(', '),
   });
   const iconInputRef = React.useRef<HTMLInputElement>(null);
+  const soundsRef = React.useRef<HTMLFieldSetElement>(null);
+  const [soundsMissing, setSoundsMissing] = useState(false);
   const id = useId();
   const returnFocus = useReturnFocus();
+  const vocabulary = usePackVocabulary();
+
+  const realistic = formData.category === REALISTIC;
+  const category = vocabulary.categories.find(
+    (entry) => entry.value === formData.category,
+  );
+  const tagList = parseTags(formData.tags);
+  const keptTags = withoutFieldWords(tagList, vocabulary);
+  const longTag = keptTags.find((tag) => tag.length > vocabulary.maxTagLength);
 
   const iconUrl = React.useMemo(
     () => (formData.icon ? URL.createObjectURL(formData.icon) : null),
@@ -68,9 +120,43 @@ export function EditPackModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ ...formData, tags: parseTags(formData.tags) });
+    // The website asks a realistic pack how it sounds before it takes it.
+    if (realistic && formData.soundProfiles.length === 0) {
+      setSoundsMissing(true);
+      soundsRef.current?.scrollIntoView({ block: 'center' });
+      soundsRef.current?.querySelector('button')?.focus();
+      return;
+    }
+    onSave({
+      ...formData,
+      tags: keptTags,
+      // Only a realistic pack has a switch type.
+      switchType: realistic ? formData.switchType : null,
+    });
     onClose();
   };
+
+  const toggleSound = (value: string) => {
+    setSoundsMissing(false);
+    setFormData((prev) => ({
+      ...prev,
+      soundProfiles: prev.soundProfiles.includes(value)
+        ? prev.soundProfiles.filter((profile) => profile !== value)
+        : [...prev.soundProfiles, value],
+    }));
+  };
+
+  const toggleTag = (tag: string) =>
+    setFormData((prev) => {
+      const tags = parseTags(prev.tags);
+      return {
+        ...prev,
+        tags: (hasTag(tags, tag)
+          ? tags.filter((each) => each.toLowerCase() !== tag)
+          : [...tags, tag]
+        ).join(', '),
+      };
+    });
 
   const handleChange =
     (field: 'name' | 'author' | 'description' | 'tags') =>
@@ -110,8 +196,8 @@ export function EditPackModal({
             {isLibraryPack && (
               <p className="m-0 rounded-[10px] bg-mv-fill p-3 text-xs leading-normal text-mv-muted">
                 This pack is in the library. When you update it, the website
-                keeps the name, description, tags and author from the pack's
-                page, so change those there.
+                keeps the name, description, category, sound, tags and author
+                from the pack's page, so change those there.
               </p>
             )}
 
@@ -156,17 +242,132 @@ export function EditPackModal({
             </div>
 
             <div className={FIELD_CLASS}>
-              <Label htmlFor={`${id}-tags`}>Tags</Label>
+              <Label htmlFor={`${id}-category`}>Category</Label>
+              <select
+                id={`${id}-category`}
+                className="mv-field"
+                value={formData.category ?? ''}
+                onChange={(e) => {
+                  setSoundsMissing(false);
+                  setFormData((prev) => ({
+                    ...prev,
+                    category: e.target.value || null,
+                  }));
+                }}
+                aria-describedby={`${id}-category-hint`}
+              >
+                <option value="">Choose one</option>
+                {vocabulary.categories.map((entry) => (
+                  <option key={entry.value} value={entry.value}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+              <p id={`${id}-category-hint`} className={HINT_CLASS}>
+                {category?.hint || 'Where the pack is listed in the library'}
+              </p>
+            </div>
+
+            <fieldset
+              ref={soundsRef}
+              className="m-0 min-w-0 border-0 p-0"
+              aria-describedby={`${id}-sounds-hint`}
+            >
+              <legend className={LEGEND_CLASS}>
+                How it sounds {!realistic && OPTIONAL}
+              </legend>
+              <div className="flex flex-wrap gap-1.5">
+                {vocabulary.soundProfiles.map((entry) => {
+                  const on = formData.soundProfiles.includes(entry.value);
+                  return (
+                    <Chip
+                      key={entry.value}
+                      on={on}
+                      disabled={
+                        !on &&
+                        formData.soundProfiles.length >=
+                          vocabulary.maxSoundProfiles
+                      }
+                      onClick={() => toggleSound(entry.value)}
+                    >
+                      {entry.label}
+                    </Chip>
+                  );
+                })}
+              </div>
+              <p
+                id={`${id}-sounds-hint`}
+                role={soundsMissing ? 'alert' : undefined}
+                className={cn(
+                  HINT_CLASS,
+                  'mt-1.5',
+                  soundsMissing && 'text-mv-danger',
+                )}
+              >
+                {soundsMissing
+                  ? 'A realistic pack needs at least one word for how it sounds.'
+                  : `Pick ${realistic ? 1 : 'up'} to ${vocabulary.maxSoundProfiles}. They show on the pack page and help people find it.`}
+              </p>
+            </fieldset>
+
+            {realistic && (
+              <div className={FIELD_CLASS}>
+                <Label htmlFor={`${id}-switch`}>Switch type {OPTIONAL}</Label>
+                <select
+                  id={`${id}-switch`}
+                  className="mv-field"
+                  value={formData.switchType ?? ''}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      switchType: e.target.value || null,
+                    }))
+                  }
+                >
+                  <option value="">Not sure or none</option>
+                  {vocabulary.switchTypes.map((entry) => (
+                    <option key={entry.value} value={entry.value}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className={FIELD_CLASS}>
+              <Label htmlFor={`${id}-tags`}>Tags {OPTIONAL}</Label>
               <Input
                 id={`${id}-tags`}
                 type="text"
                 value={formData.tags}
                 onChange={handleChange('tags')}
-                placeholder="mechanical, clicky, cherry"
+                placeholder="gaming, quiet, 75%"
                 aria-describedby={`${id}-tags-hint`}
               />
-              <p id={`${id}-tags-hint`} className={HINT_CLASS}>
-                Separate tags with commas
+              <div className="flex flex-wrap gap-1.5">
+                {vocabulary.suggestedTags.map((tag) => (
+                  <Chip
+                    key={tag}
+                    on={hasTag(tagList, tag)}
+                    onClick={() => toggleTag(tag)}
+                  >
+                    {tag}
+                  </Chip>
+                ))}
+              </div>
+              <p
+                id={`${id}-tags-hint`}
+                className={cn(
+                  HINT_CLASS,
+                  (longTag || keptTags.length > vocabulary.maxTags) &&
+                    'text-mv-danger',
+                )}
+              >
+                {longTag
+                  ? `"${longTag}" is ${longTag.length} characters. The library takes tags up to ${vocabulary.maxTagLength}.`
+                  : keptTags.length > vocabulary.maxTags
+                    ? `That is ${keptTags.length} tags. The library keeps the first ${vocabulary.maxTags}.`
+                    : 'Separate tags with commas. No need to repeat the category, sound or switch type.'}
               </p>
             </div>
 
