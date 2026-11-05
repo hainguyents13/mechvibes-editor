@@ -1,5 +1,37 @@
 import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+// The mv-* colour tokens (index.css), so text-mv-ink is merged as a colour and
+// never replaces text-sm.
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      color: [
+        'mv-page',
+        'mv-raised',
+        'mv-fill',
+        'mv-fill-strong',
+        'mv-line',
+        'mv-line-strong',
+        'mv-ink',
+        'mv-text',
+        'mv-muted',
+        'mv-subtle',
+        'mv-faint',
+        'mv-label',
+        'mv-up',
+        'mv-primary',
+        'mv-on-primary',
+        'mv-danger',
+        'mv-danger-solid',
+        'mv-danger-fill',
+        'mv-chart',
+        'mv-press',
+        'mv-release',
+      ],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

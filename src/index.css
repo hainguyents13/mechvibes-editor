@@ -1,10 +1,136 @@
 @import "tailwindcss";
+/* The enter and leave animations of the menus, dialogs and tooltips */
+@import "tw-animate-css";
+
+/* dark: follows the editor's own switch (data-theme on <html>), not the system
+   setting, like the mv-* colours */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @plugin "daisyui" {
   /* biome-ignore lint/correctness/noUnknownProperty: DaisyUI plugin option, not a CSS property */
   themes:
     light --default,
     dark --prefersdark;
+}
+
+/* mechvibes.com's colours, one value for the light page and one for the dark
+   page (data-theme). Tailwind reads them through @theme below as bg-mv-*,
+   text-mv-*, and so on. Kept in step with the site's globals.css. */
+:root {
+  --mv-page: #ffffff;
+  --mv-raised: #fafafa;
+  --mv-fill: #f4f4f5;
+  --mv-fill-strong: #e4e4e7;
+  --mv-line: #e4e4e7;
+  --mv-line-strong: #d4d4d8;
+  --mv-ink: #18181b;
+  --mv-text: #3f3f46;
+  --mv-muted: #52525b;
+  --mv-subtle: #71717a;
+  --mv-faint: #a1a1aa;
+  /* Small uppercase headings, a step lighter than subtle */
+  --mv-label: #8e8e96;
+  --mv-up: #059669;
+  --mv-primary: #18181b;
+  --mv-on-primary: #ffffff;
+  --mv-danger: #b91c1c;
+  --mv-danger-solid: #dc2626;
+  --mv-danger-fill: #fef2f2;
+  /* The one accent: the waveform */
+  --mv-chart: hsl(245 70% 60%);
+  --mv-shadow: rgb(24 24 27 / 0.28);
+  /* The editor's own: a key's press sound and release sound, the two halves
+     of its edge. The values of daisyUI's primary and secondary, which the
+     key dots used. */
+  --mv-press: oklch(45% 0.24 277.023);
+  --mv-release: oklch(65% 0.241 354.308);
+
+  --font-lato: "Lato";
+  --font-bricolage: "Bricolage Grotesque";
+  --font-jetbrains: "JetBrains Mono";
+}
+
+[data-theme="dark"] {
+  --mv-page: #0b0b0d;
+  --mv-raised: #121215;
+  --mv-fill: #1c1c20;
+  --mv-fill-strong: #2a2a2f;
+  --mv-line: #27272a;
+  --mv-line-strong: #3f3f46;
+  --mv-ink: #fafafa;
+  --mv-text: #d4d4d8;
+  --mv-muted: #a1a1aa;
+  --mv-subtle: #a1a1aa;
+  --mv-faint: #71717a;
+  --mv-label: #85858d;
+  --mv-up: #34d399;
+  --mv-primary: #fafafa;
+  --mv-on-primary: #18181b;
+  --mv-danger: #f87171;
+  --mv-danger-solid: #dc2626;
+  --mv-danger-fill: #2b1314;
+  --mv-chart: hsl(245 85% 72%);
+  --mv-shadow: rgb(0 0 0 / 0.6);
+  --mv-press: oklch(58% 0.233 277.117);
+  --mv-release: oklch(65% 0.241 354.308);
+}
+
+@theme inline {
+  --color-mv-page: var(--mv-page);
+  --color-mv-raised: var(--mv-raised);
+  --color-mv-fill: var(--mv-fill);
+  --color-mv-fill-strong: var(--mv-fill-strong);
+  --color-mv-line: var(--mv-line);
+  --color-mv-line-strong: var(--mv-line-strong);
+  --color-mv-ink: var(--mv-ink);
+  --color-mv-text: var(--mv-text);
+  --color-mv-muted: var(--mv-muted);
+  --color-mv-subtle: var(--mv-subtle);
+  --color-mv-faint: var(--mv-faint);
+  --color-mv-label: var(--mv-label);
+  --color-mv-up: var(--mv-up);
+  --color-mv-primary: var(--mv-primary);
+  --color-mv-on-primary: var(--mv-on-primary);
+  --color-mv-danger: var(--mv-danger);
+  --color-mv-danger-solid: var(--mv-danger-solid);
+  --color-mv-danger-fill: var(--mv-danger-fill);
+  --color-mv-chart: var(--mv-chart);
+  --color-mv-press: var(--mv-press);
+  --color-mv-release: var(--mv-release);
+  --font-display:
+    var(--font-bricolage), var(--font-lato), system-ui, sans-serif;
+  --font-body: var(--font-lato), system-ui, sans-serif;
+  --font-code: var(--font-jetbrains), ui-monospace, monospace;
+}
+
+@layer components {
+  /* A text field, 36px like a default button */
+  .mv-field {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--mv-line-strong);
+    border-radius: 8px;
+    background: var(--mv-page);
+    color: var(--mv-ink);
+    font-size: 14px;
+    outline: none;
+  }
+  .mv-field::placeholder {
+    color: var(--mv-faint);
+  }
+  .mv-field:focus-visible,
+  .mv-field:focus-within {
+    border-color: var(--mv-ink);
+  }
+  textarea.mv-field {
+    height: auto;
+    min-height: 96px;
+    padding: 8px 12px;
+    line-height: 1.5;
+  }
 }
 
 /* A window too short for the editor's rows at their full size: a 768px or
@@ -30,7 +156,7 @@
 }
 
 body {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
