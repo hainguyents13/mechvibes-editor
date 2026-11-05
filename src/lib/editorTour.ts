@@ -62,7 +62,7 @@ function openedPackSteps(
       element: target('keyboard'),
       popover: {
         title: `The ${noun}s of the pack`,
-        description: `A dot marks a ${noun} that has a sound, in the colour of its file. Select ${noun}s to give them a new sound ${activeFileKind === 'one' ? 'by clicking a sound in the list below' : 'from the waveform below'}.`,
+        description: `The edge under a ${noun} shows its sound: the left half for the press, the right half for the release. Select ${noun}s to give them a new sound ${activeFileKind === 'one' ? 'by clicking a sound in the list below' : 'from the waveform below'}.`,
       },
     },
     {
@@ -154,7 +154,7 @@ function allSteps(
       popover: {
         title: `2. Pick ${noun}s`,
         // The mouse drawing has no box to drag across.
-        description: `Click a ${noun} to select it and click it again to deselect it. ${isMouse ? '' : 'Drag across keys to select several, '}Shift+click to select a range, or ${MOD_LABEL}+click to add or remove one. Delete clears the sound of the selected ${noun}s. A dot marks a ${noun} that already has a sound, in the colour of its file.`,
+        description: `Click a ${noun} to select it and click it again to deselect it. ${isMouse ? '' : 'Drag across keys to select several, '}Shift+click to select a range, or ${MOD_LABEL}+click to add or remove one. Delete clears the sound of the selected ${noun}s. A coloured edge marks a ${noun} that already has a sound.`,
       },
     },
     soundStep(stage, isMouse, activeFileKind),

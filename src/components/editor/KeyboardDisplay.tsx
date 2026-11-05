@@ -1,6 +1,5 @@
 import React from 'react';
 import type { AudioSource, KeySounds } from '@/utils/soundPack';
-import { getAudioTrackColor } from './audio-track-colors';
 import { KeyButton } from './KeyButton';
 import {
   ARROW_DIRECTIONS,
@@ -112,7 +111,7 @@ export function KeyboardDisplay({
         ref={refToUse}
         role="group"
         aria-label="Keyboard keys"
-        className="keyboard-display overflow-hidden relative bg-base-content/10 border border-base-content/10 rounded"
+        className="keyboard-display overflow-hidden relative rounded-[10px] bg-mv-raised shadow-[inset_0_0_0_1px_var(--mv-line)]"
         style={{
           width: `${keyboardWidth}px`,
           height: `${keyboardHeight}px`,
@@ -142,9 +141,6 @@ export function KeyboardDisplay({
               isSelected={selectedKeys.has(keyId)}
               isModified={Boolean(sound)}
               hasRelease={Boolean(sound?.release)}
-              dotColor={
-                source ? getAudioTrackColor(source.colorIndex).dot : undefined
-              }
               sourceName={source?.file.name}
               isPreview={isPreview}
               isPressed={pressedKeyCodes?.has(keyCode) ?? false}
@@ -160,7 +156,7 @@ export function KeyboardDisplay({
         {marquee && !isPreview && (
           <div
             aria-hidden
-            className="absolute pointer-events-none rounded-sm border border-primary bg-primary/15"
+            className="absolute pointer-events-none rounded-sm border border-mv-ink/60 bg-mv-ink/10"
             style={{
               left: marquee.left,
               top: marquee.top,

@@ -1,8 +1,16 @@
-import { Ellipsis, Play, Plus, Square, TriangleAlert } from 'lucide-react';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
+import { KEYCAP_FACE_ON, keycapEdge } from '@/components/editor/keycap';
 import type { SoundSlot } from '@/components/editor/TimeSegmentControls';
+import {
+  Ellipsis,
+  Play,
+  Plus,
+  Square,
+  TriangleAlert,
+} from '@/components/icons';
 import { NavbarMenu } from '@/components/NavbarMenu';
+import { buttonVariants } from '@/components/ui/button';
 import type { FileKind } from '@/lib/fileKinds';
 import { keyCardName, keyCardOffer, segmentSeconds } from '@/lib/keyCard';
 import { keyLabel } from '@/lib/keyNames';
@@ -90,24 +98,32 @@ export function KeyCard({
     const isPlaying = playingSlot === slot;
     const Icon = isPlaying ? Square : Play;
     return (
-      <div className="flex items-center gap-1 text-xs">
-        <span className="font-medium text-base-content">
+      <div className="flex items-center gap-1.5 text-xs">
+        <span
+          aria-hidden="true"
+          className={cn(
+            'h-1 w-3 rounded-full',
+            slot === 'press' ? 'bg-mv-press' : 'bg-mv-release',
+          )}
+        />
+        <span className="font-bold text-mv-ink">
           {slot === 'press' ? 'Press' : 'Release'}
         </span>
         <button
           type="button"
           disabled={isMissing}
           className={cn(
-            'btn btn-xs btn-ghost btn-square rounded-box',
-            isPlaying && 'btn-active',
+            buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+            color.text,
+            isPlaying && 'bg-mv-fill',
           )}
           onClick={() => onPlay(slot)}
           aria-label={`${isPlaying ? 'Stop' : 'Play'} the ${slot} sound of ${label}`}
           title={isPlaying ? 'Stop' : 'Play'}
         >
-          <Icon className={`h-3 w-3 ${color.text}`} />
+          <Icon className="size-3.5" />
         </button>
-        <span className="text-base-content/70">
+        <span className="font-code text-mv-subtle">
           {formatLength(segmentSeconds(segment, source))}
         </span>
       </div>
@@ -136,52 +152,66 @@ export function KeyCard({
         fits && 'lg:sticky',
       )}
     >
-      <div
-        className={cn(
-          'flex flex-col gap-2 min-w-0 rounded-box border border-l-4 border-base-content/15 bg-base-100 p-3',
-          // After the border colour, or cn drops it as overridden.
-          color.border,
-        )}
-      >
-        <h2
-          id={titleId}
-          className="truncate text-xs font-semibold text-base-content"
-          title={`${name} · from ${fileName}`}
-        >
-          {name}{' '}
-          <span className="font-normal text-base-content/70">
-            · from {fileName}
+      <div className="flex flex-col gap-2.5 min-w-0 rounded-[12px] bg-mv-page p-3 shadow-[inset_0_0_0_1px_var(--mv-line)]">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {/* The key as the keyboard draws it: its edge shows press and release */}
+          <span
+            aria-hidden="true"
+            className="block h-9 min-w-9 shrink-0 rounded-[7px] pb-[3px]"
+            style={{ background: keycapEdge(true, Boolean(sound.release)) }}
+          >
+            <span
+              className={cn(
+                'flex h-full items-center justify-center rounded-[6px] px-1.5 text-xs font-bold',
+                KEYCAP_FACE_ON,
+              )}
+            >
+              {label}
+            </span>
           </span>
-        </h2>
+          <h2
+            id={titleId}
+            className="m-0 min-w-0 truncate text-[13px] font-bold text-mv-ink"
+            title={`${name} · from ${fileName}`}
+          >
+            {name}{' '}
+            <span className="font-normal text-mv-subtle">
+              · from {fileName}
+            </span>
+          </h2>
+        </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {part('press')}
           {part('release')}
           {isMissing && (
-            <span className="flex items-center gap-1 text-xs font-medium text-base-content">
-              <TriangleAlert className="h-3 w-3 shrink-0 text-error" />
+            <span className="flex items-center gap-1 text-xs font-bold text-mv-ink">
+              <TriangleAlert className="size-3.5 shrink-0 text-mv-danger" />
               {fileName} has no audio
             </span>
           )}
           {offer === 'add-release' && (
             <button
               type="button"
-              className="btn btn-xs btn-ghost rounded-box"
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
               onClick={onAddRelease}
               aria-label={`Add a release sound to ${label}`}
               title={`Cut the sound the ${noun} makes when it comes up from ${fileName}`}
             >
-              <Plus className="h-3 w-3" />
+              <Plus className="size-3.5" />
               Add a release sound
             </button>
           )}
         </div>
         {offer === 'split' && (
-          <p className="text-xs text-base-content/70">
+          <p className="m-0 text-xs text-mv-muted">
             This {noun} plays the whole file. Has the file a press and a
             release?{' '}
             <button
               type="button"
-              className="btn btn-xs rounded-box"
+              className={cn(
+                buttonVariants({ variant: 'secondary', size: 'sm' }),
+                'h-[26px] px-2.5 text-xs',
+              )}
               onClick={thenMoveFocus(onSplit)}
               aria-label={`Split it: ${fileName}`}
               title={`Show ${fileName} on the waveform to cut its press and release`}
@@ -191,19 +221,19 @@ export function KeyCard({
           </p>
         )}
         {offer === 'cut' && (
-          <p className="text-xs text-base-content/70">
+          <p className="m-0 text-xs text-mv-muted">
             Cut the press on the waveform, then switch to Release.
           </p>
         )}
         {sameCount > 0 && (
-          <p className="text-xs text-base-content/70">
+          <p className="m-0 text-xs text-mv-subtle">
             Same sound as {plural(sameCount, `other ${noun}`)}
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
-            className="btn btn-xs rounded-box"
+            className={buttonVariants({ variant: 'secondary', size: 'sm' })}
             onClick={onChangeFile}
             aria-label={`Change file for ${label}`}
             title={`Give the ${noun} another file`}
@@ -212,7 +242,7 @@ export function KeyCard({
           </button>
           <button
             type="button"
-            className="btn btn-xs rounded-box"
+            className={buttonVariants({ variant: 'ghost', size: 'sm' })}
             onClick={thenMoveFocus(onRemove)}
             aria-label={`Remove sound from ${label}`}
             title={`Make the ${noun} silent (Delete)`}
@@ -224,10 +254,13 @@ export function KeyCard({
             <NavbarMenu
               align="end"
               buttonLabel={`More for ${isMouse ? label : `key ${label}`}`}
-              buttonClassName="btn btn-xs btn-ghost btn-square rounded-box"
+              buttonClassName={buttonVariants({
+                variant: 'ghost',
+                size: 'icon-sm',
+              })}
               items={[{ label: 'Swap press and release', onSelect: onSwap }]}
             >
-              <Ellipsis className="h-3 w-3" />
+              <Ellipsis className="size-4" />
             </NavbarMenu>
           )}
         </div>

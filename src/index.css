@@ -220,24 +220,17 @@ body[data-editor-preview="true"] footer {
 /* Try it, just after a pack opens: a ring that spreads out and fades. */
 @keyframes try-it-cue {
   from {
-    box-shadow: 0 0 0 0
-      color-mix(in oklab, var(--mv-ink) 35%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--mv-ink) 35%, transparent);
   }
   to {
     box-shadow: 0 0 0 10px transparent;
   }
 }
 
-/* Editor timeline container: sits a step away from the page surface in both
-   themes — darker on light, lighter on dark — so the panel reads as its own
-   layer. base-300 only works for light (it goes darker on dark too), so the
-   shade is mixed from base-content instead. */
+/* The sound panel and what pins over it: the page's own colour, set apart
+   from the keyboard above by a line rather than a shade. */
 .editor-panel-surface {
-  background-color: color-mix(
-    in oklab,
-    var(--color-base-200) 94%,
-    var(--color-base-content) 6%
-  );
+  background-color: var(--mv-page);
 }
 
 /* The waveform panel's Sound row, pinned to the bottom of a panel too short
@@ -251,9 +244,8 @@ body[data-editor-preview="true"] footer {
 @container scroll-state(stuck: bottom) {
   .panel-pinned-row > * {
     box-shadow:
-      0 -1px 0 color-mix(in oklab, var(--color-base-content) 15%, transparent),
-      0 -8px 12px -8px
-      color-mix(in oklab, var(--color-base-content) 25%, transparent);
+      0 -1px 0 var(--mv-line),
+      0 -8px 12px -8px var(--mv-shadow);
   }
 }
 

@@ -17,7 +17,28 @@ import {
 
 /** Id of the one region the user edits. It always mirrors waveformSelection. */
 const SELECTION_REGION_ID = 'selection';
-const SELECTION_COLOR = 'rgba(79, 70, 229, 0.25)';
+
+/**
+ * A theme colour as `rgb(r g b / alpha)`, read when drawn since the canvas
+ * cannot follow CSS variables. The browser resolves it, whatever form the
+ * stylesheet keeps it in.
+ */
+function themeColor(variable: string, alpha = 1) {
+  const probe = document.createElement('span');
+  probe.style.color = `var(${variable})`;
+  document.body.append(probe);
+  const rgb = getComputedStyle(probe).color;
+  probe.remove();
+  const [r = 0, g = 0, b = 0] = rgb.match(/[\d.]+/g)?.map(Number) ?? [];
+  return `rgb(${r} ${g} ${b} / ${alpha})`;
+}
+const selectionColor = () => themeColor('--mv-chart', 0.16);
+/** The bars, a step lighter than the part already played. */
+const waveColors = () => ({
+  waveColor: themeColor('--mv-chart', 0.55),
+  progressColor: themeColor('--mv-chart'),
+  cursorColor: themeColor('--mv-ink'),
+});
 /** Auto-detected regions are click targets only and are never edited. */
 const AUTO_REGION_PREFIX = 'sound-region-';
 const isAutoRegion = (region: Region) =>
@@ -287,7 +308,8 @@ export const CombinedWaveform = forwardRef<
             secondaryLabelInterval: 1,
             style: {
               fontSize: '10px',
-              color: '#6b7280',
+              // A grey that reads on the light and the dark page alike.
+              color: '#8e8e96',
             },
           });
           regionsRef.current = regions;
@@ -295,9 +317,7 @@ export const CombinedWaveform = forwardRef<
           // Configure WaveSurfer for either audio or video
           const waveSurferConfig: any = {
             container: containerRef.current,
-            waveColor: '#4f46e5',
-            progressColor: '#7c3aed',
-            cursorColor: '#7c3aed',
+            ...waveColors(),
             barWidth: soundOnlyMode ? 3 : 2,
             barRadius: soundOnlyMode ? 3 : 2,
             height: heightRef.current,
@@ -323,7 +343,7 @@ export const CombinedWaveform = forwardRef<
 
           // A drag draws a new selection in free mode only
           if (!soundOnlyMode) {
-            regions.enableDragSelection({ color: SELECTION_COLOR });
+            regions.enableDragSelection({ color: selectionColor() });
           }
 
           // Report a region as the new selection and park the cursor at its start.
@@ -422,6 +442,25 @@ export const CombinedWaveform = forwardRef<
         wavesurferRef.current?.setOptions({ height });
       }
     }, [height, isReady]);
+
+    // The canvas keeps the colours it was drawn with, so a switch between
+    // light and dark draws the bars and the selection again in the new ones.
+    useEffect(() => {
+      if (!isReady) return;
+      const repaint = () => {
+        wavesurferRef.current?.setOptions(waveColors());
+        regionsRef.current
+          ?.getRegions()
+          .find((region: Region) => region.id === SELECTION_REGION_ID)
+          ?.setOptions({ color: selectionColor() });
+      };
+      const watch = new MutationObserver(repaint);
+      watch.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme'],
+      });
+      return () => watch.disconnect();
+    }, [isReady]);
 
     // Update zoom when level changes, keeping the view anchored.
     //
@@ -523,7 +562,7 @@ export const CombinedWaveform = forwardRef<
           const created = regions.addRegion({
             id: SELECTION_REGION_ID,
             ...span,
-            color: SELECTION_COLOR,
+            color: selectionColor(),
           });
           raiseSelectionRegion(created);
           selectionRegionRef.current = created;

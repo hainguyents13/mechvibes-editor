@@ -1,3 +1,6 @@
+import React from 'react';
+import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
+import { PANEL_LABEL_CLASS } from '@/components/editor/TimeSegmentControls';
 import {
   Ellipsis,
   Music,
@@ -6,10 +9,18 @@ import {
   Square,
   TriangleAlert,
   Video,
-} from 'lucide-react';
-import React from 'react';
-import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
+} from '@/components/icons';
 import { NavbarMenu } from '@/components/NavbarMenu';
+import { buttonVariants } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import type { FileKind } from '@/lib/fileKinds';
 import { keyLabel } from '@/lib/keyNames';
 import { cn, plural } from '@/lib/utils';
@@ -190,31 +201,31 @@ export function AudioFileSelector({
         <h2
           id={SOURCES_HEADING_ID}
           tabIndex={-1}
-          className="text-xs font-medium text-base-content focus:outline-none"
+          className={cn(PANEL_LABEL_CLASS, 'm-0 focus:outline-none')}
         >
-          Your sounds ({sources.length})
+          Your sounds · {sources.length}
         </h2>
         <button
           type="button"
-          className="btn btn-xs btn-ghost rounded-box"
+          className={buttonVariants({ variant: 'ghost', size: 'sm' })}
           onClick={() => inputRef.current?.click()}
           title="Add audio or video files. Keys can each use a different file."
         >
-          <Plus className="h-3 w-3" />
+          <Plus className="size-3.5" />
           Add
         </button>
         {fileInput}
         {replaceInput}
       </div>
 
-      {/* One row per source in its own fixed colour; the selected one is
-          shown beside the list. Stacked, a long list scrolls on its own, so
-          the open file's controls stay near. */}
+      {/* One row per source, its icon in the file's own fixed colour; the
+          selected one is shown beside the list. Stacked, a long list scrolls
+          on its own, so the open file's controls stay near. */}
       <ul
         ref={listRef}
         data-file-list
         className={cn(
-          'min-h-0 overflow-y-auto flex flex-col gap-2',
+          'm-0 min-h-0 list-none overflow-y-auto flex flex-col gap-0.5 p-0',
           isVideo ? 'shrink-0 max-h-28' : 'flex-1 max-lg:max-h-72',
           hasKeyCard && 'min-h-14',
         )}
@@ -272,35 +283,36 @@ export function AudioFileSelector({
               }
               onDragEnd={isOne ? () => onDragFile(null) : undefined}
               className={cn(
-                'flex items-center gap-1 rounded-box border border-l-4',
-                isMissing ? 'bg-error/10' : color.bg,
+                'flex items-center gap-1 rounded-[10px] pr-1.5 transition-colors',
                 isActive
-                  ? 'border-base-content/40 ring-1 ring-base-content/20'
-                  : 'border-base-content/10',
-                // After the border colour, or cn drops it as overridden.
-                color.border,
+                  ? 'bg-mv-fill shadow-[inset_0_0_0_1px_var(--mv-line-strong)]'
+                  : 'hover:bg-mv-raised',
               )}
             >
               {isOne && (
                 <button
                   type="button"
-                  className="shrink-0 ml-1 btn btn-xs btn-ghost btn-square rounded-box"
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'icon-sm' }),
+                    'ml-2 size-8 rounded-lg',
+                    color.text,
+                  )}
                   onClick={() => onPlay(source.id)}
                   aria-label={`${isPlaying ? 'Stop' : 'Play'} ${name}`}
                   title={isPlaying ? 'Stop' : 'Play'}
                 >
                   {isPlaying ? (
-                    <Square className={`h-3 w-3 ${color.text}`} />
+                    <Square className="size-3.5" />
                   ) : (
-                    <Play className={`h-3 w-3 ${color.text}`} />
+                    <Play className="size-3.5" />
                   )}
                 </button>
               )}
               <button
                 type="button"
                 className={cn(
-                  'min-w-0 flex-1 flex items-center gap-3 p-2 text-left cursor-pointer',
-                  isOne ? 'pl-1' : 'pl-3',
+                  'min-w-0 flex-1 flex items-center gap-2.5 border-0 bg-transparent py-2.5 text-left cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-mv-line-strong rounded-[10px]',
+                  isOne ? 'pl-1' : 'pl-2',
                 )}
                 onClick={() => onSelect(source.id)}
                 aria-pressed={isActive}
@@ -311,39 +323,40 @@ export function AudioFileSelector({
                 }
               >
                 {!isOne && (
-                  <Icon
-                    className={`h-4 w-4 shrink-0 mr-1 ${isMissing ? 'text-error' : color.text}`}
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div
+                  <span
+                    aria-hidden="true"
                     className={cn(
-                      'text-xs text-base-content truncate',
-                      isActive ? 'font-semibold' : 'font-medium',
+                      'flex size-8 shrink-0 items-center justify-center rounded-lg bg-mv-page shadow-[inset_0_0_0_1px_var(--mv-line)]',
+                      isMissing ? 'text-mv-danger' : color.text,
                     )}
                   >
+                    <Icon className="size-4" />
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-bold text-mv-ink">
                     {name}
                   </div>
                   <div
                     id={detailsId}
-                    className="text-[10px] text-base-content/70"
+                    className="truncate font-code text-[11px] text-mv-subtle"
                   >
                     {isMissing ? (
                       <>
-                        <span className="font-semibold text-base-content">
+                        <span className="font-bold text-mv-danger">
                           Audio missing
                         </span>{' '}
-                        • {plural(codes.length, noun)}
+                        · {plural(codes.length, noun)}
                       </>
                     ) : isOne ? (
                       <>
-                        {formatLength(source.duration)} •{' '}
+                        {formatLength(source.duration)} ·{' '}
                         {keysText(codes, noun)}
                       </>
                     ) : (
                       <>
-                        {formatLabel(source.file)} • {sizeMb} •{' '}
-                        {formatDuration(source.duration)} •{' '}
+                        {formatLabel(source.file)} · {sizeMb} ·{' '}
+                        {formatDuration(source.duration)} ·{' '}
                         {plural(codes.length, noun)}
                       </>
                     )}
@@ -353,7 +366,10 @@ export function AudioFileSelector({
               <NavbarMenu
                 align="end"
                 buttonLabel={`More for ${name}`}
-                buttonClassName="shrink-0 mr-1 btn btn-xs btn-ghost btn-square rounded-box"
+                buttonClassName={buttonVariants({
+                  variant: 'ghost',
+                  size: 'icon-sm',
+                })}
                 items={[
                   ...(isMissing
                     ? []
@@ -388,7 +404,7 @@ export function AudioFileSelector({
                   { label: 'Remove', onSelect: () => requestRemoval(source) },
                 ]}
               >
-                <Ellipsis className="h-3 w-3" />
+                <Ellipsis className="size-4" />
               </NavbarMenu>
             </li>
           );
@@ -397,43 +413,41 @@ export function AudioFileSelector({
 
       {isVideo && (
         /* Video: the preview takes the rest of the panel so portrait clips stay as large as possible */
-        <div className="flex-1 min-h-0 rounded-box flex items-center justify-center overflow-hidden">
+        <div className="flex-1 min-h-0 rounded-[10px] flex items-center justify-center overflow-hidden">
           {/* src is assigned by CombinedWaveform, which uses this element as its media source */}
           {/* biome-ignore lint/a11y/useMediaCaption: user-supplied video, no captions exist */}
           <video
             ref={videoRef}
             controls
-            className="max-w-full max-h-full rounded-box object-contain"
+            className="max-w-full max-h-full rounded-[10px] object-contain"
           />
         </div>
       )}
 
-      {pendingRemoval && (
-        <dialog
-          className="modal modal-open"
-          onClose={() => setPendingRemoval(null)}
-        >
-          <div className="modal-box">
-            <h3 className="text-base font-semibold">
-              Remove {pendingRemoval.file.name}?
-            </h3>
-            <p className="py-3 text-sm text-base-content/70">
-              {keyCountOf(pendingRemoval.id) === 1
-                ? `1 ${noun} uses this file and loses its sound.`
-                : `${keyCountOf(pendingRemoval.id)} ${noun}s use this file and lose their sound.`}{' '}
-              You can undo this.
-            </p>
-            <div className="modal-action">
-              <button
-                type="button"
-                className="btn btn-sm rounded-box"
-                onClick={() => setPendingRemoval(null)}
-              >
+      <Dialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRemoval(null);
+        }}
+      >
+        {pendingRemoval && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Remove {pendingRemoval.file.name}?</DialogTitle>
+              <DialogDescription>
+                {keyCountOf(pendingRemoval.id) === 1
+                  ? `1 ${noun} uses this file and loses its sound.`
+                  : `${keyCountOf(pendingRemoval.id)} ${noun}s use this file and lose their sound.`}{' '}
+                You can undo this.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose className={buttonVariants({ variant: 'outline' })}>
                 Cancel
-              </button>
+              </DialogClose>
               <button
                 type="button"
-                className="btn btn-sm btn-error rounded-box"
+                className={buttonVariants({ variant: 'danger' })}
                 onClick={() => {
                   onRemove(pendingRemoval.id);
                   setPendingRemoval(null);
@@ -441,16 +455,10 @@ export function AudioFileSelector({
               >
                 Remove
               </button>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="modal-backdrop"
-            aria-label="Close"
-            onClick={() => setPendingRemoval(null)}
-          />
-        </dialog>
-      )}
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   );
 }
