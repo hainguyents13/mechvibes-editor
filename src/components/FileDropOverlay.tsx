@@ -1,5 +1,10 @@
-import { CircleAlert, FolderOpen, type LucideIcon, Music } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import {
+  CircleAlert,
+  FolderOpen,
+  type IconComponent,
+  Music,
+} from '@/components/icons';
 import {
   carriesLink,
   DROP_MESSAGES,
@@ -47,22 +52,30 @@ function answers(contents: DropContents<DroppedFile>) {
   return contents.files.length > 0 || contents.hasLink;
 }
 
+// The frame's line and the message's colour, and the icon's tile. A drop the
+// editor takes is drawn in ink.
+const TAKEN_LOOK = {
+  frame: 'shadow-[inset_0_0_0_2px_var(--mv-ink)] text-mv-ink',
+  tile: 'bg-mv-primary text-mv-on-primary',
+};
 const ROUTE_LOOKS: Record<
   DropRoute<DroppedFile>['kind'],
-  { Icon: LucideIcon; tone: string }
+  { Icon: IconComponent; frame: string; tile: string }
 > = {
-  'open-zip': { Icon: FolderOpen, tone: 'border-primary text-base-content' },
-  'open-folder': {
-    Icon: FolderOpen,
-    tone: 'border-primary text-base-content',
-  },
-  'to-type-question': { Icon: Music, tone: 'border-primary text-base-content' },
-  'add-media': { Icon: Music, tone: 'border-primary text-base-content' },
+  'open-zip': { Icon: FolderOpen, ...TAKEN_LOOK },
+  'open-folder': { Icon: FolderOpen, ...TAKEN_LOOK },
+  'to-type-question': { Icon: Music, ...TAKEN_LOOK },
+  'add-media': { Icon: Music, ...TAKEN_LOOK },
   unknown: {
     Icon: FolderOpen,
-    tone: 'border-base-content/40 text-base-content',
+    frame: 'shadow-[inset_0_0_0_2px_var(--mv-faint)] text-mv-ink',
+    tile: 'bg-mv-fill-strong text-mv-ink',
   },
-  reject: { Icon: CircleAlert, tone: 'border-error text-error-strong' },
+  reject: {
+    Icon: CircleAlert,
+    frame: 'shadow-[inset_0_0_0_2px_var(--mv-danger)] text-mv-danger',
+    tile: 'bg-mv-danger-fill text-mv-danger',
+  },
 };
 
 /** The key under a drag, from the element it is over. */
@@ -258,27 +271,29 @@ export function FileDropOverlay({
     // the drop. Its line sits at the foot of the page, over the footer,
     // rather than over the navbar's controls or the keys.
     return (
-      <div className="pointer-events-none fixed inset-0 z-[120] bg-base-100/15 p-2">
-        <div className="flex h-full flex-col items-center justify-end rounded-box border-4 border-dashed border-primary">
-          <output className="mb-2 flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-box bg-base-100 px-4 py-2 text-sm font-semibold text-base-content shadow-lg md:text-base">
-            <Music
-              className="h-5 w-5 shrink-0 text-primary"
-              aria-hidden="true"
-            />
+      <div className="pointer-events-none fixed inset-0 z-[120] bg-mv-page/15 p-2 font-body">
+        <div className="flex h-full flex-col items-center justify-end rounded-[14px] shadow-[inset_0_0_0_2px_var(--mv-ink)]">
+          <output className="mb-3 flex max-w-[calc(100%-2rem)] items-center gap-2.5 rounded-xl bg-mv-page px-4 py-2.5 text-sm font-bold text-mv-ink shadow-[0_0_0_1px_var(--mv-line),0_14px_32px_-14px_var(--mv-shadow)] md:text-[15px]">
+            <Music className="size-5 shrink-0" aria-hidden="true" />
             Drop on a {noun} to give it this sound, or anywhere else to add it.
           </output>
         </div>
       </div>
     );
   }
-  const { Icon, tone } = ROUTE_LOOKS[route.kind];
+  const { Icon, frame, tile } = ROUTE_LOOKS[route.kind];
   return (
-    <div className="fixed inset-0 z-[120] bg-base-100/85 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[120] bg-mv-page/70 p-4 font-body backdrop-blur-sm">
       <div
-        className={`flex h-full flex-col items-center justify-center gap-4 rounded-box border-4 border-dashed px-6 text-center ${tone}`}
+        className={`flex h-full flex-col items-center justify-center gap-4 rounded-[14px] bg-mv-page/90 px-6 text-center ${frame}`}
       >
-        <Icon className="h-14 w-14" strokeWidth={1.5} aria-hidden="true" />
-        <output className="block max-w-xl text-xl md:text-2xl font-semibold">
+        <span
+          aria-hidden="true"
+          className={`flex size-[52px] items-center justify-center rounded-[14px] ${tile}`}
+        >
+          <Icon className="size-6" />
+        </span>
+        <output className="block max-w-xl font-display text-xl font-extrabold tracking-[-0.02em] md:text-2xl">
           {route.message}
         </output>
       </div>

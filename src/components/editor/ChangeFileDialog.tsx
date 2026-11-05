@@ -1,5 +1,13 @@
-import { useEffect, useId, useRef } from 'react';
+import { useRef } from 'react';
 import { getAudioTrackColor } from '@/components/editor/audio-track-colors';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useReturnFocus } from '@/hooks/useReturnFocus';
 import type { FileKind } from '@/lib/fileKinds';
 import {
   AUDIO_FILE_ACCEPT,
@@ -12,7 +20,8 @@ import type { AudioSource } from '@/utils/soundPack';
 /**
  * Gives one key another file: one of the pack's, or one from the computer.
  * A modal dialog, so the pack cannot change behind it; focus starts on the
- * first file it can take, and Esc closes it.
+ * first file it can take, Esc closes it, and closing it hands focus back to
+ * where it was.
  */
 export function ChangeFileDialog({
   keyName,
@@ -33,33 +42,20 @@ export function ChangeFileDialog({
   onChooseFile: (file: File) => void;
   onClose: () => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const titleId = useId();
   const isOpen = keyName !== null;
-
-  // Stays in the page, so closing it hands focus back to where it was.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (isOpen && !dialog.open) dialog.showModal();
-    else if (!isOpen && dialog.open) dialog.close();
-  }, [isOpen]);
+  const returnFocus = useReturnFocus();
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="modal"
-      aria-labelledby={titleId}
-      onCancel={onClose}
-      onClose={onClose}
-    >
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       {isOpen && (
-        <div className="modal-box max-w-md flex flex-col max-h-[80vh]">
-          <h2 id={titleId} className="text-lg font-semibold">
-            Change the file of {keyName}
-          </h2>
-          <ul className="mt-3 -mx-2 min-h-0 overflow-y-auto flex flex-col gap-1">
+        <DialogContent
+          {...returnFocus}
+          aria-describedby={undefined}
+          className="flex max-h-[80vh] flex-col p-[22px]"
+        >
+          <DialogTitle>Change the file of {keyName}</DialogTitle>
+          <ul className="-mx-2 mt-1 flex min-h-0 flex-col gap-0.5 overflow-y-auto">
             {sources.map((source) => {
               const isCurrent = source.id === currentId;
               const isOne = kinds.get(source.id) === 'one';
@@ -68,19 +64,19 @@ export function ChangeFileDialog({
                 <li key={source.id}>
                   <button
                     type="button"
-                    className="w-full flex items-center gap-3 rounded-box px-2 py-2 text-left cursor-pointer hover:bg-base-200 focus-visible:bg-base-200 disabled:cursor-default disabled:hover:bg-transparent"
+                    className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left text-mv-ink outline-none transition-colors hover:bg-mv-fill focus-visible:bg-mv-fill focus-visible:shadow-[inset_0_0_0_1px_var(--mv-line-strong)] disabled:cursor-default disabled:bg-mv-raised"
                     onClick={() => onPick(source.id)}
                     disabled={isCurrent}
                     aria-current={isCurrent || undefined}
                   >
                     <span
                       aria-hidden
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`}
+                      className={`size-2.5 shrink-0 rounded-full ${color.dot}`}
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                    <span className="min-w-0 flex-1 truncate text-sm font-bold">
                       {source.file.name}
                     </span>
-                    <span className="shrink-0 text-xs text-base-content/70">
+                    <span className="shrink-0 font-code text-xs text-mv-subtle">
                       {formatLength(source.duration)} ·{' '}
                       {isOne ? 'one sound' : 'many sounds'}
                       {isCurrent && ' · now'}
@@ -90,14 +86,14 @@ export function ChangeFileDialog({
               );
             })}
           </ul>
-          <div className="modal-action">
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost rounded-box mr-auto"
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              className="mr-auto"
               onClick={() => inputRef.current?.click()}
             >
               Choose a file…
-            </button>
+            </Button>
             <input
               ref={inputRef}
               type="file"
@@ -109,22 +105,12 @@ export function ChangeFileDialog({
                 if (file && isMediaFile(file)) onChooseFile(file);
               }}
             />
-            <button
-              type="button"
-              className="btn btn-sm rounded-box"
-              onClick={onClose}
-            >
+            <Button variant="outline" onClick={onClose}>
               Cancel
-            </button>
-          </div>
-        </div>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       )}
-      <button
-        type="button"
-        className="modal-backdrop"
-        aria-label="Close"
-        onClick={onClose}
-      />
-    </dialog>
+    </Dialog>
   );
 }
