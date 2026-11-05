@@ -12,15 +12,7 @@
       rel="stylesheet"
     />
     <title>Mechvibes Editor</title>
-    <!-- The saved light/dark choice, set before the first paint so a dark
-         page never flashes light. ThemeToggle keeps it from here on. -->
-    <script>
-      try {
-        if (localStorage.getItem('theme') === 'dark') {
-          document.documentElement.setAttribute('data-theme', 'dark');
-        }
-      } catch {}
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>
