@@ -16,7 +16,12 @@ import {
   withoutFieldWords,
 } from '@/lib/packVocabulary';
 import { cn } from '@/lib/utils';
-import { ICON_TYPES, MAX_ICON_BYTES, type PackInfo } from '@/utils/soundPack';
+import {
+  ICON_TYPES,
+  MAX_ICON_BYTES,
+  type PackInfo,
+  readSourceUrl,
+} from '@/utils/soundPack';
 
 interface EditPackModalProps {
   isOpen: boolean;
@@ -27,7 +32,10 @@ interface EditPackModalProps {
   isLibraryPack?: boolean;
 }
 
-type FormData = Omit<PackInfo, 'tags'> & { tags: string };
+type FormData = Omit<PackInfo, 'tags' | 'sourceUrl'> & {
+  tags: string;
+  sourceUrl: string;
+};
 
 const ICON_ACCEPT = Object.keys(ICON_TYPES).join(',');
 
@@ -91,10 +99,13 @@ export function EditPackModal({
   const [formData, setFormData] = useState<FormData>({
     ...packInfo,
     tags: packInfo.tags.join(', '),
+    sourceUrl: packInfo.sourceUrl ?? '',
   });
   const iconInputRef = React.useRef<HTMLInputElement>(null);
   const soundsRef = React.useRef<HTMLFieldSetElement>(null);
   const [soundsMissing, setSoundsMissing] = useState(false);
+  const sourceRef = React.useRef<HTMLInputElement>(null);
+  const [sourceBad, setSourceBad] = useState(false);
   const id = useId();
   const returnFocus = useReturnFocus();
   const vocabulary = usePackVocabulary();
@@ -127,13 +138,25 @@ export function EditPackModal({
       soundsRef.current?.querySelector('button')?.focus();
       return;
     }
+    const sourceUrl = readSourceUrl(formData.sourceUrl);
+    if (sourceUrl === undefined) {
+      showSourceBad();
+      return;
+    }
     onSave({
       ...formData,
       tags: keptTags,
+      sourceUrl,
       // Only a realistic pack has a switch type.
       switchType: realistic ? formData.switchType : null,
     });
     onClose();
+  };
+
+  const showSourceBad = () => {
+    setSourceBad(true);
+    sourceRef.current?.scrollIntoView({ block: 'center' });
+    sourceRef.current?.focus();
   };
 
   const toggleSound = (value: string) => {
@@ -196,8 +219,8 @@ export function EditPackModal({
             {isLibraryPack && (
               <p className="m-0 rounded-[10px] bg-mv-fill p-3 text-xs leading-normal text-mv-muted">
                 This pack is in the library. When you update it, the website
-                keeps the name, description, category, sound, tags and author
-                from the pack's page, so change those there.
+                keeps the name, description, category, sound, tags, source link
+                and author from the pack's page, so change those there.
               </p>
             )}
 
@@ -368,6 +391,41 @@ export function EditPackModal({
                   : keptTags.length > vocabulary.maxTags
                     ? `That is ${keptTags.length} tags. The library keeps the first ${vocabulary.maxTags}.`
                     : 'Separate tags with commas. No need to repeat the category, sound or switch type.'}
+              </p>
+            </div>
+
+            <div className={FIELD_CLASS}>
+              <Label htmlFor={`${id}-source`}>Source link {OPTIONAL}</Label>
+              <Input
+                ref={sourceRef}
+                id={`${id}-source`}
+                type="url"
+                value={formData.sourceUrl}
+                onChange={(e) => {
+                  setSourceBad(false);
+                  setFormData((prev) => ({
+                    ...prev,
+                    sourceUrl: e.target.value,
+                  }));
+                }}
+                // The browser's own message for a link without https:// would
+                // say less than ours.
+                onInvalid={(e) => {
+                  e.preventDefault();
+                  showSourceBad();
+                }}
+                placeholder="https://www.youtube.com/watch?v=..."
+                aria-invalid={sourceBad || undefined}
+                aria-describedby={`${id}-source-hint`}
+              />
+              <p
+                id={`${id}-source-hint`}
+                role={sourceBad ? 'alert' : undefined}
+                className={cn(HINT_CLASS, sourceBad && 'text-mv-danger')}
+              >
+                {sourceBad
+                  ? 'Enter the source as a full web link, starting with https://.'
+                  : 'The video or page the sounds come from.'}
               </p>
             </div>
 

@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Say what kind of pack it is.** **Edit Pack Information** asks for the pack's **Category** (Realistic, Game, Fun or App sounds), **How it sounds** in up to 3 words, and, for a realistic pack, its **Switch type**. They are the same lists as on mechvibes.com, and the downloaded pack carries them, so the website's new pack form starts with them filled in. Suggested tags sit under the tag field, one click each.
+- **Say where the sounds come from.** **Edit Pack Information** has a **Source link** for the video or page the sounds were cut from, such as a YouTube typing video. The downloaded pack carries it, so the website's new pack form starts with it filled in.
 
 ### Changed
 

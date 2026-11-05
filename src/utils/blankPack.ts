@@ -20,6 +20,7 @@ export function createDefaultPackInfo(
     category: null,
     soundProfiles: [],
     switchType: null,
+    sourceUrl: null,
     packType,
     recommendedVolume: 1,
     randomPitch: false,

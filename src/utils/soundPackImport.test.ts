@@ -592,3 +592,36 @@ describe('opening a mouse pack converted from Mechvibes V1', () => {
     expect(pack.notes).toEqual([]);
   });
 });
+
+describe('opening a pack with a source link', () => {
+  const openWith = async (sourceUrl: unknown) =>
+    (
+      await parseSoundPackZip(
+        await makePackZip({
+          'config.json': {
+            config_version: '2',
+            name: 'Linked pack',
+            definition_method: 'single',
+            audio_file: 'sound.ogg',
+            soundpack_type: 'Keyboard',
+            source_url: sourceUrl,
+            definitions: { KeyA: { timing: [[0, 100]] } },
+          },
+          'sound.ogg': fakeAudio('main'),
+        }),
+      )
+    ).info.sourceUrl;
+
+  it('reads source_url, trimmed', async () => {
+    expect(await openWith(' https://www.youtube.com/watch?v=abc123 ')).toBe(
+      'https://www.youtube.com/watch?v=abc123',
+    );
+  });
+
+  it('leaves out a link the website would refuse', async () => {
+    expect(await openWith('youtube.com/watch?v=abc123')).toBeNull();
+    expect(await openWith('ftp://example.com/sounds.zip')).toBeNull();
+    expect(await openWith(42)).toBeNull();
+    expect(await openWith(undefined)).toBeNull();
+  });
+});

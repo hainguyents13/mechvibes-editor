@@ -72,6 +72,7 @@ const info: PackInfo = {
   category: null,
   soundProfiles: [],
   switchType: null,
+  sourceUrl: null,
   packType: 'Keyboard',
   recommendedVolume: 1,
   randomPitch: false,
@@ -334,5 +335,34 @@ describe('buildSoundPackZip', () => {
       }),
     );
     expect(again.configText).toBe(out.configText);
+  });
+});
+
+describe('the source link in config.json', () => {
+  const sound = createAudioSource(
+    new File([fakeAudio('main')], 'sound.ogg', { type: 'audio/ogg' }),
+    1,
+  );
+  const exportWith = async (sourceUrl: string | null) =>
+    readPackZip(
+      await buildSoundPackZip({
+        info: { ...info, sourceUrl },
+        sources: [sound],
+        keySounds: new Map([
+          ['KeyA', { source: sound.id, press: [0, 100] as [number, number] }],
+        ]),
+      }),
+    );
+
+  it('is written as source_url when set', async () => {
+    const out = await exportWith('https://www.youtube.com/watch?v=abc123');
+    expect(out.config.source_url).toBe(
+      'https://www.youtube.com/watch?v=abc123',
+    );
+  });
+
+  it('is left out when there is none', async () => {
+    const out = await exportWith(null);
+    expect(out.config).not.toHaveProperty('source_url');
   });
 });

@@ -805,3 +805,31 @@ describe('category, sound and switch type', () => {
     expect(out.config).not.toHaveProperty('switch_type');
   });
 });
+
+describe('source link', () => {
+  it('keeps it through import and export, not among the extra fields', async () => {
+    const { pack, out } = await roundTrip({
+      'config.json': packConfig({
+        source_url: 'https://www.youtube.com/watch?v=abc123',
+      }),
+      'sound.ogg': fakeAudio('main'),
+    });
+
+    expect(pack.info.sourceUrl).toBe('https://www.youtube.com/watch?v=abc123');
+    expect(pack.extras.config).not.toHaveProperty('source_url');
+    expect(out.config).toEqual(
+      exportedConfig({ source_url: 'https://www.youtube.com/watch?v=abc123' }),
+    );
+  });
+
+  it('writes none when the pack has none', async () => {
+    const { out } = await reexport(
+      await makePackZip({
+        'config.json': packConfig({}),
+        'sound.ogg': fakeAudio('main'),
+      }),
+    );
+
+    expect(out.config).not.toHaveProperty('source_url');
+  });
+});

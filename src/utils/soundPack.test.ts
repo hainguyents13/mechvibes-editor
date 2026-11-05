@@ -7,8 +7,10 @@ import {
   isWholeFile,
   type KeySounds,
   listKeys,
+  MAX_SOURCE_URL_LENGTH,
   nextColorIndexes,
   type PackInfo,
+  readSourceUrl,
   SOURCE_COLOR_COUNT,
   sourcesInUse,
   WHOLE_FILE,
@@ -48,6 +50,7 @@ const info: PackInfo = {
   category: 'realistic',
   soundProfiles: ['thocky', 'creamy'],
   switchType: 'linear',
+  sourceUrl: null,
   packType: 'Keyboard',
   recommendedVolume: 1,
   randomPitch: false,
@@ -172,5 +175,35 @@ describe('compareFileNames', () => {
       'Key_2.wav',
       'key_10.wav',
     ]);
+  });
+});
+
+describe('readSourceUrl', () => {
+  it('takes a full http or https link, trimmed', () => {
+    expect(readSourceUrl('  https://www.youtube.com/watch?v=abc123  ')).toBe(
+      'https://www.youtube.com/watch?v=abc123',
+    );
+    expect(readSourceUrl('http://example.com/sounds')).toBe(
+      'http://example.com/sounds',
+    );
+  });
+
+  it('reads an empty link as none', () => {
+    expect(readSourceUrl('')).toBeNull();
+    expect(readSourceUrl('   ')).toBeNull();
+  });
+
+  it('refuses a link without a scheme, or with another one', () => {
+    expect(readSourceUrl('youtube.com/watch?v=abc123')).toBeUndefined();
+    expect(readSourceUrl('not a link')).toBeUndefined();
+    expect(readSourceUrl('ftp://example.com/sounds.zip')).toBeUndefined();
+    expect(readSourceUrl('javascript:alert(1)')).toBeUndefined();
+  });
+
+  it('takes links up to the length the website keeps', () => {
+    const base = 'https://example.com/';
+    const longest = base + 'a'.repeat(MAX_SOURCE_URL_LENGTH - base.length);
+    expect(readSourceUrl(longest)).toBe(longest);
+    expect(readSourceUrl(`${longest}a`)).toBeUndefined();
   });
 });

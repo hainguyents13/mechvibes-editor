@@ -62,6 +62,8 @@ export type PackInfo = {
   soundProfiles: string[];
   /** config.switch_type, for a realistic pack only. */
   switchType: string | null;
+  /** config.source_url: the video or page the sounds come from, or null. */
+  sourceUrl: string | null;
   packType: PackType;
   /** options.recommended_volume, 0 to 2. */
   recommendedVolume: number;
@@ -92,6 +94,26 @@ export const ICON_TYPES: Record<string, string> = {
 
 /** The library refuses larger icons. */
 export const MAX_ICON_BYTES = 512 * 1024;
+
+/** The website takes source links up to this length. */
+export const MAX_SOURCE_URL_LENGTH = 500;
+
+/**
+ * A source link as the website takes it: trimmed, null when empty, and
+ * undefined when it is not a full http or https link of at most
+ * MAX_SOURCE_URL_LENGTH characters.
+ */
+export function readSourceUrl(value: string): string | null | undefined {
+  const url = value.trim();
+  if (!url) return null;
+  if (url.length > MAX_SOURCE_URL_LENGTH) return undefined;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:' ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export const LICENSE_FILE_NAMES = new Set([
   'license',
