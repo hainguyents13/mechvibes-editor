@@ -19,26 +19,25 @@ import {
 const SELECTION_REGION_ID = 'selection';
 
 /**
- * The theme's chart colour (--mv-chart, an hsl() without alpha), read when
- * drawn since the canvas cannot follow CSS variables; with `alpha`, see
- * through.
+ * A theme colour as `rgb(r g b / alpha)`, read when drawn since the canvas
+ * cannot follow CSS variables. The browser resolves it, whatever form the
+ * stylesheet keeps it in.
  */
-function chartColor(alpha?: number) {
-  const chart =
-    getComputedStyle(document.documentElement)
-      .getPropertyValue('--mv-chart')
-      .trim() || 'hsl(245 70% 60%)';
-  return alpha === undefined ? chart : chart.replace(/\)$/, ` / ${alpha})`);
+function themeColor(variable: string, alpha = 1) {
+  const probe = document.createElement('span');
+  probe.style.color = `var(${variable})`;
+  document.body.append(probe);
+  const rgb = getComputedStyle(probe).color;
+  probe.remove();
+  const [r = 0, g = 0, b = 0] = rgb.match(/[\d.]+/g)?.map(Number) ?? [];
+  return `rgb(${r} ${g} ${b} / ${alpha})`;
 }
-const selectionColor = () => chartColor(0.16);
+const selectionColor = () => themeColor('--mv-chart', 0.16);
 /** The bars, a step lighter than the part already played. */
 const waveColors = () => ({
-  waveColor: chartColor(0.55),
-  progressColor: chartColor(),
-  cursorColor:
-    getComputedStyle(document.documentElement)
-      .getPropertyValue('--mv-ink')
-      .trim() || '#18181b',
+  waveColor: themeColor('--mv-chart', 0.55),
+  progressColor: themeColor('--mv-chart'),
+  cursorColor: themeColor('--mv-ink'),
 });
 /** Auto-detected regions are click targets only and are never edited. */
 const AUTO_REGION_PREFIX = 'sound-region-';
