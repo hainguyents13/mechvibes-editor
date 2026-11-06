@@ -28,6 +28,7 @@ const packInfo = (name = 'Pack'): PackInfo => ({
   category: null,
   soundProfiles: [],
   switchType: null,
+  sourceUrl: null,
   packType: 'Keyboard',
   recommendedVolume: 1,
   randomPitch: false,

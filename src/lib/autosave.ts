@@ -82,13 +82,17 @@ const isStoredSource = (value: unknown): value is StoredSource =>
   typeof value.duration === 'number' &&
   typeof value.colorIndex === 'number';
 
-/** Work kept before packs had a category, sound words and switch type has none. */
+/**
+ * Work kept before packs had a category, sound words, switch type and source
+ * link has none.
+ */
 function withPackDetails(info: PackSnapshot['packInfo']) {
   return {
     ...info,
     category: info.category ?? null,
     soundProfiles: info.soundProfiles ?? [],
     switchType: info.switchType ?? null,
+    sourceUrl: info.sourceUrl ?? null,
   };
 }
 

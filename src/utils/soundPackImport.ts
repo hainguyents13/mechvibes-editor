@@ -16,6 +16,7 @@ import {
   type PackExtras,
   type PackInfo,
   type PackType,
+  readSourceUrl,
   type Segment,
   WHOLE_FILE,
 } from '@/utils/soundPack';
@@ -53,6 +54,7 @@ const EDITOR_FIELDS = new Set([
   'category',
   'sound_profiles',
   'switch_type',
+  'source_url',
   'definition_method',
   'audio_file',
   'icon',
@@ -543,6 +545,11 @@ export async function parseSoundPackZip(
       description:
         typeof config.description === 'string' ? config.description : '',
       ...details,
+      // A link the website would refuse is left out.
+      sourceUrl:
+        typeof config.source_url === 'string'
+          ? (readSourceUrl(config.source_url) ?? null)
+          : null,
       packType,
       recommendedVolume:
         Number.isFinite(volume) && volume >= 0 && volume <= 2 ? volume : 1,

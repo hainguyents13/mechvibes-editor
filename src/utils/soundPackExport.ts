@@ -431,6 +431,7 @@ export async function buildSoundPackZip({
     ...(info.switchType && info.category === REALISTIC
       ? { switch_type: info.switchType }
       : {}),
+    ...(info.sourceUrl ? { source_url: info.sourceUrl } : {}),
     definition_method: isMulti ? 'multi' : 'single',
     audio_file: packed.get(usedSources[0].id)?.name,
     ...(iconName ? { icon: iconName } : {}),
