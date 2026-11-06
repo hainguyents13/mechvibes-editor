@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-06
+
 ### Added
 
 - **Say what kind of pack it is.** **Edit Pack Information** asks for the pack's **Category** (Realistic, Game, Fun or App sounds), **How it sounds** in up to 3 words, and, for a realistic pack, its **Switch type**. They are the same lists as on mechvibes.com, and the downloaded pack carries them, so the website's new pack form starts with them filled in. Suggested tags sit under the tag field, one click each.
